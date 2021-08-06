@@ -1,0 +1,12 @@
+name: ssm_jax
+channels:
+  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  - pip:
+    - cython
+    - numpy
+    - jupyterlab
+    - ipywidgets
+    - "git+https://github.com/lindermanlab/jxf@master#egg=jxf"
