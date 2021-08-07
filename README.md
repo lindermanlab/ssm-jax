@@ -2,4 +2,14 @@
 
 Refactoring the SSM code base to use Jax.
 
-# Installation
+# Installation for Development
+
+```
+# use your favorite venv system
+conda env create -n ssm_jax python=3.9
+conda activate ssm_jax
+
+# in repo root directory...
+pip install -e .
+```
+
