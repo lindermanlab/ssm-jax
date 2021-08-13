@@ -1,4 +1,39 @@
+from enum import IntEnum
+
 import jax.numpy as jnp
+from tqdm.auto import trange
+
+
+def sum_tuples(a, b):
+    assert a or b
+    if a is None:
+        return b
+    elif b is None:
+        return a
+    else:
+        return tuple(ai + bi for ai, bi in zip(a, b))
+
+
+def ssm_pbar(num_iters, verbose, description, *args):
+    """Return either progress bar or regular list for iterating. Inputs are:
+    num_iters (int)
+    verbose (int)     - if == 2, return trange object, else returns list
+    description (str) - description for progress bar
+    args     - values to initialize description fields at
+    """
+    if verbose >= Verbosity.QUIET:
+        pbar = trange(num_iters)
+        pbar.set_description(description.format(*args))
+    else:
+        pbar = range(num_iters)
+    return pbar
+
+
+class Verbosity(IntEnum):
+    OFF = 0
+    QUIET = 1
+    LOUD = 2
+    DEBUG = 3
 
 
 def compute_expected_suff_stats(dataset, posteriors):
