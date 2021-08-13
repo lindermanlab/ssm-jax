@@ -2,32 +2,64 @@
 Base model class.
 """
 
+import jax.numpy as np
+import jax.random as jr
+import jax.scipy.special as spsp
+from jax import lax, value_and_grad, jit, vmap, grad
+from jax.tree_util import register_pytree_node, register_pytree_node_class
+from tensorflow_probability.python.internal import reparameterization
+from tensorflow_probability.substrates import jax as tfp
 
-class Model:
-    def __init__(self):
-        """
-        A 'model' is thought of as a collection of functions and a dictionary (parameters).
-        The functions are implemented as static methods so as to enforce the functional
-        paradigm of Jax.
-        """
-        self.parameters = None
+from functools import partial, wraps
+from textwrap import dedent
+import matplotlib.pyplot as plt
+from collections import namedtuple
+from tqdm.auto import trange
+from enum import IntEnum
 
-    @staticmethod
-    def dynamics(state, params, covariates):
-        """
-        Dynamics should return a probability distribution over the next state.
 
-        dynamics(state, params, covariates) -> p(next_state)
-        """
+class SSM(object):
+    def initial_dist(self):
         raise NotImplementedError
 
-    @staticmethod
-    def emissions(state, params, covariates):
-        """
-        Emissions should return a probability distribution over the observations.
-
-        emissions(state, params, covariates) -> p(observations)
-        """
+    def dynamics_dist(self, state):
         raise NotImplementedError
 
+    def emissions_dist(self, state):
+        raise NotImplementedError
 
+    def log_probability(self, states, data):
+        """
+        Compute the log joint probability of a set of states and data
+        """
+        lp = 0
+        lp += self.initial_dist().log_prob(states[0])
+        lp += self.emissions_dist(states[0]).log_prob(data[0])
+
+        def _step(carry, args):
+            prev_state, lp = carry
+            state, emission = args
+            lp += self.dynamics_dist(prev_state).log_prob(state)
+            lp += self.emissions_dist(state).log_prob(emission)
+            return (state, lp), None
+
+        (_, lp), _ = lax.scan(_step, (states[0], lp), zip(states[1:], data[1:]))
+
+    def sample(self, key, num_steps, covariates=None, initial_state=None):
+        """
+        Sample the state space model for specified number of steps.
+        """
+        if initial_state is None:
+            key1, key = jr.split(key, 2)
+            initial_state = self.initial_dist().sample(seed=key1)
+
+        def _step(state, key):
+            key1, key2 = jr.split(key, 2)
+            emission = self.emissions_dist(state).sample(seed=key1)
+            next_state = self.dynamics_dist(state).sample(seed=key2)
+            return next_state, (state, emission)
+
+        keys = jr.split(key, num_steps)
+        _, (states, emissions) = lax.scan(_step, initial_state, keys)
+
+        return states, emissions
