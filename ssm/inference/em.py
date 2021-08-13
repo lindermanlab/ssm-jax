@@ -39,12 +39,14 @@ def hmm_e_step(model, parameters, data):
 
 # could we still have OOM (e.g. pass in model via closure -- see SVAE)
 
+
 def hmm_m_step(model, parameters, data, posteriors):
 
     # idea: replicate julia type-based dispatch
     # issue: need to plumb control room for modified object
     if isinstance(model, GaussianHMMModel):
         hmm_m_step_gaussian()
+
 
 def hmm_m_step_sgd(model, parameters, data, posterior):
 
@@ -61,8 +63,9 @@ def hmm_m_step_sgd(model, parameters, data, posterior):
     # from SSM:master
     def _expected_log_joint(expectations):
         elbo = self.log_prior()
-        for data, input, mask, tag, (expected_states, _, _) \
-                in zip(datas, inputs, masks, tags, expectations):
+        for data, input, mask, tag, (expected_states, _, _) in zip(
+            datas, inputs, masks, tags, expectations
+        ):
             lls = self.log_likelihoods(data, input, mask, tag)
             elbo += np.sum(expected_states * lls)
         return elbo
@@ -77,17 +80,18 @@ def hmm_m_step_sgd(model, parameters, data, posterior):
 
     self.params = optimizer(_objective, self.params, **kwargs)
 
-
     return new_parameters
-
-
 
 
 """
 these are natural parameters of HMM as exp fam
 """
+
+
 def hmm_e_step(initial_dist, transition_matrix, log_likes):
-    ll, suff_stats = hmm_expected_states(jnp.log(initial_dist), jnp.log(transition_matrix), log_likes)
+    ll, suff_stats = hmm_expected_states(
+        jnp.log(initial_dist), jnp.log(transition_matrix), log_likes
+    )
     Ez0, Ezzp1, Ez = suff_stats
 
     posterior = dict()
@@ -99,9 +103,15 @@ def hmm_e_step(initial_dist, transition_matrix, log_likes):
     return posterior
 
 
-
-
-def fit_hmm(train_dataset, test_dataset, initial_dist, transition_matrix, observations, seed=0, num_iters=50):
+def fit_hmm(
+    train_dataset,
+    test_dataset,
+    initial_dist,
+    transition_matrix,
+    observations,
+    seed=0,
+    num_iters=50,
+):
     """
     Fit a Hidden Markov Model (HMM) with expectation maximization (EM).
 
@@ -141,12 +151,16 @@ def fit_hmm(train_dataset, test_dataset, initial_dist, transition_matrix, observ
     num_test = sum([len(data["data"]) for data in test_dataset])
 
     # Check the initial distribution and transition matrix
-    assert initial_dist.shape == (num_states,) and \
-           jnp.all(initial_dist >= 0) and \
-           jnp.isclose(initial_dist.sum(), 1.0)
-    assert transition_matrix.shape == (num_states, num_states) and \
-           jnp.all(transition_matrix >= 0) and \
-           jnp.allclose(transition_matrix.sum(axis=1), 1.0)
+    assert (
+        initial_dist.shape == (num_states,)
+        and jnp.all(initial_dist >= 0)
+        and jnp.isclose(initial_dist.sum(), 1.0)
+    )
+    assert (
+        transition_matrix.shape == (num_states, num_states)
+        and jnp.all(transition_matrix >= 0)
+        and jnp.allclose(transition_matrix.sum(axis=1), 1.0)
+    )
 
     # Initialize with a random posterior
     posteriors = initialize_posteriors(train_dataset, num_states, seed=seed)
@@ -194,15 +208,19 @@ def fit_hmm(train_dataset, test_dataset, initial_dist, transition_matrix, observ
 
     @jax.jit
     def _step(stats, train_dataset, initial_dist, transition_matrix):
-        stats, means, covs, avg_train_ll, posteriors = _train_step(stats, train_dataset, initial_dist,
-                                                                   transition_matrix)
-        avg_test_ll, test_posteriors = _test_step(means, covs, initial_dist, transition_matrix)
+        stats, means, covs, avg_train_ll, posteriors = _train_step(
+            stats, train_dataset, initial_dist, transition_matrix
+        )
+        avg_test_ll, test_posteriors = _test_step(
+            means, covs, initial_dist, transition_matrix
+        )
         return stats, avg_train_ll, avg_test_ll, posteriors, test_posteriors
 
     # Main loop
     for itr in tqdm(range(num_iters)):
-        stats, avg_train_ll, avg_test_ll, posteriors, test_posteriors = _step(stats, train_dataset, initial_dist,
-                                                                              transition_matrix)
+        stats, avg_train_ll, avg_test_ll, posteriors, test_posteriors = _step(
+            stats, train_dataset, initial_dist, transition_matrix
+        )
         train_lls.append(avg_train_ll)
         test_lls.append(avg_test_ll)
 

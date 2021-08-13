@@ -34,7 +34,7 @@ class _StandardHMM(SSM):
         # Set up the transition matrix and prior
         if transition_matrix is None and transition_logits is None:
             transition_logits = np.zeros((num_states, num_states))
-            
+
         self._dynamics_dist = tfp.distributions.Categorical(
             logits=transition_logits, probs=transition_matrix
         )

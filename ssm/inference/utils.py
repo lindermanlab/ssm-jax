@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 
+
 def compute_expected_suff_stats(dataset, posteriors):
     """
     Compute a tuple of expected sufficient statistics, taking a weighted sum
@@ -25,8 +26,8 @@ def compute_expected_suff_stats(dataset, posteriors):
     # for a single time series and corresponding posterior.
     def _compute_expected_suff_stats(data, posterior):
 
-        q = posterior['expected_states']
-        stats = [jnp.einsum('tk,t...->k...', q, f) for f in data['suff_stats']]
+        q = posterior["expected_states"]
+        stats = [jnp.einsum("tk,t...->k...", q, f) for f in data["suff_stats"]]
         stats = tuple(stats)
 
         return stats
