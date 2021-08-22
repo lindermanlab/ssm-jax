@@ -47,7 +47,7 @@ def make_poisson_hmm(num_states,
     return HMM(num_states, initial_dist, transition_dist, emissions_dist)
 
 
-def initialize_gaussian_hmm(rng, num_states, data, **kwargs):
+def initialize_poisson_hmm(rng, num_states, data, **kwargs):
     """
     Initializes a Gaussian in a semi-data-intelligent manner.
     """
