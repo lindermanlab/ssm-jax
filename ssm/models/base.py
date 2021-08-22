@@ -19,13 +19,13 @@ from enum import IntEnum
 
 
 class SSM(object):
-    def initial_dist(self):
+    def initial_distribution(self):
         raise NotImplementedError
 
-    def dynamics_dist(self, state):
+    def dynamics_distribution(self, state):
         raise NotImplementedError
 
-    def emissions_dist(self, state):
+    def emissions_distribution(self, state):
         raise NotImplementedError
 
     def log_probability(self, states, data):
@@ -33,14 +33,14 @@ class SSM(object):
         Compute the log joint probability of a set of states and data
         """
         lp = 0
-        lp += self.initial_dist().log_prob(states[0])
-        lp += self.emissions_dist(states[0]).log_prob(data[0])
+        lp += self.initial_distribution().log_prob(states[0])
+        lp += self.emissions_distribution(states[0]).log_prob(data[0])
 
         def _step(carry, args):
             prev_state, lp = carry
             state, emission = args
-            lp += self.dynamics_dist(prev_state).log_prob(state)
-            lp += self.emissions_dist(state).log_prob(emission)
+            lp += self.dynamics_distribution(prev_state).log_prob(state)
+            lp += self.emissions_distribution(state).log_prob(emission)
             return (state, lp), None
 
         (_, lp), _ = lax.scan(_step, (states[0], lp), zip(states[1:], data[1:]))
@@ -51,12 +51,12 @@ class SSM(object):
         """
         if initial_state is None:
             key1, key = jr.split(key, 2)
-            initial_state = self.initial_dist().sample(seed=key1)
+            initial_state = self.initial_distribution().sample(seed=key1)
 
         def _step(state, key):
             key1, key2 = jr.split(key, 2)
-            emission = self.emissions_dist(state).sample(seed=key1)
-            next_state = self.dynamics_dist(state).sample(seed=key2)
+            emission = self.emissions_distribution(state).sample(seed=key1)
+            next_state = self.dynamics_distribution(state).sample(seed=key2)
             return next_state, (state, emission)
 
         keys = jr.split(key, num_steps)
