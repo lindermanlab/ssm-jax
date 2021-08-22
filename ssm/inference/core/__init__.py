@@ -1,1 +1,1 @@
-from hmm_message_passing import hmm_expected_states, hmm_log_normalizer
+from .hmm_message_passing import hmm_expected_states, hmm_log_normalizer

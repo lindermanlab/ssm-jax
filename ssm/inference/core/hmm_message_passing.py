@@ -1,4 +1,4 @@
-import jax.numpy as jnp
+import jax.numpy as np
 import jax.scipy.special as spsp
 from jax import jit, lax, value_and_grad
 
@@ -97,5 +97,14 @@ def _nonstationary_hmm_log_normalizer(
     # Account for the last timestep when computing marginal lkhd
     return spsp.logsumexp(alpha_T + log_likelihoods[-1])
 
-
 hmm_expected_states = jit(value_and_grad(hmm_log_normalizer, argnums=(0, 1, 2)))
+
+def hmm_expected_log_joint(log_initial_state_probs,
+                           log_transition_matrix,
+                           log_likelihoods,
+                           posterior):
+    
+    elp = np.sum(posterior.expected_states[0] * log_initial_state_probs)
+    elp += np.sum(posterior.expected_transitions * log_transition_matrix)
+    elp += np.sum(posterior.expected_states * log_likelihoods)
+    return elp

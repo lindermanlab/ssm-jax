@@ -1,58 +1,125 @@
-from ssm.models import SSM
 import jax.numpy as np
-import tensorflow_probability.substrates.jax as tfp
-import copy
+import jax.random as jr
+import jax.scipy.special as spsp
+from jax import lax, value_and_grad, jit, vmap, grad
+from jax.tree_util import register_pytree_node, register_pytree_node_class
+from tensorflow_probability.python.internal import reparameterization
+from tensorflow_probability.substrates import jax as tfp
 
-from ssm.inference.utils import compute_expected_suff_stats
+from functools import partial, wraps
+from textwrap import dedent
+import matplotlib.pyplot as plt
+from collections import namedtuple
+from tqdm.auto import trange
+from enum import IntEnum
+
+from ssm.models.base import SSM
 
 
-class _StandardHMM(SSM):
-    def __init__(
-        self,
-        num_states,
-        initial_state_probs=None,
-        initial_state_logits=None,
-        initial_state_prior_concentration=1.0,
-        transition_matrix=None,
-        transition_logits=None,
-        transition_prior_concentration=1.0,
-    ):
+@register_pytree_node_class
+class HMM(SSM):
+    
+    def __init__(self, num_states,
+                 initial_distribution,
+                 transition_distribution,
+                 emission_distribution):
+        """ TODO
+        """
         self.num_states = num_states
 
         # Set up the initial state distribution and prior
-        if initial_state_probs is None and initial_state_logits is None:
-            initial_state_logits = np.zeros(num_states)
+        assert isinstance(initial_distribution, tfp.distributions.Categorical)
+        self._initial_distribution = initial_distribution
 
-        self._initial_dist = tfp.distributions.Categorical(
-            logits=initial_state_logits, probs=initial_state_probs
-        )
+        assert isinstance(transition_distribution, tfp.distributions.Categorical)
+        self._transition_distribution = transition_distribution
 
-        self._initial_state_prior = tfp.distributions.Dirichlet(
-            initial_state_prior_concentration * np.ones(num_states)
-        )
+        assert isinstance(transition_distribution, tfp.distributions.Distribution)
+        self._emissions_distribution = emission_distribution
 
-        # Set up the transition matrix and prior
-        if transition_matrix is None and transition_logits is None:
-            transition_logits = np.zeros((num_states, num_states))
+    def tree_flatten(self):
+        children = (self._initial_distribution,
+                    self._transition_distribution,
+                    self._emissions_distribution)
+        aux_data = (self.num_states,)
+        return children, aux_data
+        
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        num_states, = aux_data
+        initial_distribution, transition_distribution, emission_distribution = children
 
-        self._dynamics_dist = tfp.distributions.Categorical(
-            logits=transition_logits, probs=transition_matrix
-        )
+        # Construct a new HMM
+        return cls(num_states,
+                   initial_distribution=initial_distribution,
+                   transition_distribution=transition_distribution,
+                   emission_distribution=emission_distribution)
 
-        self._dynamics_prior = tfp.distributions.Dirichlet(
-            transition_prior_concentration * np.ones((num_states, num_states))
-        )
+    def initial_distribution(self):
+        return self._initial_distribution
 
-    def initial_dist(self):
-        return self._initial_dist
+    def dynamics_distribution(self, state):
+        return self._transition_distribution[state]
 
-    def dynamics_dist(self, state):
-        return self._dynamics_dist[state]
+    def emissions_distribution(self, state):
+        return self._emissions_distribution[state]
 
     @property
     def initial_state_probs(self):
-        return self._initial_dist.probs_parameter()
+        return self._initial_distribution.probs_parameter()
 
     @property
     def transition_matrix(self):
-        return self._dynamics_dist.probs_parameter()
+        return self._transition_distribution.probs_parameter()
+
+    def natural_parameters(self, data):
+        log_initial_state_distn = self._initial_distribution.logits_parameter()
+        log_transition_matrix = self._transition_distribution.logits_parameter()
+        log_transition_matrix -= spsp.logsumexp(log_transition_matrix, axis=1, keepdims=True)
+        log_likelihoods = vmap(lambda k: 
+                               vmap(lambda x: self._emissions_distribution[k].log_prob(x))(data)
+                               )(np.arange(self.num_states)).T
+
+        return log_initial_state_distn, log_transition_matrix, log_likelihoods
+
+
+class HMMConjugatePrior(object):
+    def log_prob(self, hmm):
+        raise NotImplementedError
+
+    @property
+    def initial_prior(self):
+        return self._initial_prior
+
+    @property
+    def transition_prior(self):
+        return self._transition_prior
+
+    @property
+    def emissions_prior(self):
+        return self._emissions_prior
+
+
+def _make_standard_hmm(num_states, initial_state_probs=None,
+                    initial_state_logits=None,
+                    transition_matrix=None,
+                    transition_logits=None):
+    # Set up the initial state distribution and prior
+    if initial_state_logits is None:
+        if initial_state_probs is None:
+            initial_state_logits = np.zeros(num_states)
+        else:
+            initial_state_logits = np.log(initial_state_probs)
+    
+    initial_dist = tfp.distributions.Categorical(logits=initial_state_logits)
+
+    # Set up the transition matrix and prior
+    if transition_logits is None:
+        if transition_matrix is None:
+            transition_logits = np.zeros((num_states, num_states))
+        else:
+            transition_logits = np.log(transition_matrix)
+    
+    transition_dist = tfp.distributions.Categorical(logits=transition_logits)
+    
+    return initial_dist, transition_dist
