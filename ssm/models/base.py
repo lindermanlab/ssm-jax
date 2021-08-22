@@ -43,7 +43,8 @@ class SSM(object):
             lp += self.emissions_distribution(state).log_prob(emission)
             return (state, lp), None
 
-        (_, lp), _ = lax.scan(_step, (states[0], lp), zip(states[1:], data[1:]))
+        (_, lp), _ = lax.scan(_step, (states[0], lp), (states[1:], data[1:]))
+        return lp
 
     def sample(self, key, num_steps, covariates=None, initial_state=None):
         """
