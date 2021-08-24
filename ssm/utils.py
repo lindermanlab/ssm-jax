@@ -1,6 +1,7 @@
 from scipy.optimize import linear_sum_assignment
 import jax.numpy as np
 from enum import IntEnum
+from tqdm.auto import trange
 
 
 class Verbosity(IntEnum):
@@ -43,10 +44,10 @@ def compute_state_overlap(z1, z2, K1=None, K2=None):
     K1 = z1.max() + 1 if K1 is None else K1
     K2 = z2.max() + 1 if K2 is None else K2
 
-    overlap = np.zeros((K1, K2))
-    for k1 in range(K1):
-        for k2 in range(K2):
-            overlap[k1, k2] = np.sum((z1 == k1) & (z2 == k2))
+    overlap = np.sum((z1[:, None] == np.arange(K1))[:, :, None] &
+                     (z2[:, None] == np.arange(K2))[:, None, :],
+                     axis=0)
+    assert overlap.shape == (K1, K2)
     return overlap
 
 

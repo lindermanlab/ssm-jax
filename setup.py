@@ -11,7 +11,6 @@ setup(
     author_email="scott.linderman@stanford.edu",
     url="https://github.com/lindermanlab/ssm",
     install_requires=[
-        "cython",
         "numpy",
         "scipy",
         "matplotlib",
