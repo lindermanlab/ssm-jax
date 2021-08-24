@@ -15,20 +15,17 @@ class HMM(SSM):
     def __init__(self, num_states,
                  initial_distribution,
                  transition_distribution,
-                 emission_distribution):
+                 emissions_distribution):
         """ TODO
         """
         self.num_states = num_states
 
-        # Set up the initial state distribution and prior
         assert isinstance(initial_distribution, tfp.distributions.Categorical)
-        self._initial_distribution = initial_distribution
-
         assert isinstance(transition_distribution, tfp.distributions.Categorical)
-        self._transition_distribution = transition_distribution
-
         assert isinstance(transition_distribution, tfp.distributions.Distribution)
-        self._emissions_distribution = emission_distribution
+        self._initial_distribution = initial_distribution
+        self._transition_distribution = transition_distribution
+        self._emissions_distribution = emissions_distribution
 
     def tree_flatten(self):
         children = (self._initial_distribution,
@@ -41,8 +38,6 @@ class HMM(SSM):
     def tree_unflatten(cls, aux_data, children):
         num_states, = aux_data
         initial_distribution, transition_distribution, emission_distribution = children
-
-        # Construct a new HMM
         return cls(num_states,
                    initial_distribution=initial_distribution,
                    transition_distribution=transition_distribution,
