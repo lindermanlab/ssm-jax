@@ -25,7 +25,9 @@ def make_gaussian_hmm(num_states,
                       emission_means=None,
                       emission_covariances=None,
                       emission_scale_trils=None):
-
+    """
+    Helper function to create a Gaussian HMM
+    """
     # Initialize the basics
     initial_dist, transition_dist = \
         _make_standard_hmm(num_states,
@@ -52,6 +54,10 @@ def make_gaussian_hmm(num_states,
 
 
 def initialize_gaussian_hmm(rng, num_states, data, **kwargs):
+    """
+    Initializes a Gaussian in a semi-data-intelligent manner.
+    """
+    
     # Pick random data points as the means
     num_timesteps, emission_dim = data.shape
     inds = jr.choice(rng, num_timesteps, shape=(num_states,), replace=False)

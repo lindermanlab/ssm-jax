@@ -13,99 +13,148 @@ from collections import namedtuple
 from tqdm.auto import trange
 from enum import IntEnum
 
-from .base import _StandardHMM
+from .base import HMM, _make_standard_hmm
 
 
-@register_pytree_node_class
-class PoissonHMM(_StandardHMM):
-    def __init__(
-        self,
-        num_states,
-        emission_dim,
-        initial_state_probs=None,
-        initial_state_logits=None,
-        transition_matrix=None,
-        transition_logits=None,
-        emission_rates=None,
-        emission_log_rates=None,
-    ):
-        """ """
-        _StandardHMM.__init__(
-            self,
-            num_states,
-            initial_state_probs=initial_state_probs,
-            initial_state_logits=initial_state_logits,
-            transition_matrix=transition_matrix,
-            transition_logits=transition_logits,
-        )
+def make_poisson_hmm(num_states, 
+                     emission_dim,
+                     initial_state_probs=None,
+                     initial_state_logits=None,
+                     transition_matrix=None,
+                     transition_logits=None,
+                     emission_log_rates=None):
+    """
+    Helper function to create a Gaussian HMM
+    """
+    
+    # Initialize the basics
+    initial_dist, transition_dist = \
+        _make_standard_hmm(num_states,
+                           initial_state_probs=initial_state_probs,
+                           initial_state_logits=initial_state_logits,
+                           transition_matrix=transition_matrix,
+                           transition_logits=transition_logits)
 
-        # Initialize the Gaussian emissions
-        self.emission_dim = emission_dim
+    # Initialize the Gaussian emissions
+    if emission_log_rates is None:
+        emission_log_rates = np.zeros((num_states, emission_dim))
+    
+    emissions_dist = tfp.distributions.Independent(
+        tfp.distributions.Poisson(log_rate=emission_log_rates),
+        reinterpreted_batch_ndims=1,
+    )
+    
+    return HMM(num_states, initial_dist, transition_dist, emissions_dist)
 
-        if emission_log_rates is None:
-            if emission_rates is None:
-                emission_log_rates = np.zeros((num_states, emission_dim))
-            else:
-                emission_log_rates = np.log(emission_rates)
 
-        self._emissions_dist = tfp.distributions.Independent(
-            tfp.distributions.Poisson(log_rate=emission_log_rates),
-            reinterpreted_batch_ndims=1,
-        )
+def initialize_poisson_hmm(rng, num_states, data, **kwargs):
+    """
+    Initializes a Gaussian in a semi-data-intelligent manner.
+    """
+    
+    # Pick random data points as the means
+    num_timesteps, emission_dim = data.shape
+    assignments = jr.choice(rng, num_states, shape=(num_timesteps,))
+    rates = np.row_stack(
+        [data[assignments == k].mean(axis=0) for k in range(num_states)]
+    )
 
-    def emissions_dist(self, state):
-        return self._emissions_dist[state]
+    return make_poisson_hmm(
+        num_states, emission_dim, 
+        emission_log_rates=np.log(rates), 
+        **kwargs)
 
-    @property
-    def emission_rates(self):
-        return self._emissions_dist.mean()
 
-    @classmethod
-    def initialize(cls, rng, num_states, data):
-        # Pick random data points as the means
-        num_timesteps, emission_dim = data.shape
-        assignments = jr.choice(rng, num_states, shape=(num_timesteps,))
-        rates = np.row_stack(
-            [data[assignments == k].mean(axis=0) for k in range(num_states)]
-        )
+# @register_pytree_node_class
+# class PoissonHMM(_StandardHMM):
+#     def __init__(
+#         self,
+#         num_states,
+#         emission_dim,
+#         initial_state_probs=None,
+#         initial_state_logits=None,
+#         transition_matrix=None,
+#         transition_logits=None,
+#         emission_rates=None,
+#         emission_log_rates=None,
+#     ):
+#         """ """
+#         _StandardHMM.__init__(
+#             self,
+#             num_states,
+#             initial_state_probs=initial_state_probs,
+#             initial_state_logits=initial_state_logits,
+#             transition_matrix=transition_matrix,
+#             transition_logits=transition_logits,
+#         )
 
-        return cls(num_states, emission_dim, emission_rates=rates)
+#         # Initialize the Gaussian emissions
+#         self.emission_dim = emission_dim
 
-    # Note: using tree_flatten and tree_unflatten for two purposes:
-    # 1. Make GaussianHMM a PyTree (and hence jittable)
-    # 2. Get the unconstrained parameters of the model
-    def tree_flatten(self):
-        children = (
-            self._initial_state_dist.logits_parameter(),
-            self._dynamics_dist.logits_parameter(),
-            self._emissions_dist.distribution.log_rate_parameter(),
-        )
-        aux_data = self.num_states, self.emission_dim
-        return children, aux_data
+#         if emission_log_rates is None:
+#             if emission_rates is None:
+#                 emission_log_rates = np.zeros((num_states, emission_dim))
+#             else:
+#                 emission_log_rates = np.log(emission_rates)
 
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        num_states, emission_dim = aux_data
-        initial_state_logits, transition_logits, emission_log_rates = children
+#         self._emissions_dist = tfp.distributions.Independent(
+#             tfp.distributions.Poisson(log_rate=emission_log_rates),
+#             reinterpreted_batch_ndims=1,
+#         )
 
-        # Construct a new HMM
-        return cls(
-            num_states,
-            emission_dim,
-            initial_state_logits=initial_state_logits,
-            transition_logits=transition_logits,
-            emission_log_rates=emission_log_rates,
-        )
+#     def emissions_dist(self, state):
+#         return self._emissions_dist[state]
 
-    def tree_unflatten_inplace(self, aux_data, children):
-        num_states, emission_dim = aux_data
-        initial_state_logits, transition_logits, emission_log_rates = children
+#     @property
+#     def emission_rates(self):
+#         return self._emissions_dist.mean()
 
-        # Construct a new HMM
-        self.__init__(
-            num_states,
-            emission_dim,
-            initial_state_logits=initial_state_logits,
-            transition_logits=transition_logits,
-            emission_log_rates=emission_log_rates,
-        )
+#     @classmethod
+#     def initialize(cls, rng, num_states, data):
+#         # Pick random data points as the means
+#         num_timesteps, emission_dim = data.shape
+#         assignments = jr.choice(rng, num_states, shape=(num_timesteps,))
+#         rates = np.row_stack(
+#             [data[assignments == k].mean(axis=0) for k in range(num_states)]
+#         )
+
+#         return cls(num_states, emission_dim, emission_rates=rates)
+
+#     # Note: using tree_flatten and tree_unflatten for two purposes:
+#     # 1. Make GaussianHMM a PyTree (and hence jittable)
+#     # 2. Get the unconstrained parameters of the model
+#     def tree_flatten(self):
+#         children = (
+#             self._initial_state_dist.logits_parameter(),
+#             self._dynamics_dist.logits_parameter(),
+#             self._emissions_dist.distribution.log_rate_parameter(),
+#         )
+#         aux_data = self.num_states, self.emission_dim
+#         return children, aux_data
+
+#     @classmethod
+#     def tree_unflatten(cls, aux_data, children):
+#         num_states, emission_dim = aux_data
+#         initial_state_logits, transition_logits, emission_log_rates = children
+
+#         # Construct a new HMM
+#         return cls(
+#             num_states,
+#             emission_dim,
+#             initial_state_logits=initial_state_logits,
+#             transition_logits=transition_logits,
+#             emission_log_rates=emission_log_rates,
+#         )
+
+#     def tree_unflatten_inplace(self, aux_data, children):
+#         num_states, emission_dim = aux_data
+#         initial_state_logits, transition_logits, emission_log_rates = children
+
+#         # Construct a new HMM
+#         self.__init__(
+#             num_states,
+#             emission_dim,
+#             initial_state_logits=initial_state_logits,
+#             transition_logits=transition_logits,
+#             emission_log_rates=emission_log_rates,
+#         )
