@@ -2,23 +2,13 @@
 Base model class.
 """
 
-import jax.numpy as np
 import jax.random as jr
-import jax.scipy.special as spsp
-from jax import lax, value_and_grad, jit, vmap, grad
-from jax.tree_util import register_pytree_node, register_pytree_node_class
-from tensorflow_probability.python.internal import reparameterization
-from tensorflow_probability.substrates import jax as tfp
-
-from functools import partial, wraps
-from textwrap import dedent
-import matplotlib.pyplot as plt
-from collections import namedtuple
-from tqdm.auto import trange
-from enum import IntEnum
+from jax import lax
 
 
 class SSM(object):
+    """ TODO @schlagercollin
+    """
     def initial_distribution(self):
         raise NotImplementedError
 

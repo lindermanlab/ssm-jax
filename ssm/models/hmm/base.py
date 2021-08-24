@@ -1,24 +1,16 @@
+from jax import vmap
 import jax.numpy as np
-import jax.random as jr
 import jax.scipy.special as spsp
-from jax import lax, value_and_grad, jit, vmap, grad
-from jax.tree_util import register_pytree_node, register_pytree_node_class
-from tensorflow_probability.python.internal import reparameterization
+from jax.tree_util import register_pytree_node_class
 from tensorflow_probability.substrates import jax as tfp
 
-from functools import partial, wraps
-from textwrap import dedent
-import matplotlib.pyplot as plt
-from collections import namedtuple
-from tqdm.auto import trange
-from enum import IntEnum
 
 from ssm.models.base import SSM
 
 
 @register_pytree_node_class
 class HMM(SSM):
-    
+
     def __init__(self, num_states,
                  initial_distribution,
                  transition_distribution,
@@ -43,7 +35,7 @@ class HMM(SSM):
                     self._emissions_distribution)
         aux_data = (self.num_states,)
         return children, aux_data
-        
+
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         num_states, = aux_data
@@ -76,7 +68,7 @@ class HMM(SSM):
         log_initial_state_distn = self._initial_distribution.logits_parameter()
         log_transition_matrix = self._transition_distribution.logits_parameter()
         log_transition_matrix -= spsp.logsumexp(log_transition_matrix, axis=1, keepdims=True)
-        log_likelihoods = vmap(lambda k: 
+        log_likelihoods = vmap(lambda k:
                                vmap(lambda x: self._emissions_distribution[k].log_prob(x))(data)
                                )(np.arange(self.num_states)).T
 
@@ -101,16 +93,16 @@ class HMMConjugatePrior(object):
 
 
 def _make_standard_hmm(num_states, initial_state_probs=None,
-                    initial_state_logits=None,
-                    transition_matrix=None,
-                    transition_logits=None):
+                       initial_state_logits=None,
+                       transition_matrix=None,
+                       transition_logits=None):
     # Set up the initial state distribution and prior
     if initial_state_logits is None:
         if initial_state_probs is None:
             initial_state_logits = np.zeros(num_states)
         else:
             initial_state_logits = np.log(initial_state_probs)
-    
+
     initial_dist = tfp.distributions.Categorical(logits=initial_state_logits)
 
     # Set up the transition matrix and prior
@@ -119,7 +111,7 @@ def _make_standard_hmm(num_states, initial_state_probs=None,
             transition_logits = np.zeros((num_states, num_states))
         else:
             transition_logits = np.log(transition_matrix)
-    
+
     transition_dist = tfp.distributions.Categorical(logits=transition_logits)
-    
+
     return initial_dist, transition_dist

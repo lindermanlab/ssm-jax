@@ -16,7 +16,7 @@ from tqdm.auto import trange
 from .base import HMM, _make_standard_hmm
 
 
-def make_gaussian_hmm(num_states, 
+def make_gaussian_hmm(num_states,
                       emission_dim,
                       initial_state_probs=None,
                       initial_state_logits=None,
@@ -25,7 +25,7 @@ def make_gaussian_hmm(num_states,
                       emission_means=None,
                       emission_covariances=None,
                       emission_scale_trils=None):
-    
+
     # Initialize the basics
     initial_dist, transition_dist = \
         _make_standard_hmm(num_states,
@@ -43,11 +43,11 @@ def make_gaussian_hmm(num_states,
             emission_scale_trils = np.tile(np.eye(emission_dim), (num_states, 1, 1))
         else:
             emission_scale_trils = np.linalg.cholesky(emission_covariances)
-    
+
     emission_dist = \
     tfp.distributions.MultivariateNormalTriL(loc=emission_means,
                                              scale_tril=emission_scale_trils)
-    
+
     return HMM(num_states, initial_dist, transition_dist, emission_dist)
 
 
@@ -61,13 +61,13 @@ def initialize_gaussian_hmm(rng, num_states, data, **kwargs):
     # km = KMeans(num_states)
     # km.fit(data)
     # means = km.cluster_centers_
-    
+
     # Set the covariance to a fraction of the marginal covariance
     cov = np.cov(data, rowvar=False)
     scale_tril = np.tile(np.linalg.cholesky(cov) / num_states, (num_states, 1, 1))
 
     return make_gaussian_hmm(
-        num_states, emission_dim, 
-        emission_means=means, 
+        num_states, emission_dim,
+        emission_means=means,
         emission_scale_trils=scale_tril,
         **kwargs)
