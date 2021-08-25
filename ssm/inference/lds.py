@@ -7,6 +7,7 @@ from jax.scipy.linalg import solve_triangular
 from jax import lax
 
 from ssm.models.lds import GaussianLDS
+from ssm.distributions import EXPFAM_DISTRIBUTIONS
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 
 
@@ -49,8 +50,8 @@ def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
         # log_Z = 0.5 * dim * np.log(2 * np.pi)
         # log_Z += -0.5 * np.linalg.slogdet(Jc)[1]
         # log_Z += 0.5 * np.dot(hc, np.linalg.solve(Jc, hc))
-        # Jp = -np.dot(L_pad[t], np.linalg.solve(Jc, L_pad[t].T))
-        # hp = -np.dot(L_pad[t], np.linalg.solve(Jc, hc))
+        # Jp = -np.dot(J_lower_diag_pad[t], np.linalg.solve(Jc, J_lower_diag_pad[t].T))
+        # hp = -np.dot(J_lower_diag_pad[t], np.linalg.solve(Jc, hc))
 
         new_carry = Jp, hp, lp + log_Z
         return new_carry, None
@@ -65,50 +66,86 @@ def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
 # Expectation-Maximization
 def _e_step(lds, data):
     marginal_likelihood, (E_neg_half_xxT, E_neg_xnxT, Ex) = \
-        value_and_grad(lds_log_normalizer)(*lds.natural_parameters(data))
+        value_and_grad(lds_log_normalizer, argnums=(0, 1, 2))(*lds.natural_parameters(data))
 
     ExxT = -2 * E_neg_half_xxT
     ExnxT = -E_neg_xnxT
     return LDSPosterior(marginal_likelihood, Ex, ExxT, ExnxT)
 
 
-# Solve a linear regression given expected sufficient statistics
-def fit_linear_regression(Ex, Ey, ExxT, EyxT, EyyT, En):
-    big_ExxT = np.row_stack([np.column_stack([ExxT, Ex]),
-                            np.concatenate( [Ex.T, np.array([En])])])
-    big_EyxT = np.column_stack([EyxT, Ey])
-    Cd = np.linalg.solve(big_ExxT, big_EyxT.T).T
-    C, d = Cd[:, :-1], Cd[:, -1]
-    R = (EyyT - Cd @ big_EyxT.T - big_EyxT @ Cd.T + Cd @ big_ExxT @ Cd.T) / En
-    return C, d, R
+def _exact_m_step_initial_distribution(lds, data, posterior, prior=None):
+    expfam = EXPFAM_DISTRIBUTIONS[lds._initial_distribution.name]
+
+    # Extract sufficient statistics
+    Ex = posterior.expected_states[0]
+    ExxT = posterior.expected_states_squared[0]
+
+    stats = (1.0, Ex, ExxT)
+    counts = 1.0
+
+    if prior is not None:
+        prior_stats, prior_counts = \
+            expfam.prior_pseudo_obs_and_counts(prior.initial_prior)
+        stats = sum_tuples(stats, prior_stats)
+        counts += prior_counts
+
+    param_posterior = expfam.posterior_from_stats(stats, counts)
+    return expfam.from_params(param_posterior.mode())
+
+
+def _exact_m_step_dynamics_distribution(lds, data, posterior, prior=None):
+    expfam = EXPFAM_DISTRIBUTIONS[lds._dynamics_distribution.name]
+
+    # Extract expected sufficient statistics from posterior
+    Ex = posterior.expected_states[:-1].sum(axis=0)
+    Ey = posterior.expected_states[1:].sum(axis=0)
+    ExxT = posterior.expected_states_squared[:-1].sum(axis=0)
+    EyxT = posterior.expected_transitions.sum(axis=0)
+    EyyT = posterior.expected_states_squared[1:].sum(axis=0)
+    stats = (Ex, Ey, ExxT, EyxT, EyyT)
+    counts = len(data) - 1
+
+    if prior is not None:
+        prior_stats, prior_counts = \
+            expfam.prior_pseudo_obs_and_counts(prior.dynamics_prior)
+        stats = sum_tuples(stats, prior_stats)
+        counts += prior_counts
+
+    param_posterior = expfam.posterior_from_stats(stats, counts)
+    return expfam.from_params(param_posterior.mode())
+
+
+def _exact_m_step_emissions_distribution(lds, data, posterior, prior=None):
+    # Use exponential family stuff for the emissions
+    expfam = EXPFAM_DISTRIBUTIONS[lds._emissions_distribution.name]
+
+    # Extract expected sufficient statistics from posterior
+    Ex = posterior.expected_states.sum(axis=0)
+    Ey = data.sum(axis=0)
+    ExxT = posterior.expected_states_squared.sum(axis=0)
+    EyxT = data.T.dot(posterior.expected_states)
+    EyyT = data.T.dot(data)
+    stats = (Ex, Ey, ExxT, EyxT, EyyT)
+    counts = len(data)
+
+    if prior is not None:
+        prior_stats, prior_counts = \
+            expfam.prior_pseudo_obs_and_counts(prior.emissions_prior)
+        stats = sum_tuples(stats, prior_stats)
+        counts += prior_counts
+
+    param_posterior = expfam.posterior_from_stats(stats, counts)
+    return expfam.from_params(param_posterior.mode())
+
 
 def _m_step(lds, data, posterior, prior=None):
-    # TODO: update initial distribution
-    m1 = np.zeros(Ex.shape[1])
-    Q1 = np.eye(Ex.shape[1])
-
-    Ex = posterior.expected_states
-    ExxT = posterior.expected_states_squared
-    ExnxT = posterior.expected_transitions
-
-    # TODO: use the matrix-normal-inverse-Wishart prior
-    A, b, Q = fit_linear_regression(Ex[:-1].sum(axis=0),
-                                    Ex[1:].sum(axis=0),
-                                    ExxT[:-1].sum(axis=0),
-                                    ExnxT.sum(axis=0),
-                                    ExxT[1:].sum(axis=0),
-                                    len(data) - 1)
-
-    C, d, R = fit_linear_regression(Ex.sum(axis=0),
-                                    data.sum(axis=0),
-                                    ExxT.sum(axis=0),
-                                    data.T.dot(Ex),
-                                    data.T.dot(data),
-                                    len(data))
-
-    return GaussianLDS(m1, np.linalg.cholesky(Q1),
-                       A, b, np.linalg.cholesky(Q),
-                       C, d, np.linalg.cholesky(R))
+    # initial_distribution = _exact_m_step_initial_distribution(lds, data, posterior, prior=prior)
+    initial_distribution = lds._initial_distribution
+    transition_distribution = _exact_m_step_dynamics_distribution(lds, data, posterior, prior=prior)
+    emissions_distribution = _exact_m_step_emissions_distribution(lds, data, posterior, prior=prior)
+    return GaussianLDS(initial_distribution,
+                       transition_distribution,
+                       emissions_distribution)
 
 
 def em(lds,
@@ -136,11 +173,12 @@ def em(lds,
         return lds, posterior
 
     # Run the EM algorithm to convergence
-    log_probs = [np.nan]
-    pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, log_probs[-1])
+    log_probs = []
+    pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
     if verbosity:
         pbar.set_description("[jit compiling...]")
     init_patience = patience
+
     for itr in pbar:
         lds, posterior = step(lds)
         lp = posterior.marginal_likelihood
@@ -150,7 +188,7 @@ def em(lds,
 
         # Check for convergence
         # TODO: make this cleaner with patience
-        if abs(log_probs[-1] - log_probs[-2]) < tol and itr > 1:
+        if itr > 1 and abs(log_probs[-1] - log_probs[-2]) < tol:
             if patience == 0:
                 if verbosity:
                     pbar.set_description("[converged] LP: {:.3f}".format(lp))
