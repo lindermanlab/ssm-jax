@@ -1,5 +1,4 @@
 from collections import namedtuple
-from functools import partial
 
 import jax.numpy as np
 from jax import jit, value_and_grad
@@ -23,8 +22,6 @@ LDSPosterior = namedtuple(
 
 def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
     seq_len, dim, _ = J_diag.shape
-    # assert L.shape == (seq_len-1, dim, dim)
-    # assert h.shape == (seq_len, dim)
 
     # Pad the L's with one extra set of zeros for the last predict step
     J_lower_diag_pad = np.concatenate((J_lower_diag, np.zeros((1, dim, dim))), axis=0)
@@ -139,6 +136,7 @@ def _exact_m_step_emissions_distribution(lds, data, posterior, prior=None):
 
 
 def _m_step(lds, data, posterior, prior=None):
+    # TODO: M step for initial distribution needs a prior
     # initial_distribution = _exact_m_step_initial_distribution(lds, data, posterior, prior=prior)
     initial_distribution = lds._initial_distribution
     transition_distribution = _exact_m_step_dynamics_distribution(lds, data, posterior, prior=prior)

@@ -1,6 +1,5 @@
 import jax.numpy as np
 from jax.tree_util import register_pytree_node_class
-from tensorflow_probability.substrates import jax as tfp
 
 from ssm.models.base import SSM
 
@@ -25,6 +24,40 @@ class GaussianLDS(SSM):
     @property
     def emissions_dim(self):
         return self._emissions_distribution.weights.shape[-2]
+
+    @property
+    def initial_mean(self):
+        return self._initial_distribution.loc
+
+    @property
+    def initial_covariance(self):
+        return self._initial_distribution.covariance()
+
+    @property
+    def dynamics_matrix(self):
+        return self._dynamics_distribution.weights
+
+    @property
+    def dynamics_bias(self):
+        return self._dynamics_distribution.bias
+
+    @property
+    def dynamics_noise_covariance(self):
+        Q_sqrt = self._dynamics_distribution.scale_tril
+        return Q_sqrt @ Q_sqrt.T
+
+    @property
+    def emissions_matrix(self):
+        return self._emissions_distribution.weights
+
+    @property
+    def emissions_bias(self):
+        return self._emissions_distribution.bias
+
+    @property
+    def emissions_noise_covariance(self):
+        R_sqrt = self._emissions_distribution.scale_tril
+        return R_sqrt @ R_sqrt.T
 
     def tree_flatten(self):
         children = (self._initial_distribution,
@@ -56,19 +89,14 @@ class GaussianLDS(SSM):
         seq_len = data.shape[0]
 
         # Shorthand names for parameters
-        m1 = self._initial_distribution.loc
-        chol_Q1 = self._initial_distribution.scale_tril
-        A = self._dynamics_distribution.weights
-        b = self._dynamics_distribution.bias
-        chol_Q = self._dynamics_distribution.scale_tril
-        C = self._emissions_distribution.weights
-        d = self._emissions_distribution.bias
-        chol_R = self._emissions_distribution.scale_tril
-
-        # TODO: Work with cholesky factors directly using scipy.linalg.cho_solve
-        Q1 = chol_Q1 @ chol_Q1.T
-        Q = chol_Q @ chol_Q.T
-        R = chol_R @ chol_R.T
+        m1 = self.initial_mean
+        Q1 = self.initial_covariance
+        A = self.dynamics_matrix
+        b = self.dynamics_bias
+        Q = self.dynamics_noise_covariance
+        C = self.emissions_matrix
+        d = self.emissions_bias
+        R = self.emissions_noise_covariance
 
         # diagonal blocks of precision matrix
         J_diag = np.dot(C.T, np.linalg.solve(R, C))
