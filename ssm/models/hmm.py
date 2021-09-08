@@ -41,7 +41,7 @@ class HMM(SSM):
         return cls(num_states,
                    initial_distribution=initial_distribution,
                    transition_distribution=transition_distribution,
-                   emission_distribution=emission_distribution)
+                   emissions_distribution=emission_distribution)
 
     def initial_distribution(self):
         return self._initial_distribution
