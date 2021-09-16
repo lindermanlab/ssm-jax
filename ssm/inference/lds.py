@@ -19,7 +19,6 @@ LDSPosterior = namedtuple(
 )
 
 
-
 def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
     seq_len, dim, _ = J_diag.shape
 
@@ -59,14 +58,29 @@ def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
     (_, _, lp), _ = lax.scan(marginalize, (Jp0, hp0, logc), np.arange(seq_len))
     return lp
 
+@jit
+def lds_expected_states(J_diag, J_lower_diag, h, logc):
+    """
+    Retrieve the expected states for an LDS given its natural parameters.
 
-# Expectation-Maximization
-def _e_step(lds, data):
-    marginal_likelihood, (E_neg_half_xxT, E_neg_xnxT, Ex) = \
-        value_and_grad(lds_log_normalizer, argnums=(0, 1, 2))(*lds.natural_parameters(data))
+    Args:
+        *lds.natural_parameters(data) or (J_diag, J_lower_diag, h, logc)
+    
+    Returns:
+        marginal_likelihood, Ex, ExxT, ExnxT    
+    """
+
+    f = value_and_grad(lds_log_normalizer, argnums=(0, 1, 2))
+    marginal_likelihood, (E_neg_half_xxT, E_neg_xnxT, Ex) = f(J_diag, J_lower_diag, h, logc)
 
     ExxT = -2 * E_neg_half_xxT
     ExnxT = -E_neg_xnxT
+    return marginal_likelihood, Ex, ExxT, ExnxT
+
+
+# Expectation-Maximization
+def _e_step(lds, data):
+    marginal_likelihood, Ex, ExxT, ExnxT = lds_expected_states(*lds.natural_parameters(data))
     return LDSPosterior(marginal_likelihood, Ex, ExxT, ExnxT)
 
 
