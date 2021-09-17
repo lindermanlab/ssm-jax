@@ -64,10 +64,13 @@ def lds_expected_states(J_diag, J_lower_diag, h, logc):
     Retrieve the expected states for an LDS given its natural parameters.
 
     Args:
-        *lds.natural_parameters(data) or (J_diag, J_lower_diag, h, logc)
+        J_diag: 
+        J_lower_diag:
+        h:
+        logc:
     
     Returns:
-        marginal_likelihood, Ex, ExxT, ExnxT    
+        A tuple of (marginal_likelihood, Ex, ExxT, ExnxT) 
     """
 
     f = value_and_grad(lds_log_normalizer, argnums=(0, 1, 2))
@@ -169,6 +172,11 @@ def em(lds,
        num_inner=1,
        patience=5,
     ):
+    """
+    EM for a Gaussian LDS.
+
+    TODO: @schlagercollin docs
+    """
 
     @jit
     def step(lds):

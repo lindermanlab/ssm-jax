@@ -1,3 +1,7 @@
+"""
+Module defining model behavior for Hidden Markov Models (HMMs).
+"""
+
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
