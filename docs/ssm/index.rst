@@ -7,3 +7,4 @@ API Documentation
    
    models/index
    inference/index
+   utils

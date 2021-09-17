@@ -70,7 +70,10 @@ def lds_expected_states(J_diag, J_lower_diag, h, logc):
         logc:
     
     Returns:
-        A tuple of (marginal_likelihood, Ex, ExxT, ExnxT) 
+        marginal_likelihood (float): marginal likelihood of the data
+        Ex
+        ExxT
+        ExnxT 
     """
 
     f = value_and_grad(lds_log_normalizer, argnums=(0, 1, 2))
@@ -165,17 +168,29 @@ def _m_step(lds, data, posterior, prior=None):
 
 def em(lds,
        data,
-       num_iters=100,
-       tol=1e-4,
-       verbosity=Verbosity.DEBUG,
-       m_step_type="exact",
-       num_inner=1,
-       patience=5,
+       num_iters: int=100,
+       tol: float=1e-4,
+       verbosity: Verbosity=Verbosity.DEBUG,
+       m_step_type: str="exact",
+       patience: int=5,
     ):
     """
-    EM for a Gaussian LDS.
+    Run EM for a Gaussian LDS given observed data.
 
-    TODO: @schlagercollin docs
+    Args:
+        lds: The Gaussian LDS model to use perform EM over.
+        data: A ``(B, T, D)`` or ``(T, D)`` data array.
+        num_iters: Number of update iterations to perform EM.
+        tol: Tolerance to determine EM convergence.
+        verbosity: Determines whether a progress bar is displayed for the EM fit iterations.
+        m_step_type: Determines how the model parameters are updated.
+            Currently, only ``exact`` is supported for Gaussian LDS.
+        patience: The number of steps to wait before algorithm convergence is declared.
+
+    Returns:
+        log_probs (array): log probabilities per iteration
+        lds (LDS): the fitted LDS model
+        posterior (LDSPosterior): the resulting posterior distribution object
     """
 
     @jit

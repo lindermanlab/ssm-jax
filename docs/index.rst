@@ -9,8 +9,8 @@ Welcome to ssm-jax's documentation!
    :maxdepth: 2
    :caption: Contents:
    
+   quickstart
    ssm/index
-
 
 
 Indices and tables
