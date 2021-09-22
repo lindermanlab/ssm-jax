@@ -6,7 +6,12 @@ from textwrap import dedent
 
 import jax.numpy as np
 from jax import jit, lax, value_and_grad
+
+from functools import partial
+
 import jax.scipy.special as spsp
+import jax.random as npr
+import jax.experimental.optimizers as optimizers
 
 from ssm.models.hmm import HMM
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
@@ -133,13 +138,10 @@ hmm_expected_states.__doc__ = dedent(
     For an HMM, the sufficient statistics are simply indicator functions
 
     .. math::
-        :nowrap:
 
-        \\begin{align}
             t(z)_1 &= [\mathbb{I}[z_1 = 1], \ldots, \mathbb{I}[z_1=K]] \\\\
             t(z)_2 &= [\mathbb{I}[z_t = 1], \ldots, \mathbb{I}[z_t=K]] \\text{ for } t = 1, ..., T \\\\
             t(z)_3 &= [\mathbb{I}[z_t = k_1, z_{t+1} = k_2]] \\text{ for } t = 1, ..., T-1; k_1 = 1,...,K; k_2 = 1, ..., K
-        \\end{align}
         
     The expected sufficient statistics are the probabilities of these
     events under the posterior distribution determined by the natural parameters,
@@ -170,7 +172,30 @@ def hmm_expected_log_joint(log_initial_state_probs,
                            log_transition_matrix,
                            log_likelihoods,
                            posterior):
+    """The expected log joint probability of an HMM given a posterior over the latent states.
+    
+    .. math::
+        \mathbb{E}_{q(z)} \left[\log p(x, z, \\theta)\\right]
+        
+    where,
+    
+    .. math:: 
+        q(z) = p(z|x, \\theta).
+        
+    Recall that this is the component of the ELBO that is dependent upon the parameters.
+    
+    .. math::
+        \mathcal{L}(q, \\theta) = \mathbb{E}_{q(z)} \left[\log p(x, z, \\theta) - \log q(z) \\right]
 
+    Args:
+        log_initial_state_probs ([type]): [description]
+        log_transition_matrix ([type]): [description]
+        log_likelihoods ([type]): [description]
+        posterior ([type]): [description]
+
+    Returns:
+        [type]: [description]
+    """
     elp = np.sum(posterior.expected_states[0] * log_initial_state_probs)
     elp += np.sum(posterior.expected_transitions * log_transition_matrix)
     elp += np.sum(posterior.expected_states * log_likelihoods)
@@ -296,3 +321,74 @@ def em(hmm,
             patience = init_patience
 
     return np.array(log_probs), hmm, posterior
+
+def stochastic_em(hmm,
+                  datas,
+                  num_epochs=100,
+                  tol=1e-4,
+                  verbosity=Verbosity.DEBUG,
+                  key=npr.PRNGKey(0),
+                  learning_rate=1e-3,
+                ):
+    
+    assert len(datas[0].shape) == 2, "stochastic em should be used on data with a leading batch dimension"
+    M = len(datas)
+    T = sum([data.shape[0] for data in datas])
+    
+    perm = np.array([npr.permutation(k, M) for k in npr.split(key, num_epochs)])
+    
+    # import numpy as onp
+    # perm = [onp.random.permutation(M) for _ in range(num_epochs)]
+    
+    def _get_minibatch(itr):
+        epoch = itr // M
+        m = itr % M
+        i = perm[epoch][m]
+        return datas[i]
+    
+    def _objective(new_hmm, curr_hmm, itr):
+        
+        # Grab a minibatch
+        data = _get_minibatch(itr)
+        Ti = data.shape[0]
+        
+        # E step (compute posterior using previous parameters)
+        posterior = _e_step(curr_hmm, data)
+        
+        # Compute the expected log joint (component of ELBO dependent on parameters)
+        log_initial_state_distn, log_transition_matrix, log_likelihoods = new_hmm.natural_parameters(data)
+        
+        obj = 0  # TODO prior
+        obj += np.sum(posterior.expected_states[0] * log_initial_state_distn) * M
+        obj += np.sum(posterior.expected_transitions * log_transition_matrix) * (T - M) / (Ti - 1)
+        obj += np.sum(posterior.expected_states * log_likelihoods) * T / Ti
+        return -obj / T
+    
+    opt_init, opt_update, get_params = optimizers.adam(learning_rate)
+    opt_state = opt_init(hmm)
+    
+    # @partial(jit, static_argnums=0)
+    @jit
+    def step(itr, opt_state, prev_hmm):
+        value, grads = value_and_grad(_objective)(get_params(opt_state), prev_hmm, itr)
+        prev_hmm = get_params(opt_state)
+        opt_state = opt_update(itr, grads, opt_state)
+        return value, opt_state, prev_hmm
+    
+    # Set up the progress bar
+    pbar = ssm_pbar(num_epochs * M, verbosity, "Epoch {} Itr {} LP: {:.1f}", 0, 0, 0)
+
+    # Run the optimizer
+    prev_hmm = hmm
+    lls = []
+    for itr in pbar:
+        value, opt_state, prev_hmm = step(itr, opt_state, prev_hmm)
+        epoch = itr // M
+        m = itr % M
+        lls.append(-value * T)
+        if verbosity:
+            if itr % 10 == 0:  # update description every 10 iter to prevent warnings
+                pbar.set_description(f"Epoch {epoch} Itr {m} LP: {lls[-1]:.1f}")
+    fitted_hmm = get_params(opt_state)
+    return lls, fitted_hmm
+    

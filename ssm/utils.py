@@ -78,7 +78,7 @@ def compute_state_overlap(z1: Sequence[int], z2: Sequence[int], K1: Optional[int
     Returns:
         overlap matrix: Matrix of cumulative overlap events. 
     """
-    assert z1.dtype == "int" and z2.dtype == "int"
+    assert z1.dtype == "int32" and z2.dtype == "int32"
     assert z1.shape == z2.shape
     assert z1.min() >= 0 and z2.min() >= 0
 
