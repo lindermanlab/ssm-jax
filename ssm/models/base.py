@@ -19,7 +19,8 @@ class SSM(object):
         The distribution over the initial state of the SSM.
 
         Returns:
-            A distribution over initial states in the SSM. 
+            initial_distribution (tfp.distribution.Distribution):
+                A distribution over initial states in the SSM.
         """
         raise NotImplementedError
 
@@ -31,7 +32,8 @@ class SSM(object):
             state: The current state on which to condition the dynamics.
 
         Returns:
-            A distribution over the subsequent states in the SSM.
+            dynamics_distribution (tfp.distribution.Distribution):
+                The distribution over states conditioned on the current state.
         """
         raise NotImplementedError
 
@@ -43,23 +45,22 @@ class SSM(object):
             state: The current state on which to condition the emissions.
 
         Returns:
-            An emissions distribution conditioned on the provided state.
+            emissions_distribution (tfp.distribution.Distribution):
+                The emissions distribution conditioned on the provided state.
         """
         raise NotImplementedError
 
     def log_probability(self, states, data):
         """
-        Computes the log joint probability of a set of states and data.
-
-        The log probability of a state-space model is effectively a joint
-        distribution over the (latent) states and observations.
+        Computes the log joint probability of a set of states and data (observations).
 
         Args:
             states: An array of latent states.
             data: An array of the observed data.
 
         Returns:
-            The joint log probability of the provided states and data.
+            lp:
+                The joint log probability of the provided states and data.
         """
         lp = 0
         lp += self.initial_distribution().log_prob(states[0])
@@ -83,9 +84,13 @@ class SSM(object):
             key (PRNGKey): A JAX pseudorandom number generator key.
             num_steps (int): Number of steps for which to sample.
             covariates: Optional covariates that may be needed for sampling.
-            initial_state: Optional state to explicitly condition on (default is None,
-                which means the initial state is sampled from the initial state 
-                distribution.
+                Default is None.
+            initial_state: Optional state on which to condition the sampled trajectory.
+                Default is None which samples the intial state from the initial distribution.
+                
+        Returns:
+            states: A ``(timesteps,)`` array of the state value across time.
+            emissions: A ``(timesteps, obs_dim)`` array of the observations across time. 
 
         """
         if initial_state is None:

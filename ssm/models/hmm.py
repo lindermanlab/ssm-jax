@@ -12,15 +12,23 @@ from tensorflow_probability.substrates import jax as tfp
 
 from ssm.models.base import SSM
 
+from typing import Any
+Array = Any
 
 @register_pytree_node_class
 class HMM(SSM):
+    
+    def __init__(self, num_states: int,
+                 initial_distribution: tfp.distributions.Categorical,
+                 transition_distribution: tfp.distributions.Categorical,
+                 emissions_distribution: tfp.distributions.Distribution):
+        """Class for Hidden Markov Model (HMM).
 
-    def __init__(self, num_states,
-                 initial_distribution,
-                 transition_distribution,
-                 emissions_distribution):
-        """ TODO
+        Args:
+            num_states (int): Number of discrete latent states.
+            initial_distribution (tfp.distributions.Categorical): The distribution over the initial state.
+            transition_distribution (tfp.distributions.Categorical): The transition distribution.
+            emissions_distribution (tfp.distributions.Distribution): The emissions distribution.
         """
         self.num_states = num_states
 
@@ -64,7 +72,22 @@ class HMM(SSM):
     def transition_matrix(self):
         return self._transition_distribution.probs_parameter()
 
-    def natural_parameters(self, data):
+    def natural_parameters(self, data: Array):
+        """Obtain the natural parameters for the HMM given observation data.
+        
+        The natural parameters for an HMM are:
+            - log probability of the initial state distribution
+            - log probablity of the transitions (log transition matrix)
+            - log likelihoods of the emissions data
+
+        Args:
+            data (Array): Observed data array: ``(time, obs_dim)``.
+
+        Returns:
+            log_initial_state_distn (Array): log probability of the initial state distribution
+            log_transition_matrix (Array): log of transition matrix
+            log_likelihoods (Array): log probability of emissions
+        """
         log_initial_state_distn = self._initial_distribution.logits_parameter()
         log_transition_matrix = self._transition_distribution.logits_parameter()
         log_transition_matrix -= spsp.logsumexp(log_transition_matrix, axis=1, keepdims=True)
@@ -121,17 +144,37 @@ def _make_standard_hmm(num_states, initial_state_probs=None,
 
 
 # Gaussian HMM
-def make_gaussian_hmm(num_states,
-                      emission_dim,
-                      initial_state_probs=None,
-                      initial_state_logits=None,
-                      transition_matrix=None,
-                      transition_logits=None,
-                      emission_means=None,
-                      emission_covariances=None,
-                      emission_scale_trils=None):
-    """
-    Helper function to create a Gaussian HMM
+def make_gaussian_hmm(num_states: int,
+                      emission_dim: int,
+                      initial_state_probs: Array=None,
+                      initial_state_logits: Array=None,
+                      transition_matrix: Array=None,
+                      transition_logits: Array=None,
+                      emission_means: Array=None,
+                      emission_covariances: Array=None,
+                      emission_scale_trils: Array=None):
+    """Helper function to create a Gaussian HMM given distribution parameters.
+
+    Args:
+        num_states (int): The number of discrete states in the HMM.
+        emission_dim (int): The dimension of the output emissions.
+        initial_state_probs (Array, optional): A ``(num_states,)`` array specifying the probabilities 
+            of the initial state. Defaults to None.
+        initial_state_logits (Array, optional): A ``(num_states,)`` array specifying the logits
+            of the initial state. Defaults to None.
+        transition_matrix (Array, optional): A ``(num_states, num_states)`` array specifying the transition
+            probabilities. Defaults to None.
+        transition_logits (Array, optional): A ``(num_states, num_states)`` array specifying the transition
+            logits. Defaults to None.
+        emission_means (Array, optional): A ``(num_states, obs_dim)`` array specifying the means of the 
+            emissions distributions. Defaults to None.
+        emission_covariances (Array, optional): A ``(num_states, obs_dim, obs_dim)`` array specifying the
+            covariances of the emissions distributions. Defaults to None.
+        emission_scale_trils (Array, optional): Lower-triagonal tensor specifying the scale of the emissions
+            distribution. Defaults to None. 
+
+    Returns:
+        gaussian_hmm [HMM]: An intialized Gaussian HMM object. 
     """
     # Initialize the basics
     initial_dist, transition_dist = \
@@ -159,8 +202,19 @@ def make_gaussian_hmm(num_states,
 
 
 def initialize_gaussian_hmm(rng, num_states, data, **kwargs):
-    """
-    Initializes a Gaussian in a semi-data-intelligent manner.
+    """Helper function to initialize a Gaussian HMM from the data.
+    
+    Picks random data points as the means, and sets the covariance to a fraction of
+    the marginal covariance.
+
+    Args:
+        rng (jax.random.PRNGKey): JAX PRNG Key.
+        num_states (int): The number of discrete states in the HMM.
+        data (Array): The observed time series data array ``(timesteps, obs_dim)``.
+        **kwargs: Additional keyword arguments for `make_gaussian_hmm` function.
+
+    Returns:
+        gaussian_hmm [HMM]: The initialized Gaussian HMM object.
     """
 
     # Pick random data points as the means
@@ -183,17 +237,32 @@ def initialize_gaussian_hmm(rng, num_states, data, **kwargs):
         emission_scale_trils=scale_tril,
         **kwargs)
 
-
 # Poisson HMM
-def make_poisson_hmm(num_states,
-                     emission_dim,
-                     initial_state_probs=None,
-                     initial_state_logits=None,
-                     transition_matrix=None,
-                     transition_logits=None,
-                     emission_log_rates=None):
-    """
-    Helper function to create a Gaussian HMM
+def make_poisson_hmm(num_states: int,
+                     emission_dim: int,
+                     initial_state_probs: Array=None,
+                     initial_state_logits: Array=None,
+                     transition_matrix: Array=None,
+                     transition_logits: Array=None,
+                     emission_log_rates: Array=None): 
+    """Helper function to create an HMM with Poisson observations.
+
+    Args:
+        num_states (int): Number of discrete states for the HMM.
+        emission_dim (int): Dimension of emissions.
+        initial_state_probs (Array, optional): Specify the initial state probabilities ``(num_states,)``.
+            Defaults to None.
+        initial_state_logits (Array, optional): Specify the initial state logits ``(num_states,)``.
+            Defaults to None.
+        transition_matrix (Array, optional): Specify the transition matrix. ``(num_states, num_states)``.
+            Defaults to None.
+        transition_logits (Array, optional): Specify the transition logits. ``(num_states, num_states)``.
+            Defaults to None.
+        emission_log_rates (Array, optional): Specify the log rates of emissions ``(num_states, emission_dim)``.
+            Defaults to None.
+
+    Returns:
+        poisson_hmm (HMM): An initialized Poisson HMM.
     """
 
     # Initialize the basics
@@ -216,9 +285,17 @@ def make_poisson_hmm(num_states,
     return HMM(num_states, initial_dist, transition_dist, emissions_dist)
 
 
-def initialize_poisson_hmm(rng, num_states, data, **kwargs):
-    """
-    Initializes a Gaussian in a semi-data-intelligent manner.
+def initialize_poisson_hmm(rng: jr.PRNGKey, num_states: int, data: Array, **kwargs):
+    """Initialize a Poisson HMM from the data.
+
+    Args:
+        rng (jax.random.PRNGKey): JAX PRNG Key.
+        num_states (int): The number of discrete states for the HMM.
+        data (Array): The observed time series data array ``(timesteps, obs_dim)``.
+        **kwargs: Additional keyword arguments for ``make_poisson_hmm`` function.
+
+    Returns:
+        poisson_hmm (HMM): The initialized Poisson HMM object.
     """
 
     # Pick random data points as the means

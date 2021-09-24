@@ -194,7 +194,7 @@ def hmm_expected_log_joint(log_initial_state_probs,
         posterior ([type]): [description]
 
     Returns:
-        [type]: [description]
+        elp ([type]): expected log probability
     """
     elp = np.sum(posterior.expected_states[0] * log_initial_state_probs)
     elp += np.sum(posterior.expected_transitions * log_transition_matrix)
@@ -325,13 +325,30 @@ def em(hmm,
 def stochastic_em(hmm,
                   datas,
                   num_epochs=100,
-                  tol=1e-4,
                   verbosity=Verbosity.DEBUG,
                   key=npr.PRNGKey(0),
                   learning_rate=1e-3,
                 ):
+    """Stochastic EM implemented using mini-batch SGD on expected log-joint. 
     
-    assert len(datas[0].shape) == 2, "stochastic em should be used on data with a leading batch dimension"
+    Note that this is implementation does not use the M-steps and convex-combinations of the
+    expected sufficient statistics.
+
+    Args:
+        hmm ([type]): The HMM model to fit.
+        datas ([type]): Observed data of the form ``(B, T, D)`` where ``B`` is a batch dimension
+            indicating different trials of length T. Currently, all trials must be the same length.
+        num_epochs (int, optional): Number of epochs to run stochastic EM. Defaults to 100.
+        verbosity ([type], optional): Verbosity of output. Defaults to Verbosity.DEBUG.
+        key ([type], optional): Random seed. Defaults to npr.PRNGKey(0).
+        learning_rate ([type], optional): [description]. Defaults to 1e-3.
+
+    Returns:
+        lls ([type]): The expected log joint objective per iteration
+        fitted_hmm ([HMM]): Output HMM model with fitted parameters.
+    """
+    
+    assert len(datas.shape) == 3, "stochastic em should be used on data with a leading batch dimension"
     M = len(datas)
     T = sum([data.shape[0] for data in datas])
     
