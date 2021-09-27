@@ -1,7 +1,7 @@
 from collections import namedtuple
 
 import jax.numpy as np
-from jax import jit, value_and_grad
+from jax import jit, value_and_grad, hessian, vmap, grad
 from jax.scipy.linalg import solve_triangular
 from jax import lax
 
@@ -9,6 +9,7 @@ from ssm.models.lds import GaussianLDS
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 
+import jax.experimental.optimizers as optimizers
 
 # TODO @slinderman @schlagercollin: Consider data classes
 LDSPosterior = namedtuple(
@@ -166,28 +167,31 @@ def _fit_laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=1500):
 
     return get_params(opt_state)
 
+def _fit_laplace_negative_hessian(lds, states, data):
+    """[summary]
 
-def _laplace_e_step(lds, data):
+    Args:
+        lds ([type]): [description]
+        states ([type]): [description]
+        data ([type]): [description]
+        
+    Returns:
+        J_diag
+        J_lower_diag
     """
-    Laplace approximation to p(x | y, \theta) for non-Gaussian emission models.
-    """
-    # find mode x*
-    states = _fit_laplace_find_mode(lds, x0, data)
-
-    # compute negative hessian at the mode, J(x*)
-
+    
     # initial distribution
-    J_init = hessian(lds.initial_distribution().log_prob)(states[0])
+    J_init = -1 * hessian(lds.initial_distribution().log_prob)(states[0])
 
     # dynamics
     f = lambda xt, xtp1: lds.dynamics_distribution(xt).log_prob(xtp1)
-    J_11 = vmap(hessian(f, argnums=0))(states[:-1], states[1:])
-    J_22 = vmap(hessian(f, argnums=1))(states[:-1], states[1:])
-    # J_21 = # (dxtp1 dxt f)(states[:-1], states[1:])
+    J_11 = -1 * vmap(hessian(f, argnums=0))(states[:-1], states[1:])
+    J_22 = -1 * vmap(hessian(f, argnums=1))(states[:-1], states[1:])
+    J_21 = -1 * vmap(grad(grad(f, argnums=1), argnums=0)(states[:-1], states[1:])) # (dxtp1 dxt f)(states[:-1], states[1:])
 
     # observations
     f = lambda x, y: lds.emissions_distribution(x).log_prob(y)
-    J_obs = vmap(hessian(f, argnums=0))(states, data)
+    J_obs = -1 * vmap(hessian(f, argnums=0))(states, data)
 
     # combine into diagonal and lower diagonal blocks
     J_diag = J_obs
@@ -196,8 +200,40 @@ def _laplace_e_step(lds, data):
     J_diag = J_diag.at[1:].add(J_22)
 
     J_lower_diag = J_21
+    
+    # We have mu=states, J. Now we need h = J x
+    # We know that J is block triagonal so we break up computation
+    h_ini = J_init @ states[0]
+
+    h_dyn_1 = (J_11 @ states[:-1][:, :, None])[:, :, 0]
+    h_dyn_1 += (np.swapaxes(J_21, -1, -2) @ states[1:][:, :, None])[:, :, 0]
+
+    h_dyn_2 = (J_22 @ states[1:][:, :, None])[:, :, 0]
+    h_dyn_2 += (J_21 @ states[:-1][:, :, None])[:, :, 0]
+
+    h_obs = (J_obs @ states[:, :, None])[:, :, 0]
+    return h_ini, h_dyn_1, h_dyn_2, h_obs
+    
+    
+    return J_diag, J_lower_diag
+    
+
+
+def _laplace_e_step(lds, data):
+    """
+    Laplace approximation to p(x | y, \theta) for non-Gaussian emission models.
+    
+    q <-- N(x*, -1 * J)
+    J := H_{xx} \log p(y, x; \theta) |_{x=x*}
+    """
+    # find mode x*
+    states = _fit_laplace_find_mode(lds, x0, data)
+
+    # compute negative hessian at the mode, J(x*)
+    J_diag, J_lower_diag = _fit_laplace_negative_hessian(lds, states, data)
 
     # Now convert x, J -> h = J x
+    
 
     # Then run message passing with J and h to get E[x], E[xxT], ...
 

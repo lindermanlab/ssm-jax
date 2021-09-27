@@ -104,7 +104,7 @@ def _laplace_neg_hessian_log_observations(lds: GaussianLDS, data, x):
 def _laplace_neg_hessian_params(lds, data, x):
     """Evaluate Hessian of log joint at the mode (x).
     """
-    # TODO: can we just get this using a natural_parameters() method?
+    # TODO: can we just get this using a lds.natural_parameters() method?
     
     J_ini, J_dyn_11, J_dyn_22 = _laplace_neg_hessian_log_dynamics(lds, data, x)
     J_obs = _laplace_neg_hessian_log_observations(lds, data, x)
@@ -131,10 +131,10 @@ def _fit_laplace_continuous_state_update(lds, variational_posterior, data):
     
     # Find mode of expected log joint
     x0 = variational_posterior.mean_continuous_states
-    x = _fit_laplace_find_mode(lds, x0, data)
+    x_star = _fit_laplace_find_mode(lds, x0, data)
     
     # Evaluate Hessian at the mode (to get J, h for Laplace approx)
-    J, h = _laplace_neg_hessian_params(lds, data, x)
+    J, h = _laplace_neg_hessian_params(lds, data, x_star)
     
     # Update the variational posterior parameters
     variational_posterior.update_parameters(J, h)    
