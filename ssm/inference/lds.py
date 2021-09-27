@@ -7,131 +7,24 @@ from jax import lax
 
 from ssm.models.lds import GaussianLDS
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
+from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 
 
-# TODO @slinderman @schlagercollin: Consider data classes
-LDSPosterior = namedtuple(
-    "LDSPosterior", ["marginal_likelihood",
-                     "expected_states",
-                     "expected_states_squared",
-                     "expected_transitions"]
-)
+
+def elbo(rng, model, data, posterior, num_samples=1):
+    states = posterior.sample(rng, num_samples=num_samples)
+    return np.mean(model.log_prob(states, data) - posterior.log_prob(states))
 
 
-def lds_filter(J_diag, J_lower_diag, h, logc):
-    seq_len, dim, _ = J_diag.shape
-
-    # Pad the L's with one extra set of zeros for the last predict step
-    J_lower_diag_pad = np.concatenate((J_lower_diag, np.zeros((1, dim, dim))), axis=0)
-
-    def marginalize(carry, t):
-        Jp, hp, lp = carry
-
-        # Condition
-        Jc = J_diag[t] + Jp
-        hc = h[t] + hp
-
-        # Predict -- Cholesky approach seems unstable!
-        sqrt_Jc = np.linalg.cholesky(Jc)
-        trm1 = solve_triangular(sqrt_Jc, hc, lower=True)
-        trm2 = solve_triangular(sqrt_Jc, J_lower_diag_pad[t].T, lower=True)
-        log_Z = 0.5 * dim * np.log(2 * np.pi)
-        log_Z += -np.sum(np.log(np.diag(sqrt_Jc)))
-        log_Z += 0.5 * np.dot(trm1.T, trm1)
-        Jp = -np.dot(trm2.T, trm2)
-        hp = -np.dot(trm2.T, trm1)
-
-        # Alternative predict step:
-        # log_Z = 0.5 * dim * np.log(2 * np.pi)
-        # log_Z += -0.5 * np.linalg.slogdet(Jc)[1]
-        # log_Z += 0.5 * np.dot(hc, np.linalg.solve(Jc, hc))
-        # Jp = -np.dot(J_lower_diag_pad[t], np.linalg.solve(Jc, J_lower_diag_pad[t].T))
-        # hp = -np.dot(J_lower_diag_pad[t], np.linalg.solve(Jc, hc))
-
-        new_carry = Jp, hp, lp + log_Z
-        return new_carry, (Jc, hc)
-
-    # Initialize
-    Jp0 = np.zeros((dim, dim))
-    hp0 = np.zeros((dim,))
-    (_, _, lp), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, logc), np.arange(seq_len))
-    return lp, filtered_Js, filtered_hs
-
-
-def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
-    lp, _, _ = lds_filter(J_diag, J_lower_diag, h, logc)
-    return lp
-
-
-# TODO @slinderman: finish porting this code!
-def lds_sample(J_ini, h_ini, log_Z_ini,
-               J_dyn_11, J_dyn_21, J_dyn_22, h_dyn_1, h_dyn_2, log_Z_dyn,
-               J_obs, h_obs, log_Z_obs):
-    """
-    Information form Kalman sampling for time-varying linear dynamical system with inputs.
-    """
-    T, D = h_obs.shape
-
-    # Run the forward filter
-    log_Z, filtered_Js, filtered_hs = \
-        _kalman_info_filter(J_ini, h_ini, log_Z_ini,
-                           J_dyn_11, J_dyn_21, J_dyn_22, h_dyn_1, h_dyn_2, log_Z_dyn,
-                           J_obs, h_obs, log_Z_obs)
-
-    # Allocate output arrays
-    samples = np.zeros((T, D))
-    noise = npr.randn(T, D)
-
-    # Initialize with samples of the last state
-    samples[-1] = _sample_info_gaussian(filtered_Js[-1], filtered_hs[-1], noise[-1])
-
-    # Run the Kalman information filter
-    for t in range(T-2, -1, -1):
-        # Extract blocks of the dynamics potentials
-        J_11 = J_dyn_11[t] if J_dyn_11.shape[0] == T-1 else J_dyn_11[0]
-        J_21 = J_dyn_21[t] if J_dyn_21.shape[0] == T-1 else J_dyn_21[0]
-        h_1 = h_dyn_1[t] if h_dyn_1.shape[0] == T-1 else h_dyn_1[0]
-
-        # Condition on the next observation
-        J_post = filtered_Js[t] + J_11
-        h_post = filtered_hs[t] + h_1 - np.dot(J_21.T, samples[t+1])
-        samples[t] = _sample_info_gaussian(J_post, h_post, noise[t])
-
-    return samples
+# def elbo2(rng, model, data, posterior, num_samples=1):
+#     states = posterior.sample(rng, num_samples=num_samples)
+#     return np.mean(model.log_prob(states, data)) + posterior.entropy()
 
 
 # Expectation-Maximization
-@jit
-def lds_expected_states(J_diag, J_lower_diag, h, logc):
-    """
-    Retrieve the expected states for an LDS given its natural parameters.
-
-    Args:
-        J_diag:
-        J_lower_diag:
-        h:
-        logc:
-
-    Returns:
-        marginal_likelihood (float): marginal likelihood of the data
-        Ex
-        ExxT
-        ExnxT
-    """
-
-    f = value_and_grad(lds_log_normalizer, argnums=(0, 1, 2))
-    marginal_likelihood, (E_neg_half_xxT, E_neg_xnxT, Ex) = f(J_diag, J_lower_diag, h, logc)
-
-    ExxT = -2 * E_neg_half_xxT
-    ExnxT = -E_neg_xnxT
-    return marginal_likelihood, Ex, ExxT, ExnxT
-
-
-# Expectation-Maximization
-def _e_step(lds, data):
-    marginal_likelihood, Ex, ExxT, ExnxT = lds_expected_states(*lds.natural_parameters(data))
-    return LDSPosterior(marginal_likelihood, Ex, ExxT, ExnxT)
+def _exact_e_step(gaussian_lds, data):
+    return MultivariateNormalBlockTridiag(*gaussian_lds.natural_parameters)
 
 
 def _fit_laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=1500):
@@ -197,11 +90,14 @@ def _laplace_e_step(lds, data):
 
     J_lower_diag = J_21
 
-    # Now convert x, J -> h = J x
+    return MultivariateNormalBlockTridiag(J_diag,
+                                          J_lower_diag,
+                                          mean=states)
+    # # Now convert x, J -> h = J x
 
-    # Then run message passing with J and h to get E[x], E[xxT], ...
-
-    # return LDSPosterior constructed from expectatiosn above
+    # # Then run message passing with J and h to get E[x], E[xxT], ...
+    # _, Ex, ExxT, ExnxT = lds_expected_states(J_diag, J_lower_diag, h, 0)
+    # return LDSPosterior(np.nan, Ex, ExxT, ExnxT)
 
 
 def _exact_m_step_initial_distribution(lds, data, posterior, prior=None):
@@ -267,6 +163,20 @@ def _exact_m_step_emissions_distribution(lds, data, posterior, prior=None):
 
     param_posterior = expfam.posterior_from_stats(stats, counts)
     return expfam.from_params(param_posterior.mode())
+
+
+def _approx_m_step_emissions_distribution(lds, data, posterior, prior=None):
+    # TODO: we need to make posterior an object with a sample method
+    #
+    x_sample = posterior.sample(rng)
+
+    def _objective(_emissions_distribution):
+        return _emissions_distribution(x_sample).log_prob(data)
+
+    # do gradient descent on _emissions_distribution
+
+    # TODO: we need a GLM distribution object like the GaussianLinearRegression object
+
 
 
 def _m_step(lds, data, posterior, prior=None):
