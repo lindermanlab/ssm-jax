@@ -99,7 +99,7 @@ class GaussianLDS(SSM):
         R = self.emissions_noise_covariance
 
         # diagonal blocks of precision matrix
-        J_diag = np.dot(C.T, np.linalg.solve(R, C))
+        J_diag = np.dot(C.T, np.linalg.solve(R, C))  # from observations
         J_diag = np.tile(J_diag[None, :, :], (seq_len, 1, 1))
         J_diag = J_diag.at[0].add(np.linalg.inv(Q1))
         J_diag = J_diag.at[:-1].add(np.dot(A.T, np.linalg.solve(Q, A)))
@@ -109,7 +109,7 @@ class GaussianLDS(SSM):
         J_lower_diag = -np.linalg.solve(Q, A)
         J_lower_diag = np.tile(J_lower_diag[None, :, :], (seq_len - 1, 1, 1))
 
-        h = np.dot(data - d, np.linalg.solve(R, C))
+        h = np.dot(data - d, np.linalg.solve(R, C))  # from observations
         h = h.at[0].add(np.linalg.solve(Q1, m1))
         h = h.at[:-1].add(-np.dot(A.T, np.linalg.solve(Q, b)))
         h = h.at[1:].add(np.linalg.solve(Q, b))

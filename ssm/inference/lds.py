@@ -19,8 +19,7 @@ LDSPosterior = namedtuple(
 )
 
 
-
-def lds_filter(J_diag, J_lower_diag, h, logc):
+def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
     seq_len, dim, _ = J_diag.shape
 
     # Pad the L's with one extra set of zeros for the last predict step
@@ -105,9 +104,35 @@ def lds_sample(J_ini, h_ini, log_Z_ini,
 def _e_step(lds, data):
     marginal_likelihood, (E_neg_half_xxT, E_neg_xnxT, Ex) = \
         value_and_grad(lds_log_normalizer, argnums=(0, 1, 2))(*lds.natural_parameters(data))
+@jit
+def lds_expected_states(J_diag, J_lower_diag, h, logc):
+    """
+    Retrieve the expected states for an LDS given its natural parameters.
+
+    Args:
+        J_diag:
+        J_lower_diag:
+        h:
+        logc:
+
+    Returns:
+        marginal_likelihood (float): marginal likelihood of the data
+        Ex
+        ExxT
+        ExnxT
+    """
+
+    f = value_and_grad(lds_log_normalizer, argnums=(0, 1, 2))
+    marginal_likelihood, (E_neg_half_xxT, E_neg_xnxT, Ex) = f(J_diag, J_lower_diag, h, logc)
 
     ExxT = -2 * E_neg_half_xxT
     ExnxT = -E_neg_xnxT
+    return marginal_likelihood, Ex, ExxT, ExnxT
+
+
+# Expectation-Maximization
+def _e_step(lds, data):
+    marginal_likelihood, Ex, ExxT, ExnxT = lds_expected_states(*lds.natural_parameters(data))
     return LDSPosterior(marginal_likelihood, Ex, ExxT, ExnxT)
 
 
@@ -189,13 +214,30 @@ def _m_step(lds, data, posterior, prior=None):
 
 def em(lds,
        data,
-       num_iters=100,
-       tol=1e-4,
-       verbosity=Verbosity.DEBUG,
-       m_step_type="exact",
-       num_inner=1,
-       patience=5,
+       num_iters: int=100,
+       tol: float=1e-4,
+       verbosity: Verbosity=Verbosity.DEBUG,
+       m_step_type: str="exact",
+       patience: int=5,
     ):
+    """
+    Run EM for a Gaussian LDS given observed data.
+
+    Args:
+        lds: The Gaussian LDS model to use perform EM over.
+        data: A ``(B, T, D)`` or ``(T, D)`` data array.
+        num_iters: Number of update iterations to perform EM.
+        tol: Tolerance to determine EM convergence.
+        verbosity: Determines whether a progress bar is displayed for the EM fit iterations.
+        m_step_type: Determines how the model parameters are updated.
+            Currently, only ``exact`` is supported for Gaussian LDS.
+        patience: The number of steps to wait before algorithm convergence is declared.
+
+    Returns:
+        log_probs (array): log probabilities per iteration
+        lds (LDS): the fitted LDS model
+        posterior (LDSPosterior): the resulting posterior distribution object
+    """
 
     @jit
     def step(lds):

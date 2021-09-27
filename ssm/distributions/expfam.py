@@ -19,6 +19,23 @@ ExponentialFamily = namedtuple(
     ],
 )
 
+# class ExponentialFamily:
+#     def __init__(self):
+#         pass
+
+#     def posterior_from_stats(self, stats, counts):
+#         return NotImplementedError
+
+#     def prior_pseudo_obs_and_counts(self):
+#         return NotImplementedError
+
+#     def from_params(self):
+#         return NotImplementedError
+
+#     def suff_stats(self):
+#         return NotImplementedError
+
+
 EXPFAM_DISTRIBUTIONS = dict()
 
 
