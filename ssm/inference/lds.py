@@ -19,7 +19,7 @@ LDSPosterior = namedtuple(
 )
 
 
-def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
+def lds_filter(J_diag, J_lower_diag, h, logc):
     seq_len, dim, _ = J_diag.shape
 
     # Pad the L's with one extra set of zeros for the last predict step
@@ -64,6 +64,7 @@ def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
     return lp
 
 
+# TODO @slinderman: finish porting this code!
 def lds_sample(J_ini, h_ini, log_Z_ini,
                J_dyn_11, J_dyn_21, J_dyn_22, h_dyn_1, h_dyn_2, log_Z_dyn,
                J_obs, h_obs, log_Z_obs):
@@ -101,9 +102,6 @@ def lds_sample(J_ini, h_ini, log_Z_ini,
 
 
 # Expectation-Maximization
-def _e_step(lds, data):
-    marginal_likelihood, (E_neg_half_xxT, E_neg_xnxT, Ex) = \
-        value_and_grad(lds_log_normalizer, argnums=(0, 1, 2))(*lds.natural_parameters(data))
 @jit
 def lds_expected_states(J_diag, J_lower_diag, h, logc):
     """
@@ -134,6 +132,76 @@ def lds_expected_states(J_diag, J_lower_diag, h, logc):
 def _e_step(lds, data):
     marginal_likelihood, Ex, ExxT, ExnxT = lds_expected_states(*lds.natural_parameters(data))
     return LDSPosterior(marginal_likelihood, Ex, ExxT, ExnxT)
+
+
+def _fit_laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=1500):
+    """Find the mode of the log joint for the Laplace approximation.
+
+    Args:
+        lds ([type]): [description]
+        x0 ([type]): [description]
+        data ([type]): [description]
+        learning_rate ([type], optional): [description]. Defaults to 1e-3.
+
+    Returns:
+        [type]: [description]
+    """
+
+    scale = x0.size
+    _objective = lambda x: -lds.log_probability(x, data)
+
+    # TODO @collin: BFGS might be even better when _log_joint is concave
+    opt_init, opt_update, get_params = optimizers.adam(learning_rate)
+    opt_state = opt_init(x0)
+
+    @jit
+    def step(step, opt_state):
+        value, grads = value_and_grad(_objective)(get_params(opt_state))
+        opt_state = opt_update(step, grads, opt_state)
+        return value, opt_state
+
+    # guaranteed to convergence?
+    for i in range(num_iters):
+        value, opt_state = step(i, opt_state)
+
+    return get_params(opt_state)
+
+
+def _laplace_e_step(lds, data):
+    """
+    Laplace approximation to p(x | y, \theta) for non-Gaussian emission models.
+    """
+    # find mode x*
+    states = _fit_laplace_find_mode(lds, x0, data)
+
+    # compute negative hessian at the mode, J(x*)
+
+    # initial distribution
+    J_init = hessian(lds.initial_distribution().log_prob)(states[0])
+
+    # dynamics
+    f = lambda xt, xtp1: lds.dynamics_distribution(xt).log_prob(xtp1)
+    J_11 = vmap(hessian(f, argnums=0))(states[:-1], states[1:])
+    J_22 = vmap(hessian(f, argnums=1))(states[:-1], states[1:])
+    # J_21 = # (dxtp1 dxt f)(states[:-1], states[1:])
+
+    # observations
+    f = lambda x, y: lds.emissions_distribution(x).log_prob(y)
+    J_obs = vmap(hessian(f, argnums=0))(states, data)
+
+    # combine into diagonal and lower diagonal blocks
+    J_diag = J_obs
+    J_diag = J_diag.at[0].add(J_init)
+    J_diag = J_diag.at[:-1].add(J_11)
+    J_diag = J_diag.at[1:].add(J_22)
+
+    J_lower_diag = J_21
+
+    # Now convert x, J -> h = J x
+
+    # Then run message passing with J and h to get E[x], E[xxT], ...
+
+    # return LDSPosterior constructed from expectatiosn above
 
 
 def _exact_m_step_initial_distribution(lds, data, posterior, prior=None):
