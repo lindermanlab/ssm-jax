@@ -20,7 +20,7 @@ LDSPosterior = namedtuple(
 
 
 
-def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
+def lds_filter(J_diag, J_lower_diag, h, logc):
     seq_len, dim, _ = J_diag.shape
 
     # Pad the L's with one extra set of zeros for the last predict step
@@ -51,13 +51,54 @@ def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
         # hp = -np.dot(J_lower_diag_pad[t], np.linalg.solve(Jc, hc))
 
         new_carry = Jp, hp, lp + log_Z
-        return new_carry, None
+        return new_carry, (Jc, hc)
 
     # Initialize
     Jp0 = np.zeros((dim, dim))
     hp0 = np.zeros((dim,))
-    (_, _, lp), _ = lax.scan(marginalize, (Jp0, hp0, logc), np.arange(seq_len))
+    (_, _, lp), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, logc), np.arange(seq_len))
+    return lp, filtered_Js, filtered_hs
+
+
+def lds_log_normalizer(J_diag, J_lower_diag, h, logc):
+    lp, _, _ = lds_filter(J_diag, J_lower_diag, h, logc)
     return lp
+
+
+def lds_sample(J_ini, h_ini, log_Z_ini,
+               J_dyn_11, J_dyn_21, J_dyn_22, h_dyn_1, h_dyn_2, log_Z_dyn,
+               J_obs, h_obs, log_Z_obs):
+    """
+    Information form Kalman sampling for time-varying linear dynamical system with inputs.
+    """
+    T, D = h_obs.shape
+
+    # Run the forward filter
+    log_Z, filtered_Js, filtered_hs = \
+        _kalman_info_filter(J_ini, h_ini, log_Z_ini,
+                           J_dyn_11, J_dyn_21, J_dyn_22, h_dyn_1, h_dyn_2, log_Z_dyn,
+                           J_obs, h_obs, log_Z_obs)
+
+    # Allocate output arrays
+    samples = np.zeros((T, D))
+    noise = npr.randn(T, D)
+
+    # Initialize with samples of the last state
+    samples[-1] = _sample_info_gaussian(filtered_Js[-1], filtered_hs[-1], noise[-1])
+
+    # Run the Kalman information filter
+    for t in range(T-2, -1, -1):
+        # Extract blocks of the dynamics potentials
+        J_11 = J_dyn_11[t] if J_dyn_11.shape[0] == T-1 else J_dyn_11[0]
+        J_21 = J_dyn_21[t] if J_dyn_21.shape[0] == T-1 else J_dyn_21[0]
+        h_1 = h_dyn_1[t] if h_dyn_1.shape[0] == T-1 else h_dyn_1[0]
+
+        # Condition on the next observation
+        J_post = filtered_Js[t] + J_11
+        h_post = filtered_hs[t] + h_1 - np.dot(J_21.T, samples[t+1])
+        samples[t] = _sample_info_gaussian(J_post, h_post, noise[t])
+
+    return samples
 
 
 # Expectation-Maximization
