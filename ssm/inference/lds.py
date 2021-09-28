@@ -94,26 +94,7 @@ def _fit_laplace_negative_hessian(lds, states, data):
 
     J_lower_diag = J_21
     
-    # We have mu=states, J. Now we need h = J x
-    # We know that J is block tri diagonal so we break up computation
-    # TODO: @schlagercollin implement block-tridiagonal mat-vec product function
-    
-    # h = J @ x = \Sigma^{-1} @ \mu
-    h = _block_tridiagonal_mat_vec_product(J_diag, J_lower_diag, states)
-    
-    # h_ini = J_init @ states[0]
-
-    # h_dyn_1 = (J_11 @ states[:-1][:, :, None])[:, :, 0]
-    # h_dyn_1 += (np.swapaxes(J_21, -1, -2) @ states[1:][:, :, None])[:, :, 0]
-
-    # h_dyn_2 = (J_22 @ states[1:][:, :, None])[:, :, 0]
-    # h_dyn_2 += (J_21 @ states[:-1][:, :, None])[:, :, 0]
-
-    # h_obs = (J_obs @ states[:, :, None])[:, :, 0]
-    # return h_ini, h_dyn_1, h_dyn_2, h_obs
-    
-    
-    return J_diag, J_lower_diag, h
+    return J_diag, J_lower_diag
     
 
 
@@ -124,6 +105,7 @@ def _laplace_e_step(lds, data):
     q <-- N(x*, -1 * J)
     J := H_{xx} \log p(y, x; \theta) |_{x=x*}
     """
+    
     # find mode x*
     states = _fit_laplace_find_mode(lds, x0, data)
 
