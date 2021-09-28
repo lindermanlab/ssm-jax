@@ -9,6 +9,7 @@ from ssm.distributions.linreg import GaussianLinearRegression
 
 
 # Register the prior and likelihood functions
+# TODO: bundle these into a class
 ExponentialFamily = namedtuple(
     "ExponentialFamily",
     [
