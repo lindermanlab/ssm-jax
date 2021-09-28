@@ -1,7 +1,7 @@
 from collections import namedtuple
 
 import jax.numpy as np
-from jax import jit, value_and_grad, hessian, vmap, grad
+from jax import jit, value_and_grad, hessian, vmap, jacfwd, jacrev
 from jax.scipy.linalg import solve_triangular
 from jax import lax
 
@@ -68,12 +68,12 @@ def _fit_laplace_negative_hessian(lds, states, data):
         lds ([type]): [description]
         states ([type]): [description]
         data ([type]): [description]
-        
+
     Returns:
         J_diag
         J_lower_diag
     """
-    
+
     # initial distribution
     J_init = -1 * hessian(lds.initial_distribution().log_prob)(states[0])
 
@@ -81,7 +81,8 @@ def _fit_laplace_negative_hessian(lds, states, data):
     f = lambda xt, xtp1: lds.dynamics_distribution(xt).log_prob(xtp1)
     J_11 = -1 * vmap(hessian(f, argnums=0))(states[:-1], states[1:])
     J_22 = -1 * vmap(hessian(f, argnums=1))(states[:-1], states[1:])
-    J_21 = -1 * vmap(grad(grad(f, argnums=1), argnums=0)(states[:-1], states[1:])) # (dxtp1 dxt f)(states[:-1], states[1:])
+    # J_21 = -1 * vmap(grad(grad(f, argnums=1), argnums=0)(states[:-1], states[1:])) # (dxtp1 dxt f)(states[:-1], states[1:])
+    J_21 = -1 * vmap(jacfwd(jacrev(f, argnums=1), argnums=0)(states[:-1], states[1:])) # (dxtp1 dxt f)(states[:-1], states[1:])
 
     # observations
     f = lambda x, y: lds.emissions_distribution(x).log_prob(y)
@@ -94,18 +95,18 @@ def _fit_laplace_negative_hessian(lds, states, data):
     J_diag = J_diag.at[1:].add(J_22)
 
     J_lower_diag = J_21
-    
+
     return J_diag, J_lower_diag
-    
+
 
 def _laplace_e_step(lds, data):
     """
     Laplace approximation to p(x | y, \theta) for non-Gaussian emission models.
-    
+
     q <-- N(x*, -1 * J)
     J := H_{xx} \log p(y, x; \theta) |_{x=x*}
     """
-    
+
     # find mode x*
     # TODO: define x0 from previous mode
     states = _fit_laplace_find_mode(lds, x0, data)
@@ -183,8 +184,13 @@ def _exact_m_step_emissions_distribution(lds, data, posterior, prior=None):
     return expfam.from_params(param_posterior.mode())
 
 
+<<<<<<< HEAD
 def _approx_m_step_emissions_distribution(lds, data, posterior, prior=None, learning_rate=1e-3, num_timesteps=1000):
     
+=======
+def _approx_m_step_emissions_distribution(lds, data, posterior, prior=None):
+
+>>>>>>> 774550e4b40686eeea11019c7fffea7180565dec
     # TODO: we need to make posterior an object with a sample method
     # TODO: need emissions distribution to be GLM akin to GaussianLinearRegression distribution object
     
