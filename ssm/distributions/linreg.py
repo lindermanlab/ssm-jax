@@ -41,8 +41,9 @@ class GaussianLinearRegression(tfp.distributions.Distribution):
             bias=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1),
             scale_tril=tfp.internal.parameter_properties.ParameterProperties(
                 event_ndims=2,
-                shape_fn=lambda sample_shape: ps.concat([sample_shape, sample_shape[-1:]], axis=0),
-                default_constraining_bijector_fn=lambda: tfp.bijectors.fill_scale_tril.FillScaleTriL(diag_shift=dtype_util.eps(dtype))))
+                # shape_fn=lambda sample_shape: ps.concat([sample_shape, sample_shape[-1:]], axis=0),
+                # default_constraining_bijector_fn=lambda: tfp.bijectors.fill_scale_tril.FillScaleTriL(diag_shift=dtype_util.eps(dtype)))
+        ))
 
     @property
     def data_dimension(self):
@@ -69,11 +70,13 @@ class GaussianLinearRegression(tfp.distributions.Distribution):
             covariates @ self.weights.T + self.bias, self.scale_tril)
 
     def _sample(self, covariates=None, seed=None, sample_shape=()):
-        d = tfp.distributions.MultivariateNormalTriL(
-            self.predict(covariates), self.scale_tril)
+        d = self.predict(covariates)
+        # d = tfp.distributions.MultivariateNormalTriL(
+            # self.predict(covariates), self.scale_tril)
         return d.sample(sample_shape=sample_shape, seed=seed)
 
     def _log_prob(self, data, covariates=None, **kwargs):
-        d = tfp.distributions.MultivariateNormalTriL(
-            self.predict(covariates), self.scale_tril)
+        d = self.predict(covariates)
+        # d = tfp.distributions.MultivariateNormalTriL(
+            # self.predict(covariates), self.scale_tril)
         return d.log_prob(data)
