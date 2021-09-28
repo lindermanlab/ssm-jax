@@ -3,6 +3,7 @@ import jax.numpy as np
 import jax.random as jr
 from jax import lax, value_and_grad
 from jax.scipy.linalg import solve_triangular
+from tensorflow_probability.python import internal
 
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
@@ -12,7 +13,7 @@ from tensorflow_probability.python.internal import reparameterization
 # from tensorflow_probability.python.internal import dtype_util
 
 
-def _forward_pass(J_diag, J_lower_diag, h):
+def _forward_pass(J_diag, J_lower_diag, h, logc):
     """ TODO
     """
     # extract dimensions
@@ -51,9 +52,8 @@ def _forward_pass(J_diag, J_lower_diag, h):
     # Initialize
     Jp0 = np.zeros((dim, dim))
     hp0 = np.zeros((dim,))
-    (_, _, log_Z), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, 0), np.arange(num_timesteps))
-    return log_Z, filtered_Js, filtered_hs
-
+    (_, _, log_Z), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, logc), np.arange(num_timesteps))
+    return log_Z, (filtered_Js, filtered_hs)
 
 class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
     """
@@ -96,6 +96,7 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
                  precision_diag_blocks=None,
                  precision_lower_diag_blocks=None,
                  linear_potential=None,
+                 logc=None,
                  mean=None,
                  validate_args=False,
                  allow_nan_stats=True,
@@ -121,14 +122,17 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         else:
             assert linear_potential.shape == (self._num_timesteps, self._dim)
             self._linear_potential = linear_potential
+            
+        self._logc = logc
 
         # Run message passing code to get the log normalizer, the filtering potentials,
         # and the expected values of x.
         f = value_and_grad(_forward_pass, argnums=(0, 1, 2), has_aux=True)
-        (self._log_normalizer, self._filtered_Js, self._filtered_hs), grads = \
+        (self._log_normalizer, (self._filtered_Js, self._filtered_hs)), grads = \
             f(self._precision_diag_blocks,
               self._precision_lower_diag_blocks,
-              self._linear_potential)
+              self._linear_potential,
+              logc)
 
         self._ExxT = -2 * grads[0]
         self._ExnxT = -grads[1]
@@ -139,8 +143,21 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
-            parameters=dict(locals()),
+            parameters=dict(precision_diag_blocks=self._precision_diag_blocks,
+                            precision_lower_diag_blocks=self._precision_lower_diag_blocks,
+                            linear_potential=self._linear_potential,
+                            logc=self._logc),
             name=name,
+        )
+        
+    @classmethod
+    def _parameter_properties(cls, dtype, num_classes=None):
+        # pylint: disable=g-long-lambda
+        return dict(
+            precision_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+            precision_lower_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+            linear_potential=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+            logc=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
         )
 
     def _log_prob(self, data, **kwargs):
@@ -150,9 +167,11 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         lp -= self._log_normalizer
         return lp
 
+    @property
     def mean(self):
         return self._Ex
 
+    @property
     def second_moments(self):
         return self._ExxT, self._ExnxT
 
@@ -182,7 +201,7 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
 
             # Split the seed
             seed, this_seed = jr.split(seed)
-            x = _sample_info_gaussian(this_seed, Jc, hc)
+            x = _sample_info_gaussian(this_seed, Jc, hc, sample_shape)
             return (x, seed), x
 
         # Initialize with sample of last state

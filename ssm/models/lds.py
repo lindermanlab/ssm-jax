@@ -170,13 +170,13 @@ class GaussianLDS(SSM):
         h = h.at[:-1].add(-np.dot(A.T, np.linalg.solve(Q, b)))
         h = h.at[1:].add(np.linalg.solve(Q, b))
 
-        # logc = -0.5 * seq_len * self.latent_dim * np.log(2 * np.pi)
-        # logc += -0.5 * np.linalg.slogdet(Q1)[1]
-        # logc += -0.5 * np.dot(m1, np.linalg.solve(Q1, m1))
-        # logc += -0.5 * (seq_len - 1) * np.linalg.slogdet(Q)[1]
-        # logc += -0.5 * (seq_len - 1) * np.dot(b, np.linalg.solve(Q, b))
-        # logc += -0.5 * seq_len * self.emissions_dim * np.log(2 * np.pi)
-        # logc += -0.5 * seq_len * np.linalg.slogdet(R)[1]
-        # logc += -0.5 * np.sum((data - d) * np.linalg.solve(R, (data - d).T).T)
+        logc = -0.5 * seq_len * self.latent_dim * np.log(2 * np.pi)
+        logc += -0.5 * np.linalg.slogdet(Q1)[1]
+        logc += -0.5 * np.dot(m1, np.linalg.solve(Q1, m1))
+        logc += -0.5 * (seq_len - 1) * np.linalg.slogdet(Q)[1]
+        logc += -0.5 * (seq_len - 1) * np.dot(b, np.linalg.solve(Q, b))
+        logc += -0.5 * seq_len * self.emissions_dim * np.log(2 * np.pi)
+        logc += -0.5 * seq_len * np.linalg.slogdet(R)[1]
+        logc += -0.5 * np.sum((data - d) * np.linalg.solve(R, (data - d).T).T)
 
-        return J_diag, J_lower_diag, h #, logc
+        return J_diag, J_lower_diag, h, logc
