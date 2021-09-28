@@ -1,5 +1,8 @@
 
 import jax.numpy as np
+import jax.random as jr
+from jax import lax, value_and_grad
+from jax.scipy.linalg import solve_triangular
 
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
@@ -132,7 +135,6 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         )
 
     def _log_prob(self, data, **kwargs):
-        # todo: compute these quadratic terms
         lp = -0.5 * np.einsum('...ti,tij,...tj->...', data, self._precision_diag_blocks, data)
         lp += -np.einsum('...ti,tij,...tj->...', data[1:], self._precision_lower_diag_blocks, data[:-1])
         lp += np.einsum('...ti,ti->...', data, self._linear_potential)
@@ -142,41 +144,41 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
     def _mean(self):
         return self._Ex
 
-    def _sample(self, covariates=None, seed=None, sample_shape=()):
-        # Run the forward filtering backward sampling algorithm
-        # see Yixiu's SVAE-LDS code
-        
-        # TODO @slinderman: finish porting this code!
-        # T, D = h_obs.shape
+    def _sample(self, seed=None, sample_shape=()):
+        filtered_Js = self._filtered_Js
+        filtered_hs = self._filtered_hs
+        J_lower_diag = self._precision_lower_diag_blocks
 
-        # # Run the forward filter
-        # log_Z, filtered_Js, filtered_hs = \
-        #     _kalman_info_filter(J_ini, h_ini, log_Z_ini,
-        #                     J_dyn_11, J_dyn_21, J_dyn_22, h_dyn_1, h_dyn_2, log_Z_dyn,
-        #                     J_obs, h_obs, log_Z_obs)
+        def _sample_info_gaussian(seed, J, h, shape):
+            # TODO: avoid inversion. see https://github.com/mattjj/pybasicbayes/blob/master/pybasicbayes/util/stats.py#L117-L122
+            # L = np.linalg.cholesky(J)
+            # x = np.random.randn(h.shape[0])
+            # return scipy.linalg.solve_triangular(L,x,lower=True,trans='T') \
+            #     + dpotrs(L,h,lower=True)[0]
+            cov = np.linalg.inv(J)
+            loc = np.einsum("...ij,...j->...i", cov, h)
+            return tfp.distributions.MultivariateNormalFullCovariance(
+                loc=loc, covariance_matrix=cov).sample(sample_shape=shape, seed=seed)
 
-        # # Allocate output arrays
-        # samples = np.zeros((T, D))
-        # noise = npr.randn(T, D)
+        def _step(carry, inpt):
+            x_next, seed = carry
+            Jf, hf, L = inpt
 
-        # # Initialize with samples of the last state
-        # samples[-1] = _sample_info_gaussian(filtered_Js[-1], filtered_hs[-1], noise[-1])
+            # Condition on the next observation
+            Jc = Jf
+            hc = hf - x_next @ L
 
-        # # Run the Kalman information filter
-        # for t in range(T-2, -1, -1):
-        #     # Extract blocks of the dynamics potentials
-        #     J_11 = J_dyn_11[t] if J_dyn_11.shape[0] == T-1 else J_dyn_11[0]
-        #     J_21 = J_dyn_21[t] if J_dyn_21.shape[0] == T-1 else J_dyn_21[0]
-        #     h_1 = h_dyn_1[t] if h_dyn_1.shape[0] == T-1 else h_dyn_1[0]
+            # Split the seed
+            seed, this_seed = jr.split(seed)
+            x = _sample_info_gaussian(this_seed, Jc, hc)
+            return (x, seed), x
 
-        #     # Condition on the next observation
-        #     J_post = filtered_Js[t] + J_11
-        #     h_post = filtered_hs[t] + h_1 - np.dot(J_21.T, samples[t+1])
-        #     samples[t] = _sample_info_gaussian(J_post, h_post, noise[t])
-
-        # return samples
-        raise NotImplementedError
-
+        # Initialize with sample of last state
+        seed_T, seed = jr.split(seed)
+        x_T = _sample_info_gaussian(seed_T, filtered_Js[-1], filtered_hs[-1], sample_shape)
+        inputs = (filtered_Js[:-1][::-1], filtered_hs[:-1][::-1], J_lower_diag[::-1])
+        _, samples = lax.scan(_step, (x_T, seed), inputs)
+        return samples
 
     def _entropy(self):
         raise NotImplementedError
