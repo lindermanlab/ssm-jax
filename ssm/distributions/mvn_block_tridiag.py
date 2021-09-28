@@ -64,23 +64,32 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
 
     where
 
-        \Sigma^{-1} = J = [[J[0, 0],   J[0, 1],  0, ...         , 0],
-                           [J[0, 1].T, J[1, 1],  J[1, 2], 0, ..., 0],
-                           [0,         J[1, 2].T J[2, 2], \ddots,  ],
+        \Sigma^{-1} = J = [[J_{0,0},   J_{0,1},   0,       0,      0],
+                           [J_{1,0},   J_{1,1},   J_{1,2}, 0,      0],
+                           [0,         J_{2,1},   J_{2,2}, \ddots, 0],
+                           [0,         0,         \ddots,  \ddots,  ],
+
+    is block tridiagonal, and J_{t, t+1} = J_{t+1, t}^T.
 
     This will serve as a posterior distribution over latent states of an LDS.
 
-    pdf:
+    The pdf is
 
-        exp{-1/2 x^T J x + x^T h - log Z(J, h)}
+        p(x) = exp \{-1/2 x^T J x + x^T h - \log Z(J, h) \}
+             = exp \{- 1/2 \sum_{t=1}^T x_t^T J_{t,t} x_t
+                     - \sum_{t=1}^{T-1} x_{t+1}^T J_{t+1,t} x_t
+                     + \sum_{t=1}^T x_t^T h_t
+                     -\log Z(J, h)\}
 
-    where
+    where J = \Sigma^{-1} and h = \Sigma^{-1} \mu = J \mu.
 
+    Using exponential family tricks we know that
 
+        E[x_t] = \grad_{h_t} \log Z(J, h)
+        E[x_t x_t^T] = -2 \grad_{J_{t,t}} \log Z(J, h)
+        E[x_{t+1} x_t^T] = -\grad_{J_{t+1,t}} \log Z(J, h)
 
-    using exponential family tricks we know that
-
-        E[x] = \grad_h log Z(J, h)
+    These are the expectations we need for EM.
 
     """
     def __init__(self,
@@ -143,6 +152,9 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
 
     def _mean(self):
         return self._Ex
+
+    def second_moments(self):
+        return self._ExxT, self._ExnxT
 
     def _sample(self, seed=None, sample_shape=()):
         filtered_Js = self._filtered_Js
