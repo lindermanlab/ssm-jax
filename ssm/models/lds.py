@@ -5,6 +5,42 @@ from ssm.models.base import SSM
 
 
 @register_pytree_node_class
+class GLMLDS(SSM):
+    def __init__(self,
+                 initial_distribution,
+                 dynamics_distribution,
+                 emissions_distribution):
+        # TODO: parameter checking
+        self._initial_distribution = initial_distribution
+        self._dynamics_distribution = dynamics_distribution
+        self._emissions_distribution = emissions_distribution
+        
+    def tree_flatten(self):
+        children = (self._initial_distribution,
+                    self._dynamics_distribution,
+                    self._emissions_distribution)
+        aux_data = None
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        initial_distribution, dynamics_distribution, emissions_distribution = children
+
+        return cls(initial_distribution,
+                   dynamics_distribution,
+                   emissions_distribution)
+        
+    def initial_distribution(self):
+        return self._initial_distribution
+
+    def dynamics_distribution(self, state):
+        return self._dynamics_distribution.predict(state)
+
+    def emissions_distribution(self, state):
+        return self._emissions_distribution.predict(state)
+
+
+@register_pytree_node_class
 class GaussianLDS(SSM):
     def __init__(self,
                  initial_distribution,
@@ -85,6 +121,10 @@ class GaussianLDS(SSM):
 
     def natural_parameters(self, data):
         """ TODO
+        
+        Some thoughts:
+            - should natural parameters be a part of inference?
+            - here, we can compute these exactly but with Laplace EM these are approximates
         """
         seq_len = data.shape[0]
 

@@ -25,7 +25,7 @@ def elbo(rng, model, data, posterior, num_samples=1):
 
 # Expectation-Maximization
 def _exact_e_step(gaussian_lds, data):
-    return MultivariateNormalBlockTridiag(*gaussian_lds.natural_parameters)
+    return MultivariateNormalBlockTridiag(*gaussian_lds.natural_parameters(data))
 
 
 def _fit_laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=1500):
@@ -59,6 +59,7 @@ def _fit_laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=1500):
         value, opt_state = step(i, opt_state)
 
     return get_params(opt_state)
+
 
 def _fit_laplace_negative_hessian(lds, states, data):
     """[summary]
@@ -97,7 +98,6 @@ def _fit_laplace_negative_hessian(lds, states, data):
     return J_diag, J_lower_diag
     
 
-
 def _laplace_e_step(lds, data):
     """
     Laplace approximation to p(x | y, \theta) for non-Gaussian emission models.
@@ -107,6 +107,7 @@ def _laplace_e_step(lds, data):
     """
     
     # find mode x*
+    # TODO: define x0 from previous mode
     states = _fit_laplace_find_mode(lds, x0, data)
 
     # compute negative hessian at the mode, J(x*)
@@ -115,11 +116,6 @@ def _laplace_e_step(lds, data):
     return MultivariateNormalBlockTridiag(J_diag,
                                           J_lower_diag,
                                           mean=states)
-    # # Now convert x, J -> h = J x
-
-    # # Then run message passing with J and h to get E[x], E[xxT], ...
-    # _, Ex, ExxT, ExnxT = lds_expected_states(J_diag, J_lower_diag, h, 0)
-    # return LDSPosterior(np.nan, Ex, ExxT, ExnxT)
 
 
 def _exact_m_step_initial_distribution(lds, data, posterior, prior=None):
@@ -187,18 +183,31 @@ def _exact_m_step_emissions_distribution(lds, data, posterior, prior=None):
     return expfam.from_params(param_posterior.mode())
 
 
-def _approx_m_step_emissions_distribution(lds, data, posterior, prior=None):
+def _approx_m_step_emissions_distribution(lds, data, posterior, prior=None, learning_rate=1e-3, num_timesteps=1000):
     
     # TODO: we need to make posterior an object with a sample method
+    # TODO: need emissions distribution to be GLM akin to GaussianLinearRegression distribution object
+    
     x_sample = posterior.sample(rng)
-
     def _objective(_emissions_distribution):
         return _emissions_distribution(x_sample).log_prob(data)
 
     # do gradient descent on _emissions_distribution
-
-    # TODO: we need a GLM distribution object like the GaussianLinearRegression object
-
+    current_emissions_distribution = lds._emissions_distribution
+    opt_init, opt_update, get_params = optimizers.adam(learning_rate)
+    opt_state = opt_init(current_emissions_distribution)
+    
+    # @jit
+    def step(step, opt_state):
+        grads = grad(_objective)(get_params(opt_state))
+        opt_state = opt_update(step, grads, opt_state)
+        return opt_state
+    
+    for i in range(num_timesteps):
+        opt_state = step(i, opt_state)
+    
+    new_emissions_distribution = get_params(opt_state)
+    return new_emissions_distribution
 
 
 def _m_step(lds, data, posterior, prior=None):
