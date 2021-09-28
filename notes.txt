@@ -66,3 +66,31 @@ posterior, trace = ssm.inference.approximate_posterior(model, data)
 # - operate on a single time series (vmap over batch)
 # - jit at as high a level as possible e.g. jit(ssm.inference)
 # - no for loops
+
+TODO:
+- stochastic EM for HMM
+- ARHMM 
+
+- GLM distribution object like the GaussianLinearRegression object
+- Posterior: multivariate gaussian block tridiagonal 
+
+Linear potential is h
+
+block diagonals, block lower diagonals ==> 
+
+log_normalizer_constants ==> log constant terms bundled into marginal likelihood
+
+log p(x|y)
+log p(x, y) - log p(x|y)
+
+forward filtering is equivalent to Thomas' algorithm for linear dynamical system
+- investigate this more
+
+how to get determinant of a block-tridiagonal matrix?
+- some recurrence relation
+
+whether or not posterior is good determines how we want to compute the ELBO?
+- entropy versus subtracting off the marginal likelihood
+
+moving toward class-based architecture
+
