@@ -150,7 +150,7 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         lp -= self._log_normalizer
         return lp
 
-    def _mean(self):
+    def mean(self):
         return self._Ex
 
     def second_moments(self):

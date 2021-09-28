@@ -123,8 +123,10 @@ def _exact_m_step_initial_distribution(lds, data, posterior, prior=None):
     expfam = EXPFAM_DISTRIBUTIONS[lds._initial_distribution.name]
 
     # Extract sufficient statistics
-    Ex = posterior.expected_states[0]
-    ExxT = posterior.expected_states_squared[0]
+    # Ex = posterior.expected_states[0]
+    # ExxT = posterior.expected_states_squared[0]
+    Ex = posterior.mean[0]
+    ExxT = posterior.second_moments[0][0]
 
     stats = (1.0, Ex, ExxT)
     counts = 1.0
@@ -143,11 +145,11 @@ def _exact_m_step_dynamics_distribution(lds, data, posterior, prior=None):
     expfam = EXPFAM_DISTRIBUTIONS[lds._dynamics_distribution.name]
 
     # Extract expected sufficient statistics from posterior
-    Ex = posterior.expected_states[:-1].sum(axis=0)
-    Ey = posterior.expected_states[1:].sum(axis=0)
-    ExxT = posterior.expected_states_squared[:-1].sum(axis=0)
-    EyxT = posterior.expected_transitions.sum(axis=0)
-    EyyT = posterior.expected_states_squared[1:].sum(axis=0)
+    Ex = posterior.mean[:-1].sum(axis=0)
+    Ey = posterior.mean[1:].sum(axis=0)
+    ExxT = posterior.second_moments[0][:-1].sum(axis=0)
+    EyxT = posterior.second_moments[1].sum(axis=0)
+    EyyT = posterior.second_moments[0][1:].sum(axis=0)
     stats = (Ex, Ey, ExxT, EyxT, EyyT)
     counts = len(data) - 1
 
@@ -166,10 +168,10 @@ def _exact_m_step_emissions_distribution(lds, data, posterior, prior=None):
     expfam = EXPFAM_DISTRIBUTIONS[lds._emissions_distribution.name]
 
     # Extract expected sufficient statistics from posterior
-    Ex = posterior.expected_states.sum(axis=0)
+    Ex = posterior.mean.sum(axis=0)
     Ey = data.sum(axis=0)
-    ExxT = posterior.expected_states_squared.sum(axis=0)
-    EyxT = data.T.dot(posterior.expected_states)
+    ExxT = posterior.second_moments[0].sum(axis=0)
+    EyxT = data.T.dot(posterior.mean)
     EyyT = data.T.dot(data)
     stats = (Ex, Ey, ExxT, EyxT, EyyT)
     counts = len(data)
@@ -184,16 +186,11 @@ def _exact_m_step_emissions_distribution(lds, data, posterior, prior=None):
     return expfam.from_params(param_posterior.mode())
 
 
-<<<<<<< HEAD
-def _approx_m_step_emissions_distribution(lds, data, posterior, prior=None, learning_rate=1e-3, num_timesteps=1000):
-    
-=======
-def _approx_m_step_emissions_distribution(lds, data, posterior, prior=None):
-
->>>>>>> 774550e4b40686eeea11019c7fffea7180565dec
-    # TODO: we need to make posterior an object with a sample method
-    # TODO: need emissions distribution to be GLM akin to GaussianLinearRegression distribution object
-    
+def _approx_m_step_emissions_distribution(lds, data, posterior, prior=None, 
+                                          learning_rate=1e-3, 
+                                          num_timesteps=1000,
+                                          rng=None):
+        
     x_sample = posterior.sample(rng)
     def _objective(_emissions_distribution):
         return _emissions_distribution(x_sample).log_prob(data)
@@ -205,12 +202,14 @@ def _approx_m_step_emissions_distribution(lds, data, posterior, prior=None):
     
     # @jit
     def step(step, opt_state):
-        grads = grad(_objective)(get_params(opt_state))
+        value, grads = value_and_grad(_objective)(get_params(opt_state))
         opt_state = opt_update(step, grads, opt_state)
-        return opt_state
+        return value, opt_state
     
+    vals = []  # for debugging
     for i in range(num_timesteps):
-        opt_state = step(i, opt_state)
+        value, opt_state = step(i, opt_state)
+        vals.append(value)
     
     new_emissions_distribution = get_params(opt_state)
     return new_emissions_distribution
@@ -256,7 +255,7 @@ def em(lds,
 
     @jit
     def step(lds):
-        posterior = _e_step(lds, data)
+        posterior = _exact_e_step(lds, data)
         if m_step_type == "exact":
             lds = _m_step(lds, data, posterior)
 

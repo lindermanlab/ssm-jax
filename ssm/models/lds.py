@@ -1,8 +1,17 @@
 import jax.numpy as np
 from jax.tree_util import register_pytree_node_class
 
-from ssm.models.base import SSM
+from tensorflow_probability.substrates import jax as tfp
 
+from ssm.models.base import SSM
+from ssm.distributions.glm import GaussianGLM, PoissonGLM
+from ssm.distributions.linreg import GaussianLinearRegression
+
+# supported emissions classes for GLM-LDS
+_GLM_DISTRIBUTIONS = [
+    GaussianGLM,
+    PoissonGLM
+]
 
 @register_pytree_node_class
 class GLMLDS(SSM):
@@ -10,7 +19,12 @@ class GLMLDS(SSM):
                  initial_distribution,
                  dynamics_distribution,
                  emissions_distribution):
-        # TODO: parameter checking
+        
+        # TODO: better parameter checking
+        assert isinstance(initial_distribution, tfp.distributions.MultivariateNormalTriL)
+        assert isinstance(dynamics_distribution, GaussianGLM)
+        assert type(emissions_distribution) in _GLM_DISTRIBUTIONS
+        
         self._initial_distribution = initial_distribution
         self._dynamics_distribution = dynamics_distribution
         self._emissions_distribution = emissions_distribution
@@ -48,7 +62,9 @@ class GaussianLDS(SSM):
                  emissions_distribution):
         """ TODO
         """
-        # TODO: parameter checking
+        assert isinstance(initial_distribution, tfp.distributions.MultivariateNormalTriL)
+        assert isinstance(dynamics_distribution, GaussianLinearRegression)
+        assert isinstance(emissions_distribution, GaussianLinearRegression)
         self._initial_distribution = initial_distribution
         self._dynamics_distribution = dynamics_distribution
         self._emissions_distribution = emissions_distribution
