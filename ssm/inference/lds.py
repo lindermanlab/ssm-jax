@@ -8,6 +8,8 @@ from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 
 import jax.experimental.optimizers as optimizers
+import tensorflow_probability.substrates.jax as tfp 
+import jax.scipy.optimize
 
 
 # Expectation-Maximization
@@ -175,7 +177,7 @@ def em(lds,
 
 
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
-def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=1500):
+def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=50):
     """Find the mode of the log joint for the Laplace approximation.
 
     Args:
@@ -189,13 +191,16 @@ def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=1500):
     """
 
     scale = x0.size
-    _objective = lambda x: -lds.log_probability(x, data)
+    _objective = lambda x: -1 * np.sum(lds.log_probability(x, data)) / scale
 
     # TODO @collin: BFGS might be even better when _log_joint is concave
+    # optimize_results = jax.scipy.optimize.minimize(_objective, x0, method="BFGS", tol=1e-3)
+    # return optimize_results.x
+    
     opt_init, opt_update, get_params = optimizers.adam(learning_rate)
     opt_state = opt_init(x0)
 
-    @jit
+    # @jit
     def step(step, opt_state):
         value, grads = value_and_grad(_objective)(get_params(opt_state))
         opt_state = opt_update(step, grads, opt_state)
@@ -228,13 +233,14 @@ def _laplace_negative_hessian(lds, states, data):
     f = lambda xt, xtp1: lds.dynamics_distribution(xt).log_prob(xtp1)
     J_11 = -1 * vmap(hessian(f, argnums=0))(states[:-1], states[1:])
     J_22 = -1 * vmap(hessian(f, argnums=1))(states[:-1], states[1:])
+    
     # TODO @collin: Check that this gives us the lower diagonal blocks and not the upper!
-    J_21 = -1 * vmap(jacfwd(jacrev(f, argnums=1), argnums=0)(states[:-1], states[1:])) # (dxtp1 dxt f)(states[:-1], states[1:])
+    J_21 = -1 * vmap(jacfwd(jacrev(f, argnums=1), argnums=0))(states[:-1], states[1:]) # (dxtp1 dxt f)(states[:-1], states[1:])
 
     # emissions
-    f = lambda x, y: lds.emissions_distribution(x).log_prob(y)
-    J_obs = -1 * vmap(hessian(f, argnums=0))(states, data)
-
+    f = lambda x, y: np.mean(lds.emissions_distribution(x).log_prob(y), axis=-1) # TODO: should I be summing here? mean does better...
+    J_obs = -1 * vmap(hessian(f, argnums=0))(states, data)  # shape should be (T, D, D)
+    
     # combine into diagonal and lower diagonal blocks
     J_diag = J_obs
     J_diag = J_diag.at[0].add(J_init)
@@ -246,7 +252,7 @@ def _laplace_negative_hessian(lds, states, data):
     return J_diag, J_lower_diag
 
 
-def _laplace_e_step(lds, data, initial_states):
+def _laplace_e_step(lds, data, initial_states, num_laplace_mode_iters=10):
     """
     Laplace approximation to p(x | y, \theta) for non-Gaussian emission models.
 
@@ -254,7 +260,7 @@ def _laplace_e_step(lds, data, initial_states):
     J := H_{xx} \log p(y, x; \theta) |_{x=x*}
     """
     # find mode x*
-    states = _laplace_find_mode(lds, initial_states, data)
+    states = _laplace_find_mode(lds, initial_states, data, num_iters=num_laplace_mode_iters)
     # compute negative hessian at the mode, J(x*)
     J_diag, J_lower_diag = _laplace_negative_hessian(lds, states, data)
     return MultivariateNormalBlockTridiag(J_diag,
@@ -273,8 +279,18 @@ def _elbo(rng, model, data, posterior, num_samples=1):
     While in some cases the expectation can be computed in closed form, in
     general we will approximate it with ordinary Monte Carlo.
     """
-    states = posterior.sample(rng, num_samples=num_samples)
-    return np.mean(model.log_prob(states, data) - posterior.log_prob(states))
+    if num_samples == 1:
+        states = posterior._sample(seed=rng)
+    else:
+        # TODO: implement cls._sample_n for mvn_block_tridiag
+        raise NotImplementedError
+    
+    # hacky accounting for init state?
+    new_states =  np.zeros((500, 2))
+    new_states = new_states.at[1:].add(states)
+    states = new_states
+    
+    return np.mean(model.log_probability(states, data) - posterior.log_prob(states))
 
 
 # def _elbo_alt(rng, model, data, posterior, num_samples=1):
@@ -282,10 +298,14 @@ def _elbo(rng, model, data, posterior, num_samples=1):
 #     return np.mean(model.log_prob(states, data)) + posterior.entropy()
 
 
-def _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=None, learning_rate=1e-3, num_timesteps=1000):
-    x_sample = posterior.sample(rng)
+def _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=None, learning_rate=1e-3, num_timesteps=50):
+    x_sample = posterior._sample(seed=rng)
+    new_states =  np.zeros((500, 2))
+    new_states = new_states.at[1:].add(x_sample)
+    x_sample = new_states
+    
     def _objective(_emissions_distribution):
-        return _emissions_distribution(x_sample).log_prob(data)
+        return -1 * np.sum(_emissions_distribution.predict(x_sample).log_prob(data))
 
     # do gradient descent on _emissions_distribution
     current_emissions_distribution = lds._emissions_distribution
@@ -305,12 +325,12 @@ def _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=None,
     return new_emissions_distribution
 
 
-def _laplace_m_step(rng, lds, data, posterior, prior=None):
+def _laplace_m_step(rng, lds, data, posterior, prior=None, num_approx_m_iters=100):
     # TODO: M step for initial distribution needs a prior
     # initial_distribution = _exact_m_step_initial_distribution(lds, data, posterior, prior=prior)
     initial_distribution = lds._initial_distribution
     transition_distribution = _exact_m_step_dynamics_distribution(lds, data, posterior, prior=prior)
-    emissions_distribution = _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=prior)
+    emissions_distribution = _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=prior, num_timesteps=num_approx_m_iters)
     return GLMLDS(initial_distribution,
                   transition_distribution,
                   emissions_distribution)
@@ -322,6 +342,8 @@ def laplace_em(
     data,
     num_iters: int=100,
     num_elbo_samples: int=1,
+    num_approx_m_iters: int=100,
+    num_laplace_mode_iters: int=100,
     tol: float=1e-4,
     verbosity: Verbosity=Verbosity.DEBUG,
     patience: int=5,
@@ -348,10 +370,10 @@ def laplace_em(
     @jit
     def step(rng, lds, states):
         rng, elbo_rng, m_step_rng = jr.split(rng, 3)
-        posterior = _laplace_e_step(lds, data, states)
+        posterior = _laplace_e_step(lds, data, states, num_laplace_mode_iters=num_laplace_mode_iters)
         states = posterior.mean
         elbo = _elbo(elbo_rng, lds, data, posterior, num_samples=num_elbo_samples)
-        lds = _laplace_m_step(m_step_rng, lds, data, posterior)
+        lds = _laplace_m_step(m_step_rng, lds, data, posterior, num_approx_m_iters=num_approx_m_iters)
         return rng, lds, posterior, states, elbo
 
     # Run the Laplace EM algorithm to convergence

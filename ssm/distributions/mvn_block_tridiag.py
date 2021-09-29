@@ -191,6 +191,13 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         if not self.ran_message_passing:
             self.message_passing()
         return self._ExxT, self._ExnxT
+    
+    # def _sample_n(self, n, seed=None):
+    #     # keys = jr.split(seed, n)
+        
+    #     # samples = []
+    #     # for i in range(n):
+    #     #     self._sample(seed=keys[i], sample_shape=)
 
     def _sample(self, seed=None, sample_shape=()):
         filtered_Js = self._filtered_Js
