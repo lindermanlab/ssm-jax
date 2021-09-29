@@ -19,16 +19,16 @@ class GLMLDS(SSM):
                  initial_distribution,
                  dynamics_distribution,
                  emissions_distribution):
-        
+
         # TODO: better parameter checking
         assert isinstance(initial_distribution, tfp.distributions.MultivariateNormalTriL)
         assert isinstance(dynamics_distribution, GaussianGLM)
         assert type(emissions_distribution) in _GLM_DISTRIBUTIONS
-        
+
         self._initial_distribution = initial_distribution
         self._dynamics_distribution = dynamics_distribution
         self._emissions_distribution = emissions_distribution
-        
+
     def tree_flatten(self):
         children = (self._initial_distribution,
                     self._dynamics_distribution,
@@ -43,7 +43,7 @@ class GLMLDS(SSM):
         return cls(initial_distribution,
                    dynamics_distribution,
                    emissions_distribution)
-        
+
     def initial_distribution(self):
         return self._initial_distribution
 
@@ -137,7 +137,7 @@ class GaussianLDS(SSM):
 
     def natural_parameters(self, data):
         """ TODO
-        
+
         Some thoughts:
             - should natural parameters be a part of inference?
             - here, we can compute these exactly but with Laplace EM these are approximates
@@ -169,14 +169,15 @@ class GaussianLDS(SSM):
         h = h.at[0].add(np.linalg.solve(Q1, m1))
         h = h.at[:-1].add(-np.dot(A.T, np.linalg.solve(Q, b)))
         h = h.at[1:].add(np.linalg.solve(Q, b))
+        return J_diag, J_lower_diag, h
 
-        logc = -0.5 * seq_len * self.latent_dim * np.log(2 * np.pi)
-        logc += -0.5 * np.linalg.slogdet(Q1)[1]
-        logc += -0.5 * np.dot(m1, np.linalg.solve(Q1, m1))
-        logc += -0.5 * (seq_len - 1) * np.linalg.slogdet(Q)[1]
-        logc += -0.5 * (seq_len - 1) * np.dot(b, np.linalg.solve(Q, b))
-        logc += -0.5 * seq_len * self.emissions_dim * np.log(2 * np.pi)
-        logc += -0.5 * seq_len * np.linalg.slogdet(R)[1]
-        logc += -0.5 * np.sum((data - d) * np.linalg.solve(R, (data - d).T).T)
+        # logc = -0.5 * seq_len * self.latent_dim * np.log(2 * np.pi)
+        # logc += -0.5 * np.linalg.slogdet(Q1)[1]
+        # logc += -0.5 * np.dot(m1, np.linalg.solve(Q1, m1))
+        # logc += -0.5 * (seq_len - 1) * np.linalg.slogdet(Q)[1]
+        # logc += -0.5 * (seq_len - 1) * np.dot(b, np.linalg.solve(Q, b))
+        # logc += -0.5 * seq_len * self.emissions_dim * np.log(2 * np.pi)
+        # logc += -0.5 * seq_len * np.linalg.slogdet(R)[1]
+        # logc += -0.5 * np.sum((data - d) * np.linalg.solve(R, (data - d).T).T)
+        # return J_diag, J_lower_diag, h, logc
 
-        return J_diag, J_lower_diag, h, logc

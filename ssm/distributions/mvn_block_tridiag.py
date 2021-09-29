@@ -3,17 +3,12 @@ import jax.numpy as np
 import jax.random as jr
 from jax import lax, value_and_grad
 from jax.scipy.linalg import solve_triangular
-from tensorflow_probability.python import internal
 
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
-# from tensorflow_probability.python.internal import parameter_properties
-# from tensorflow_probability.python.internal import prefer_static as ps
-# from tfp.bijectors import fill_scale_tril as fill_scale_tril_bijector
-# from tensorflow_probability.python.internal import dtype_util
 
 
-def _forward_pass(J_diag, J_lower_diag, h, logc):
+def _forward_pass(J_diag, J_lower_diag, h):
     """ TODO
     """
     # extract dimensions
@@ -52,7 +47,7 @@ def _forward_pass(J_diag, J_lower_diag, h, logc):
     # Initialize
     Jp0 = np.zeros((dim, dim))
     hp0 = np.zeros((dim,))
-    (_, _, log_Z), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, logc), np.arange(num_timesteps))
+    (_, _, log_Z), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, 0), np.arange(num_timesteps))
     return log_Z, (filtered_Js, filtered_hs)
 
 
@@ -97,7 +92,6 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
                  precision_diag_blocks=None,
                  precision_lower_diag_blocks=None,
                  linear_potential=None,
-                 logc=None,
                  mean=None,
                  validate_args=False,
                  allow_nan_stats=True,
@@ -116,22 +110,16 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
 
         assert mean is not None or linear_potential is not None
         if mean is not None and linear_potential is None:
-            # Convert mean (\mu) to linear potential (h)
-            # using precision blocks (J) via h = J \mu
-            raise NotImplementedError
-
+            linear_potential = np.einsum('tij,tj->ti', precision_diag_blocks, mean)
+            linear_potential = linear_potential.at[:-1].add(
+                np.einsum('tji,tj->ti', precision_lower_diag_blocks, mean[1:]))
+            linear_potential = linear_potential.at[1:].add(
+                np.einsum('tij,tj->ti', precision_lower_diag_blocks, mean[:-1]))
         else:
             assert linear_potential.shape == (self._num_timesteps, self._dim)
-            self._linear_potential = linear_potential
+        self._linear_potential = linear_potential
 
-        self._logc = logc
-
-        # just get log normalizer (with logc)
-        # self._log_noramlizer, _ = _forward_pass(self._precision_diag_blocks,
-        #                                         self._precision_lower_diag_blocks,
-        #                                         self._linear_potential,
-        #                                         self._logc)
-
+        # Keep track of whether or not we've run message passing
         self.ran_message_passing = False
 
         super().__init__(
@@ -141,8 +129,7 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
             reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
             parameters=dict(precision_diag_blocks=self._precision_diag_blocks,
                             precision_lower_diag_blocks=self._precision_lower_diag_blocks,
-                            linear_potential=self._linear_potential,
-                            logc=self._logc),
+                            linear_potential=self._linear_potential),
             name=name,
         )
 
@@ -153,7 +140,6 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
             precision_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
             precision_lower_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
             linear_potential=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
-            logc=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
         )
 
     def _log_prob(self, data, **kwargs):
@@ -163,8 +149,6 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         lp -= self.log_normalizer
         return lp
 
-        # log p(x,y) - log p(y) = log p(x|y)
-
     def message_passing(self):
         # Run message passing code to get the log normalizer, the filtering potentials,
         # and the expected values of x.
@@ -172,8 +156,7 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         (self._log_normalizer, (self._filtered_Js, self._filtered_hs)), grads = \
             f(self._precision_diag_blocks,
               self._precision_lower_diag_blocks,
-              self._linear_potential,
-              self._logc)
+              self._linear_potential)
 
         self._ExxT = -2 * grads[0]
         self._ExnxT = -grads[1]
