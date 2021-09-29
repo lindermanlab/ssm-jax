@@ -4,6 +4,7 @@ import jax.numpy as np
 from jax import jit, value_and_grad, hessian, vmap, jacfwd, jacrev
 from jax.scipy.linalg import solve_triangular
 from jax import lax
+from jax.tree_util import register_pytree_node_class
 
 from ssm.models.lds import GaussianLDS
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
@@ -87,9 +88,38 @@ def lds_expected_states(J_diag, J_lower_diag, h, logc):
     ExnxT = -E_neg_xnxT
     return marginal_likelihood, Ex, ExxT, ExnxT
 
+@register_pytree_node_class
+class Posterior:
+    def __init__(self, lp, Ex, ExxT, ExnxT):
+        self._log_normalizer = lp
+        self.Ex = Ex
+        self.ExxT = ExxT
+        self.ExnxT = ExnxT
+    
+    @property
+    def mean(self):
+        return self.Ex
+    
+    @property
+    def second_moments(self):
+        return self.ExxT, self.ExnxT
+    
+    def tree_flatten(self):
+        children = (self._log_normalizer,
+                    self.Ex,
+                    self.ExxT,
+                    self.ExnxT)
+        aux_data = None
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
 
 # Expectation-Maximization
 def _exact_e_step(gaussian_lds, data):
+    # marginal_likelihood, Ex, ExxT, ExnxT = lds_expected_states(*gaussian_lds.natural_parameters(data))
+    # return Posterior(marginal_likelihood, Ex, ExxT, ExnxT)
     return MultivariateNormalBlockTridiag(*gaussian_lds.natural_parameters(data))
 
 
@@ -342,7 +372,7 @@ def em(lds,
 
     for itr in pbar:
         lds, posterior = step(lds)
-        lp = posterior._log_normalizer
+        lp = posterior.log_normalizer
         log_probs.append(lp)
         if verbosity:
             pbar.set_description("LP: {:.3f}".format(lp))

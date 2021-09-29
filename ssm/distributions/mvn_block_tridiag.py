@@ -34,7 +34,7 @@ def _forward_pass(J_diag, J_lower_diag, h, logc):
         trm1 = solve_triangular(sqrt_Jc, hc, lower=True)
         trm2 = solve_triangular(sqrt_Jc, J_lower_diag_pad[t].T, lower=True)
         log_Z = 0.5 * dim * np.log(2 * np.pi)
-        log_Z += -np.sum(np.log(np.diag(sqrt_Jc)))
+        log_Z += -np.sum(np.log(np.diag(sqrt_Jc)))  # sum these terms only to get approx log|J|
         log_Z += 0.5 * np.dot(trm1.T, trm1)
         Jp = -np.dot(trm2.T, trm2)
         hp = -np.dot(trm2.T, trm1)
@@ -125,20 +125,15 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
             
         self._logc = logc
 
-        # Run message passing code to get the log normalizer, the filtering potentials,
-        # and the expected values of x.
-        f = value_and_grad(_forward_pass, argnums=(0, 1, 2), has_aux=True)
-        (self._log_normalizer, (self._filtered_Js, self._filtered_hs)), grads = \
-            f(self._precision_diag_blocks,
-              self._precision_lower_diag_blocks,
-              self._linear_potential,
-              logc)
+        # just get log normalizer (with logc)
+        # self._log_noramlizer, _ = _forward_pass(self._precision_diag_blocks, 
+        #                                         self._precision_lower_diag_blocks,
+        #                                         self._linear_potential,
+        #                                         self._logc)
 
-        self._ExxT = -2 * grads[0]
-        self._ExnxT = -grads[1]
-        self._Ex = grads[2]
+        self.ran_message_passing = False
 
-        super(MultivariateNormalBlockTridiag, self).__init__(
+        super().__init__(
             dtype=precision_diag_blocks.dtype,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
@@ -164,15 +159,43 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         lp = -0.5 * np.einsum('...ti,tij,...tj->...', data, self._precision_diag_blocks, data)
         lp += -np.einsum('...ti,tij,...tj->...', data[1:], self._precision_lower_diag_blocks, data[:-1])
         lp += np.einsum('...ti,ti->...', data, self._linear_potential)
-        lp -= self._log_normalizer
+        lp -= self.log_normalizer
         return lp
+    
+        # log p(x,y) - log p(y) = log p(x|y)
+    
+    def message_passing(self):
+        # Run message passing code to get the log normalizer, the filtering potentials,
+        # and the expected values of x.
+        f = value_and_grad(_forward_pass, argnums=(0, 1, 2), has_aux=True)
+        (self._log_normalizer, (self._filtered_Js, self._filtered_hs)), grads = \
+            f(self._precision_diag_blocks,
+              self._precision_lower_diag_blocks,
+              self._linear_potential,
+              self._logc)
+
+        self._ExxT = -2 * grads[0]
+        self._ExnxT = -grads[1]
+        self._Ex = grads[2] 
+        
+        self.ran_message_passing = True
+        
+    @property
+    def log_normalizer(self):
+        if not self.ran_message_passing:
+            self.message_passing()
+        return self._log_normalizer
 
     @property
     def mean(self):
+        if not self.ran_message_passing:
+            self.message_passing()
         return self._Ex
 
     @property
     def second_moments(self):
+        if not self.ran_message_passing:
+            self.message_passing()
         return self._ExxT, self._ExnxT
 
     def _sample(self, seed=None, sample_shape=()):
