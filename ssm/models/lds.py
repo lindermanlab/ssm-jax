@@ -22,12 +22,49 @@ class GLMLDS(SSM):
 
         # TODO: better parameter checking
         assert isinstance(initial_distribution, tfp.distributions.MultivariateNormalTriL)
-        assert isinstance(dynamics_distribution, GaussianGLM)
+        assert isinstance(dynamics_distribution, GaussianGLM) or isinstance(dynamics_distribution, GaussianLinearRegression)
         assert type(emissions_distribution) in _GLM_DISTRIBUTIONS
 
         self._initial_distribution = initial_distribution
         self._dynamics_distribution = dynamics_distribution
         self._emissions_distribution = emissions_distribution
+        
+    @property
+    def latent_dim(self):
+        return self._emissions_distribution.weights.shape[-1]
+
+    @property
+    def emissions_dim(self):
+        return self._emissions_distribution.weights.shape[-2]
+
+    @property
+    def initial_mean(self):
+        return self._initial_distribution.loc
+
+    @property
+    def initial_covariance(self):
+        return self._initial_distribution.covariance()
+
+    @property
+    def dynamics_matrix(self):
+        return self._dynamics_distribution.weights
+
+    @property
+    def dynamics_bias(self):
+        return self._dynamics_distribution.bias
+
+    @property
+    def dynamics_noise_covariance(self):
+        Q_sqrt = self._dynamics_distribution.scale_tril
+        return Q_sqrt @ Q_sqrt.T
+
+    @property
+    def emissions_matrix(self):
+        return self._emissions_distribution.weights
+
+    @property
+    def emissions_bias(self):
+        return self._emissions_distribution.bias
 
     def tree_flatten(self):
         children = (self._initial_distribution,
