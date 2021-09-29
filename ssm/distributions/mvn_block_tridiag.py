@@ -55,6 +55,7 @@ def _forward_pass(J_diag, J_lower_diag, h, logc):
     (_, _, log_Z), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, logc), np.arange(num_timesteps))
     return log_Z, (filtered_Js, filtered_hs)
 
+
 class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
     """
     Multivariate normal distribution whose _precision_ matrix is
@@ -122,11 +123,11 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         else:
             assert linear_potential.shape == (self._num_timesteps, self._dim)
             self._linear_potential = linear_potential
-            
+
         self._logc = logc
 
         # just get log normalizer (with logc)
-        # self._log_noramlizer, _ = _forward_pass(self._precision_diag_blocks, 
+        # self._log_noramlizer, _ = _forward_pass(self._precision_diag_blocks,
         #                                         self._precision_lower_diag_blocks,
         #                                         self._linear_potential,
         #                                         self._logc)
@@ -144,7 +145,7 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
                             logc=self._logc),
             name=name,
         )
-        
+
     @classmethod
     def _parameter_properties(cls, dtype, num_classes=None):
         # pylint: disable=g-long-lambda
@@ -161,9 +162,9 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         lp += np.einsum('...ti,ti->...', data, self._linear_potential)
         lp -= self.log_normalizer
         return lp
-    
+
         # log p(x,y) - log p(y) = log p(x|y)
-    
+
     def message_passing(self):
         # Run message passing code to get the log normalizer, the filtering potentials,
         # and the expected values of x.
@@ -176,10 +177,10 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
 
         self._ExxT = -2 * grads[0]
         self._ExnxT = -grads[1]
-        self._Ex = grads[2] 
-        
+        self._Ex = grads[2]
+
         self.ran_message_passing = True
-        
+
     @property
     def log_normalizer(self):
         if not self.ran_message_passing:
@@ -235,4 +236,21 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         return samples
 
     def _entropy(self):
-        raise NotImplementedError
+        """
+        Compute the entropy
+
+            H[X] = -E[\log p(x)]
+                 = -E[-1/2 x^T J x + x^T h - log Z(J, h)]
+                 = 1/2 <J, E[x x^T] - <h, E[x]> + log Z(J, h)
+        """
+        Ex = self.mean
+        ExxT, ExnxT = self.second_moments
+        J_diag = self._precision_diag_blocks
+        J_lower_diag = self._precision_lower_diag_blocks
+        h = self._linear_potential
+
+        entropy = 0.5 * np.sum(J_diag * ExxT)
+        entropy += np.sum(J_lower_diag * ExnxT)
+        entropy -= np.sum(h, Ex)
+        entropy += self.log_normalizer
+        return entropy
