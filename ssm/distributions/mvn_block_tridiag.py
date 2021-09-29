@@ -177,6 +177,16 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         return self._Ex
 
     @property
+    def covariance(self):
+        """
+        NOTE: This computes the _marginal_ covariance Cov[x_t] for each t
+        """
+        # TODO: support batching?
+        Ex = self.mean
+        ExxT, _ = self.second_moments
+        return ExxT - Ex[:, :, None] * Ex[:, None, :]
+
+    @property
     def second_moments(self):
         if not self.ran_message_passing:
             self.message_passing()
