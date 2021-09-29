@@ -10,42 +10,24 @@ from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 import jax.experimental.optimizers as optimizers
 
 
-def _exact_marginal_likelihood(model, data, posterior):
+# Expectation-Maximization
+def _exact_e_step(lds, data):
+    return MultivariateNormalBlockTridiag(*lds.natural_parameters(data))
+
+
+def _exact_marginal_likelihood(lds, data, posterior=None):
     """
     For a Gaussian LDS, we can compute the exact marginal likelihood of
     the data (y) given the posterior p(x | y) via Bayes' rule:
 
         \log p(y) = \log p(y, x) - \log p(x | y)
 
-    This equality holds for _any_ choice of x.
+    This equality holds for _any_ choice of x. We'll use the posterior mean.
     """
-    states = np.zeros((len(data), model.latent_dim))
-    return model.log_probability(states, data) - posterior.log_prob(states)
-
-
-def _elbo(rng, model, data, posterior, num_samples=1):
-    """
-    For nonconjugate models like an LDS with GLM emissions, we can compute
-    an _evidence lower bound_ (ELBO) using the joint probability and an
-    approximate posterior q(x) \approx p(x | y):
-
-        log p(y) \geq E_q[\log p(y, x) - \log q(x)]
-
-    While in some cases the expectation can be computed in closed form, in
-    general we will approximate it with ordinary Monte Carlo.
-    """
-    states = posterior.sample(rng, num_samples=num_samples)
-    return np.mean(model.log_prob(states, data) - posterior.log_prob(states))
-
-
-# def _elbo_alt(rng, model, data, posterior, num_samples=1):
-#     states = posterior.sample(rng, num_samples=num_samples)
-#     return np.mean(model.log_prob(states, data)) + posterior.entropy()
-
-
-# Expectation-Maximization
-def _exact_e_step(lds, data):
-    return MultivariateNormalBlockTridiag(*lds.natural_parameters(data))
+    if posterior is None:
+        posterior = _exact_e_step(lds, data)
+    states = posterior.mean
+    return lds.log_probability(states, data) - posterior.log_prob(states)
 
 
 def _exact_m_step_initial_distribution(lds, data, posterior, prior=None):
@@ -148,8 +130,6 @@ def em(lds,
         num_iters: Number of update iterations to perform EM.
         tol: Tolerance to determine EM convergence.
         verbosity: Determines whether a progress bar is displayed for the EM fit iterations.
-        m_step_type: Determines how the model parameters are updated.
-            Currently, only ``exact`` is supported for Gaussian LDS.
         patience: The number of steps to wait before algorithm convergence is declared.
 
     Returns:
@@ -161,7 +141,7 @@ def em(lds,
     @jit
     def step(lds):
         posterior = _exact_e_step(lds, data)
-        lp = _exact_marginal_likelihood(lds, data, posterior)
+        lp = _exact_marginal_likelihood(lds, data, posterior=posterior)
         lds = _exact_m_step(lds, data, posterior)
         return lds, posterior, lp
 
@@ -195,7 +175,7 @@ def em(lds,
 
 
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
-def _fit_laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=1500):
+def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=1500):
     """Find the mode of the log joint for the Laplace approximation.
 
     Args:
@@ -228,7 +208,7 @@ def _fit_laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=1500):
     return get_params(opt_state)
 
 
-def _fit_laplace_negative_hessian(lds, states, data):
+def _laplace_negative_hessian(lds, states, data):
     """[summary]
 
     Args:
@@ -274,12 +254,32 @@ def _laplace_e_step(lds, data, initial_states):
     J := H_{xx} \log p(y, x; \theta) |_{x=x*}
     """
     # find mode x*
-    states = _fit_laplace_find_mode(lds, initial_states, data)
+    states = _laplace_find_mode(lds, initial_states, data)
     # compute negative hessian at the mode, J(x*)
-    J_diag, J_lower_diag = _fit_laplace_negative_hessian(lds, states, data)
+    J_diag, J_lower_diag = _laplace_negative_hessian(lds, states, data)
     return MultivariateNormalBlockTridiag(J_diag,
                                           J_lower_diag,
                                           mean=states)
+
+
+def _elbo(rng, model, data, posterior, num_samples=1):
+    """
+    For nonconjugate models like an LDS with GLM emissions, we can compute
+    an _evidence lower bound_ (ELBO) using the joint probability and an
+    approximate posterior q(x) \approx p(x | y):
+
+        log p(y) \geq E_q[\log p(y, x) - \log q(x)]
+
+    While in some cases the expectation can be computed in closed form, in
+    general we will approximate it with ordinary Monte Carlo.
+    """
+    states = posterior.sample(rng, num_samples=num_samples)
+    return np.mean(model.log_prob(states, data) - posterior.log_prob(states))
+
+
+# def _elbo_alt(rng, model, data, posterior, num_samples=1):
+#     states = posterior.sample(rng, num_samples=num_samples)
+#     return np.mean(model.log_prob(states, data)) + posterior.entropy()
 
 
 def _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=None, learning_rate=1e-3, num_timesteps=1000):

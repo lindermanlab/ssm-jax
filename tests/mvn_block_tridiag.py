@@ -1,13 +1,42 @@
 import jax.numpy as np
 import jax.random as jr
 
-def make_big_Jh(key, T=10, D=2):
-    k1, k2, k3 = jr.split(key, 3)
-    J_diag_sqrt = jr.normal(k1, shape=(T, D, D))
-    J_diag = np.einsum('tij,tji->tij', J_diag_sqrt, J_diag_sqrt)
-    J_lower_diag = jr.normal(k2, shape=(T-1, D, D))
-    h = jr.normal(k3, shape=(T, D))
+from tensorflow_probability.substrates import jax as tfp
 
+from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
+from ssm.distributions.linreg import GaussianLinearRegression
+from ssm.models.lds import GaussianLDS
+from ssm.utils import random_rotation
+
+
+def random_lds(key, T=10, D=2, N=4):
+    """
+    Make a random LDS with T time steps, D latent dimensions, N emission dims.
+    """
+    k1, k2 = jr.split(key, 2)
+    m0 = np.zeros(D)
+    Q0 = np.eye(D)
+
+    initial_distribution = tfp.distributions.MultivariateNormalTriL(m0, Q0)
+
+
+    dynamics_distribution = GaussianLinearRegression(
+        random_rotation(k1, D, theta=np.pi/20),
+        np.zeros(D),
+        0.1**2 * np.eye(D))
+
+    emissions_distribution = GaussianLinearRegression(
+        jr.normal(k2, shape=(N, D)),
+        np.zeros(N),
+        1.0**2 * np.eye(N))
+
+    return GaussianLDS(initial_distribution,
+                       dynamics_distribution,
+                       emissions_distribution)
+
+
+def make_big_Jh(J_diag, J_lower_diag, h):
+    T, D = h.shape
     big_J = np.zeros((T * D, T * D))
     for t in range(T):
         tslc = slice(t * D, (t+1) * D)
@@ -21,16 +50,20 @@ def make_big_Jh(key, T=10, D=2):
 
     big_h = h.ravel()
 
-    return J_diag, J_lower_diag, h, big_J, big_h
+    return big_J, big_h
 
 
-def test_mean_to_h(key, T=10, D=2):
+def test_mean_to_h(key, T=10, D=2, N=4):
     """
     This conversion is performed in the MultivariateNormalBlockTridiag constructor.
     """
-    k1, k2 = jr.split(key, 2)
-    mean = jr.normal(k1, shape=(T, D))
-    J_diag, J_lower_diag, _, big_J, _ = make_big_Jh(k2, T=T, D=D)
+    k1, k2, k3 = jr.split(key, 3)
+    lds = random_lds(k1, T=T, D=D, N=N)
+    data = jr.normal(k2, shape=(T, N))
+    J_diag, J_lower_diag, h = lds.natural_parameters(data)
+    big_J, big_h = make_big_Jh(J_diag, J_lower_diag, h)
+
+    mean = jr.normal(k3, shape=(T, D))
 
     # Compute the linear potential naively
     linear_potential_comp = (big_J @ mean.ravel()).reshape((T, D))
@@ -50,6 +83,64 @@ def test_mean_to_h(key, T=10, D=2):
     print("success")
 
 
+def test_mvn_log_prob(key, T=10, D=2, N=4):
+    """
+    This conversion is performed in the MultivariateNormalBlockTridiag constructor.
+    """
+    k1, k2, k3 = jr.split(key, 3)
+    lds = random_lds(k1, T=T, D=D, N=N)
+    x, y = lds.sample(k2, T)
+    J_diag, J_lower_diag, h = lds.natural_parameters(y)
+    big_J, big_h = make_big_Jh(J_diag, J_lower_diag, h)
+
+    # Make normal (mean) parameters
+    big_Sigma = np.linalg.inv(big_J)
+    big_mu = big_Sigma @ big_h
+    big_x = x.ravel()
+    big_mvn = tfp.distributions.MultivariateNormalFullCovariance(big_mu, big_Sigma)
+    lp_comp = big_mvn.log_prob(big_x)
+
+    mvn = MultivariateNormalBlockTridiag(J_diag, J_lower_diag, h)
+    lp = mvn.log_prob(x)
+
+    assert np.isclose(lp, lp_comp, atol=1e-2)
+    assert np.isfinite(lp)
+
+
+def test_lds_log_prob(key, T=10, D=2, N=4):
+    from ssm.inference.lds import _exact_e_step, _exact_marginal_likelihood
+
+    k1, k2, k3 = jr.split(key, 3)
+    lds = random_lds(k1, T=T, D=D, N=N)
+    x, y = lds.sample(k2, T)
+    posterior = _exact_e_step(lds, y)
+
+    # Comparison: manually compute the "log c" correction to the posterior log normalizer
+    m1 = lds._initial_distribution.mean()
+    Q1 = lds._initial_distribution.covariance()
+    b = lds._dynamics_distribution.bias
+    Q = lds._dynamics_distribution.scale
+    d = lds._emissions_distribution.bias
+    R = lds._emissions_distribution.scale
+
+    logc = -0.5 * T * D * np.log(2 * np.pi)
+    logc += -0.5 * np.linalg.slogdet(Q1)[1]
+    logc += -0.5 * np.dot(m1, np.linalg.solve(Q1, m1))
+    logc += -0.5 * (T - 1) * np.linalg.slogdet(Q)[1]
+    logc += -0.5 * (T - 1) * np.dot(b, np.linalg.solve(Q, b))
+    logc += -0.5 * T * N * np.log(2 * np.pi)
+    logc += -0.5 * T * np.linalg.slogdet(R)[1]
+    logc += -0.5 * np.sum((y - d) * np.linalg.solve(R, (y - d).T).T)
+
+    lp_comp = posterior.log_normalizer + logc
+    lp = _exact_marginal_likelihood(lds, y)
+
+    assert np.isclose(lp, lp_comp, atol=1e-2)
+    assert np.isfinite(lp)
+
+
 if __name__ == "__main__":
     key = jr.PRNGKey(0)
-    test_mean_to_h(key)
+    # test_mean_to_h(key)
+    # test_mvn_log_prob(key)
+    test_lds_log_prob(key)

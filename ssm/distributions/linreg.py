@@ -65,6 +65,10 @@ class GaussianLinearRegression(tfp.distributions.Distribution):
     def scale_tril(self):
         return self._scale_tril
 
+    @property
+    def scale(self):
+        return np.einsum('...ij,...ji->...ij', self.scale_tril, self.scale_tril)
+
     def predict(self, covariates=None):
         return tfp.distributions.MultivariateNormalTriL(
             covariates @ self.weights.T + self.bias, self.scale_tril)
