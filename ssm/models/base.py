@@ -5,6 +5,17 @@ Base state-space model class.
 import jax.random as jr
 from jax import lax
 
+def test(states, data):
+    """This is a test docstring in Libby's format.
+    
+    Args:
+        states (array, (num_timesteps, state_dim)):
+            Latent state vectors over time.
+        
+    Returns:
+        log_likelihoods (array; (num_timesteps,)):
+            Per-timestep log likelihoods of the form :math:`log p(y_t | x_t)`
+    """
 
 class SSM(object):
     """ 
@@ -17,6 +28,9 @@ class SSM(object):
     def initial_distribution(self):
         """
         The distribution over the initial state of the SSM.
+        
+        .. math::
+            p(x_1)
 
         Returns:
             initial_distribution (tfp.distribution.Distribution):
@@ -27,6 +41,9 @@ class SSM(object):
     def dynamics_distribution(self, state: float):
         """
         The dynamics (or state-transition) distribution conditioned on the current state.
+        
+        .. math::
+            p(x_{t+1} | x_t)
 
         Args:
             state: The current state on which to condition the dynamics.
@@ -40,6 +57,9 @@ class SSM(object):
     def emissions_distribution(self, state: float):
         """
         The emissions (or observation) distribution conditioned on the current state.
+        
+        .. math::
+            p(y_t | x_t)
 
         Args:
             state: The current state on which to condition the emissions.
@@ -53,10 +73,13 @@ class SSM(object):
     def log_probability(self, states, data):
         """
         Computes the log joint probability of a set of states and data (observations).
+        
+        .. math::
+            \log p(x, y) = \log p(x_1) + \sum_{t=1}^{T-1} \log p(x_{t+1} | x_t) + \sum_{t=1}^{T} \log p(y_t | x_t)
 
         Args:
-            states: An array of latent states.
-            data: An array of the observed data.
+            states: An array of latent states (:math:`x_{1:T}`).
+            data: An array of the observed data (:math:`y_{1:T}`).
 
         Returns:
             lp:
@@ -78,7 +101,10 @@ class SSM(object):
 
     def sample(self, key, num_steps: int, covariates=None, initial_state=None):
         """
-        Sample the state space model for specified number of steps.
+        Sample from the joint distribution defined by the state space model.
+        
+        .. math::
+            x, y \sim p(x, y)
 
         Args:
             key (PRNGKey): A JAX pseudorandom number generator key.
@@ -89,8 +115,8 @@ class SSM(object):
                 Default is None which samples the intial state from the initial distribution.
                 
         Returns:
-            states: A ``(timesteps,)`` array of the state value across time.
-            emissions: A ``(timesteps, obs_dim)`` array of the observations across time. 
+            states: A ``(timesteps,)`` array of the state value across time (:math:`x`).
+            emissions: A ``(timesteps, obs_dim)`` array of the observations across time (:math:`y`). 
 
         """
         if initial_state is None:

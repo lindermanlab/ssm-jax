@@ -19,6 +19,13 @@ class GLMLDS(SSM):
                  initial_distribution,
                  dynamics_distribution,
                  emissions_distribution):
+        """TODO
+
+        Args:
+            initial_distribution ([type]): [description]
+            dynamics_distribution ([type]): [description]
+            emissions_distribution ([type]): [description]
+        """
 
         # TODO: better parameter checking
         assert isinstance(initial_distribution, tfp.distributions.MultivariateNormalTriL)
@@ -97,7 +104,12 @@ class GaussianLDS(SSM):
                  initial_distribution,
                  dynamics_distribution,
                  emissions_distribution):
-        """ TODO
+        """TODO
+
+        Args:
+            initial_distribution ([type]): [description]
+            dynamics_distribution ([type]): [description]
+            emissions_distribution ([type]): [description]
         """
         assert isinstance(initial_distribution, tfp.distributions.MultivariateNormalTriL)
         assert isinstance(dynamics_distribution, GaussianLinearRegression)
@@ -174,10 +186,6 @@ class GaussianLDS(SSM):
 
     def natural_parameters(self, data):
         """ TODO
-
-        Some thoughts:
-            - should natural parameters be a part of inference?
-            - here, we can compute these exactly but with Laplace EM these are approximates
         """
         seq_len = data.shape[0]
 
