@@ -36,9 +36,11 @@ def test_basic(key, K=3, D=2, N=10, T=100):
     slds = random_slds(k1, K=K, D=D, N=N)
     states, data = slds.sample(k2, num_steps=T)
     assert isinstance(states, dict)
-    assert 'z' in states and 'x' in states
-    assert states['z'].shape == (T,) and states['z'].dtype == np.int32
-    assert states['x'].shape == (T, D) and states['x'].dtype == np.float32
+    assert 'discrete' in states and 'continuous' in states
+    assert states['discrete'].shape == (T,)
+    assert states['discrete'].dtype == np.int32
+    assert states['continuous'].shape == (T, D)
+    assert states['continuous'].dtype == np.float32
     assert data.shape == (T, N) and data.dtype == np.float32
 
 

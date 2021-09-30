@@ -62,24 +62,25 @@ class GaussianSLDS(SSM):
 
     def initial_distribution(self):
         return tfd.JointDistributionNamed(dict(
-            z=          tfd.Categorical(logits=self.initial_state_logits),
-            x=lambda z: tfd.MultivariateNormalTriL(loc=self.initial_means[z],
-                                                   scale_tril=self.initial_scale_trils[z])
+            discrete=tfd.Categorical(logits=self.initial_state_logits),
+            continuous=lambda discrete: \
+                tfd.MultivariateNormalTriL(loc=self.initial_means[discrete],
+                                           scale_tril=self.initial_scale_trils[discrete])
         ))
 
     def dynamics_distribution(self, state):
-        z_prev = state["z"]
-        x_prev = state["x"]
+        z_prev = state["discrete"]
+        x_prev = state["continuous"]
         return tfd.JointDistributionNamed(dict(
-            z=          tfd.Categorical(logits=self.transition_logits[z_prev]),
-            x=lambda z: tfd.MultivariateNormalTriL(
-                loc=self.dynamics_matrices[z] @ x_prev + self.dynamics_biases[z],
-                scale_tril=self.dynamics_scale_trils[z])
+            discrete=tfd.Categorical(logits=self.transition_logits[z_prev]),
+            continuous=lambda discrete: tfd.MultivariateNormalTriL(
+                loc=self.dynamics_matrices[discrete] @ x_prev + self.dynamics_biases[discrete],
+                scale_tril=self.dynamics_scale_trils[discrete])
         ))
 
     def emissions_distribution(self, state):
-        z = state["z"]
-        x = state["x"]
+        z = state["discrete"]
+        x = state["continuous"]
         return tfd.MultivariateNormalTriL(
             loc=self.emissions_matrices[z] @ x + self.emissions_biases[z],
             scale_tril=self.emissions_scale_trils[z])
