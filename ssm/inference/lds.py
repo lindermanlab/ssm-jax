@@ -19,13 +19,26 @@ def _exact_e_step(lds, data):
 
 
 def _exact_marginal_likelihood(lds, data, posterior=None):
-    """
+    """The exact marginal likelihood of the observed data.
+    
     For a Gaussian LDS, we can compute the exact marginal likelihood of
     the data (y) given the posterior p(x | y) via Bayes' rule:
 
+    .. math::
         \log p(y) = \log p(y, x) - \log p(x | y)
 
     This equality holds for _any_ choice of x. We'll use the posterior mean.
+    
+    Args:
+        - lds (LDS): The LDS model.
+        - data (array, (num_timesteps, obs_dim)): The observed data.
+        - posterior (MultivariateNormalBlockTridiag): 
+            The posterior distribution on the latent states. If None, 
+            the posterior is computed from the `lds` via message passing. 
+            Defaults to None.
+            
+    Returns:
+        - lp (float): The marginal log likelihood of the data.
     """
     if posterior is None:
         posterior = _exact_e_step(lds, data)
@@ -122,7 +135,6 @@ def em(lds,
        num_iters: int=100,
        tol: float=1e-4,
        verbosity: Verbosity=Verbosity.DEBUG,
-       patience: int=5,
     ):
     """
     Run EM for a Gaussian LDS given observed data.
@@ -133,7 +145,6 @@ def em(lds,
         num_iters: Number of update iterations to perform EM.
         tol: Tolerance to determine EM convergence.
         verbosity: Determines whether a progress bar is displayed for the EM fit iterations.
-        patience: The number of steps to wait before algorithm convergence is declared.
 
     Returns:
         log_probs (array): log probabilities per iteration
@@ -153,7 +164,6 @@ def em(lds,
     pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
     if verbosity:
         pbar.set_description("[jit compiling...]")
-    init_patience = patience
 
     for itr in pbar:
         lds, posterior, lp = step(lds)
@@ -162,33 +172,42 @@ def em(lds,
             pbar.set_description("LP: {:.3f}".format(lp))
 
         # Check for convergence
-        # TODO: make this cleaner with patience
         if itr > 1 and abs(log_probs[-1] - log_probs[-2]) < tol:
-            if patience == 0:
-                if verbosity:
-                    pbar.set_description("[converged] LP: {:.3f}".format(lp))
-                    pbar.refresh()
+            if verbosity:
+                pbar.set_description("[converged] LP: {:.3f}".format(lp))
+                pbar.refresh()
                 break
-            else:
-                patience -= 1
-        else:
-            patience = init_patience
-
+            
     return np.array(log_probs), lds, posterior
 
 
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
-def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, method="Adam", num_iters=50):
+def _laplace_find_mode(lds, x0, data, method="BFGS", num_iters=50, learning_rate=1e-3):
     """Find the mode of the log joint for the Laplace approximation.
+    
+    Here, we seek to find
+    
+    .. math:
+        \\argmax_{x_{1:T}} \log p(x_{1:T}, y_{1:T})
+        
+    where :math:`y_{1:T}` is fixed. It turns out this objective is a concave function. 
 
     Args:
-        lds ([type]): [description]
-        x0 ([type]): [description]
-        data ([type]): [description]
-        learning_rate ([type], optional): [description]. Defaults to 1e-3.
+        lds (LDS): The LDS model object.
+        x0 (array, (num_timesteps, latent_dim)): Initial guess of state mode.
+        data (array, (num_timesteps, obs_dim)): Observation data.
+        method (str, optional): Optimization method to use. Choices are 
+            ["BFGS", "Adam"]. Defaults to "BFGS".
+        learning_rate (float, optional): [description]. Defaults to 1e-3.
+        num_iters (int, optional): Only used when optimization method is "Adam."
+            Specifies the number of update iterations. Defaults to 50.
+
+    Raises:
+        ValueError: If the method is not one of "Adam" or "BFGS."
 
     Returns:
-        [type]: [description]
+        x_mode (array, (num_timesteps, latent_dim)): The most likely states.
+            Or the mode of the log joint probability holding data fixed.
     """
 
     scale = x0.size
@@ -232,16 +251,21 @@ def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, method="Adam", num_ite
 
 
 def _laplace_negative_hessian(lds, states, data):
-    """[summary]
+    """Get the negative Hessian of the LDS for the Laplace approximation evaluated at x = states.
+    
+    Since we know the Hessian has a block tridiagonal structure, we can compute it in a piecewise
+    fashion by taking the Hessian of the different components of the joint log probability of the LDS.
 
     Args:
-        lds ([type]): [description]
-        states ([type]): [description]
-        data ([type]): [description]
+        lds (LDS): The LDS model object.
+        states (array, (num_timesteps, latent_dim)): The states at which to evaluate the Hessian.
+        data (array, (num_timesteps, obs_dim)): The observed data.
 
     Returns:
-        J_diag
-        J_lower_diag
+        J_diag (array, (num_timesteps, latent_dim, latent_dim)):
+            The diagonal blocks of the tridiagonal negative Hessian.
+        J_lower_diag (array, (num_timesteps - 1, latent_dim, latent_dim)):
+            The lower diagonal blocks of the tridiagonal negative Hessian.
     """
     # initial distribution
     J_init = -1 * hessian(lds.initial_distribution().log_prob)(states[0])
@@ -269,10 +293,7 @@ def _laplace_negative_hessian(lds, states, data):
 
 def _laplace_e_step(lds, data, initial_states, num_laplace_mode_iters=10, laplace_mode_fit_method="Adam"):
     """
-    Laplace approximation to p(x | y, \theta) for non-Gaussian emission models.
-
-    q <-- N(x*, -1 * J)
-    J := H_{xx} \log p(y, x; \theta) |_{x=x*}
+    Laplace approximation to the posterior distribution for nonconjugate models.
     """
     # find mode x*
     states = _laplace_find_mode(lds, initial_states, data, num_iters=num_laplace_mode_iters, method=laplace_mode_fit_method)
@@ -287,9 +308,10 @@ def _elbo(rng, model, data, posterior, num_samples=1):
     """
     For nonconjugate models like an LDS with GLM emissions, we can compute
     an _evidence lower bound_ (ELBO) using the joint probability and an
-    approximate posterior q(x) \approx p(x | y):
+    approximate posterior :math:`q(x) \\approx p(x | y)`:
 
-        log p(y) \geq E_q[\log p(y, x) - \log q(x)]
+    .. math:
+        log p(y) \geq \mathbb{E}_q \left[\log p(y, x) - \log q(x) \\right]
 
     While in some cases the expectation can be computed in closed form, in
     general we will approximate it with ordinary Monte Carlo.
@@ -308,7 +330,31 @@ def _elbo(rng, model, data, posterior, num_samples=1):
 #     return np.mean(model.log_prob(states, data)) + posterior.entropy()
 
 
-def _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=None, learning_rate=1e-3, num_timesteps=50):
+def _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=None):
+    """Update the parameters of the emissions distribution via an approximate M step using samples from posterior.
+    
+    Uses BFGS to optimize the expected log probability of the emission via Monte Carlo estimate.
+    
+    For nonconjugate models like the GLM-LDS, we do not have a closed form expression for the objective nor solution
+    to the M step parameter update for the emissions model. This is because the objective is technically an
+    expectation under a Gaussian posterior on the latent states.
+    
+    We can approximate an update to our emissions distribution using a Monte Carlo estimate of this expectation, 
+    wherein we sample latent-state trajectories from our (potentially approximate) posterior and use these samples
+    to compute the objective (the log probability of the data under the emissions distribution).
+
+    Args:
+        rng (jax.random.PRNGKey): JAX random seed.
+        lds (LDS): The LDS model object.
+        data (array, (num_timesteps, obs_dim)): Array of observed data.
+        posterior (MultivariateNormalBlockTridiagonal):
+            The LDS posterior object. 
+        prior (LDSPrior, optional): The prior distributions. Not yet supported. Defaults to None.
+
+    Returns:
+        emissions_distribution (tfp.distributions.Distribution): 
+            A new emissions distribution object with the updated parameters.
+    """
     x_sample = posterior._sample(seed=rng)
 
     # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
@@ -324,7 +370,6 @@ def _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=None,
         method="BFGS")
 
     # NOTE: optimize_results.status ==> 3 ("zoom failed") although it seems to be finding a max?
-
     return unravel(optimize_results.x)
 
 
@@ -333,7 +378,7 @@ def _laplace_m_step(rng, lds, data, posterior, prior=None, num_approx_m_iters=10
     # initial_distribution = _exact_m_step_initial_distribution(lds, data, posterior, prior=prior)
     initial_distribution = lds._initial_distribution
     transition_distribution = _exact_m_step_dynamics_distribution(lds, data, posterior, prior=prior)
-    emissions_distribution = _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=prior, num_timesteps=num_approx_m_iters)
+    emissions_distribution = _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=prior)
     return GLMLDS(initial_distribution,
                   transition_distribution,
                   emissions_distribution)
@@ -346,29 +391,36 @@ def laplace_em(
     num_iters: int=100,
     num_elbo_samples: int=1,
     num_approx_m_iters: int=100,
-    laplace_mode_fit_method: str="Adam",
+    laplace_mode_fit_method: str="BFGS",
     num_laplace_mode_iters: int=100,
     tol: float=1e-4,
     verbosity: Verbosity=Verbosity.DEBUG,
-    patience: int=5,
     ):
-    """
-    Run EM for an LDS with exponential family GLM emissions given observed data.
+    """Fit potentially nonconjugate LDS models such as LDS with GLM emissions using Laplace EM.
+    
+    Laplace EM approximates the posterior as a Gaussian whose mean and covariance is 
+    set to match the mode and curvature (negative Hessian) of the posterior distribution.
+    
+    Note that because Laplace EM does not use the true posterior in the E-step, we are 
+    not guaranteed that the marginal log probability increases (as is true with exact EM).
 
     Args:
-        lds: The ExpfamLDS model to use perform EM over.
-        data: A ``(B, T, D)`` or ``(T, D)`` data array.
-        num_iters: Number of update iterations to perform EM.
-        tol: Tolerance to determine EM convergence.
-        verbosity: Determines whether a progress bar is displayed for the EM fit iterations.
-        m_step_type: Determines how the model parameters are updated.
-            Currently, only ``exact`` is supported for Gaussian LDS.
-        patience: The number of steps to wait before algorithm convergence is declared.
+        rng (jax.random.PRNGKey): JAX random seed.
+        lds (LDS): The LDS model object to be fit.
+        data (array, (num_timesteps, obs_dim)): The observed data.
+        num_iters (int, optional): Number of iteration to run the Laplace EM algorithm. Defaults to 100.
+        num_elbo_samples (int, optional): Number of Monte Carlo samples used to compute the ELBO expectation. Defaults to 1.
+        laplace_mode_fit_method (str, optional): Optimization method used to compute the mode for the Laplace approximation.
+            Must be one of ["BFGS", "Adam"]. Defaults to "BFGS".
+        num_laplace_mode_iters (int, optional): Only relevant for when `laplace_mode_fit_method` is "Adam." Specifies the 
+            number of iterations to run the Adam updates. High values of iterations makes jit compilation slow. Defaults to 100.
+        tol (float, optional): Tolerance to determine convergence of ELBO. Defaults to 1e-4.
+        verbosity (Verbosity, optional): See Verbosity. Defaults to Verbosity.DEBUG.
 
     Returns:
-        elbos (array): evidence lower bounds per iteration
-        lds (LDS): the fitted ExpfamLDS model
-        posterior (LDSPosterior): the resulting posterior distribution object
+        elbos (array, (num_iters,)): The ELBO objective per iteration. Ideally, this should increase as the model is fit.
+        lds (LDS): The fitted LDS object after running Laplace EM.
+        posterior (LDSPosterior): The corresponding posterior distribution of the fitted LDS.
     """
 
     @jit
@@ -387,7 +439,6 @@ def laplace_em(
     pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
     if verbosity:
         pbar.set_description("[jit compiling...]")
-    init_patience = patience
 
     # Initialize the latent states to all zeros
     states = np.zeros((len(data), lds.latent_dim))
@@ -401,14 +452,9 @@ def laplace_em(
         # Check for convergence
         # TODO @collin: this is harder with Laplace EM since we have a Monte Carlo estimate of the ELBO
         if itr > 1 and abs(elbos[-1] - elbos[-2]) < tol:
-            if patience == 0:
-                if verbosity:
-                    pbar.set_description("[converged] ELBO: {:.3f}".format(elbo))
-                    pbar.refresh()
+            if verbosity:
+                pbar.set_description("[converged] ELBO: {:.3f}".format(elbo))
+                pbar.refresh()
                 break
-            else:
-                patience -= 1
-        else:
-            patience = init_patience
 
     return np.array(elbos), lds, posterior

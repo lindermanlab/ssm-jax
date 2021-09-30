@@ -9,6 +9,14 @@ import numpy as np
 def gradient_cmap(colors, nsteps=256, bounds=None):
     """Return a colormap that interpolates between a set of colors.
     Ported from HIPS-LIB plotting functions [https://github.com/HIPS/hips-lib]
+
+    Args:
+        colors (list): List of color values (RGB or RGBA tuples).
+        nsteps (int, optional): Number of steps in the gradient. Defaults to 256.
+        bounds ([type], optional): [description]. Defaults to None.
+
+    Returns:
+        cmap: The gradient colormap.
     """
     ncolors = len(colors)
     # assert colors.shape[1] == 3
@@ -43,8 +51,8 @@ def plot_dynamics_2d(dynamics_matrix,
                      axis=None,
                      **kwargs):
     """Utility to visualize the dynamics for a 2 dimensional dynamical system.
-    Args
-    ----
+
+    Args:
         dynamics_matrix: 2x2 numpy array. "A" matrix for the system.
         bias_vector: "b" vector for the system. Has size (2,).
         mins: Tuple of minimums for the quiver plot.
@@ -52,8 +60,8 @@ def plot_dynamics_2d(dynamics_matrix,
         npts: Number of arrows to show.
         axis: Axis to use for plotting. Defaults to None, and returns a new axis.
         kwargs: keyword args passed to plt.quiver.
-    Returns
-    -------
+
+    Returns:
         q: quiver object returned by pyplot
     """
     assert dynamics_matrix.shape == (2, 2), "Must pass a 2 x 2 dynamics matrix to visualize."

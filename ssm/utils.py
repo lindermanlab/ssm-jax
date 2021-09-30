@@ -13,6 +13,9 @@ from typing import Sequence, Optional
 class Verbosity(IntEnum):
     """
     Convenience alias class for Verbosity values.
+    
+    Currently, any value >= 1 corresponds to displaying progress bars
+    for various function calls through JAX-SSM.
 
     - 0: ``OFF``
     - 1: ``QUIET``
@@ -122,6 +125,17 @@ def find_permutation(z1: Sequence[int], z2: Sequence[int], K1: Optional[int]=Non
     return perm
 
 def random_rotation(seed, n, theta=None):
+    """Helper function to create a rotating linear system.
+
+    Args:
+        seed (jax.random.PRNGKey): JAX random seed.
+        n (int): Dimension of the rotation matrix. 
+        theta (float, optional): If specified, this is the angle of the rotation, otherwise
+            a random angle sampled from a standard Gaussian scaled by ::math::`\pi / 2`. Defaults to None.
+
+    Returns:
+        [type]: [description]
+    """
 
     key1, key2 = jr.split(seed)
 
