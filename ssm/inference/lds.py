@@ -177,7 +177,7 @@ def em(lds,
 
 
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
-def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=50):
+def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, method="Adam", num_iters=50):
     """Find the mode of the log joint for the Laplace approximation.
 
     Args:
@@ -191,26 +191,39 @@ def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, num_iters=50):
     """
 
     scale = x0.size
-    _objective = lambda x: -1 * np.sum(lds.log_probability(x, data)) / scale
-
-    # TODO @collin: BFGS might be even better when _log_joint is concave
-    # optimize_results = jax.scipy.optimize.minimize(_objective, x0, method="BFGS", tol=1e-3)
-    # return optimize_results.x
+    dim = x0.shape[-1]
     
-    opt_init, opt_update, get_params = optimizers.adam(learning_rate)
-    opt_state = opt_init(x0)
+    if method == "BFGS":
+        # scipy minimize expects x to be shape (n,) so we flatten / unflatten
+        def _objective(x_flattened):
+            x = x_flattened.reshape(-1, dim)
+            return -1 * np.sum(lds.log_probability(x, data)) / scale
+        optimize_results = jax.scipy.optimize.minimize(_objective, x0.ravel(), method="BFGS")
+        
+        # NOTE: optimize_results.status ==> 3 ("zoom failed") although it seems to be finding a max?
+        
+        x_mode = optimize_results.x.reshape(-1, dim)  # reshape back to (T, D)
+    
+    elif method == "Adam":
+        
+        _objective = lambda x: -1 * np.sum(lds.log_probability(x, data)) / scale
+        opt_init, opt_update, get_params = optimizers.adam(learning_rate)
+        opt_state = opt_init(x0)
 
-    # @jit
-    def step(step, opt_state):
-        value, grads = value_and_grad(_objective)(get_params(opt_state))
-        opt_state = opt_update(step, grads, opt_state)
-        return value, opt_state
+        @jit
+        def step(step, opt_state):
+            value, grads = value_and_grad(_objective)(get_params(opt_state))
+            opt_state = opt_update(step, grads, opt_state)
+            return value, opt_state
 
-    # guaranteed to convergence?
-    for i in range(num_iters):
-        value, opt_state = step(i, opt_state)
+        for i in range(num_iters):
+            value, opt_state = step(i, opt_state)
+        x_mode = get_params(opt_state)
+        
+    else:
+        raise ValueError(f"method = {method} is not recognized. Should be one of ['Adam', 'BFGS']")
 
-    return get_params(opt_state)
+    return x_mode
 
 
 def _laplace_negative_hessian(lds, states, data):
@@ -252,7 +265,7 @@ def _laplace_negative_hessian(lds, states, data):
     return J_diag, J_lower_diag
 
 
-def _laplace_e_step(lds, data, initial_states, num_laplace_mode_iters=10):
+def _laplace_e_step(lds, data, initial_states, num_laplace_mode_iters=10, laplace_mode_fit_method="Adam"):
     """
     Laplace approximation to p(x | y, \theta) for non-Gaussian emission models.
 
@@ -260,7 +273,7 @@ def _laplace_e_step(lds, data, initial_states, num_laplace_mode_iters=10):
     J := H_{xx} \log p(y, x; \theta) |_{x=x*}
     """
     # find mode x*
-    states = _laplace_find_mode(lds, initial_states, data, num_iters=num_laplace_mode_iters)
+    states = _laplace_find_mode(lds, initial_states, data, num_iters=num_laplace_mode_iters, method=laplace_mode_fit_method)
     # compute negative hessian at the mode, J(x*)
     J_diag, J_lower_diag = _laplace_negative_hessian(lds, states, data)
     return MultivariateNormalBlockTridiag(J_diag,
@@ -343,6 +356,7 @@ def laplace_em(
     num_iters: int=100,
     num_elbo_samples: int=1,
     num_approx_m_iters: int=100,
+    laplace_mode_fit_method: str="Adam",
     num_laplace_mode_iters: int=100,
     tol: float=1e-4,
     verbosity: Verbosity=Verbosity.DEBUG,
@@ -370,7 +384,9 @@ def laplace_em(
     @jit
     def step(rng, lds, states):
         rng, elbo_rng, m_step_rng = jr.split(rng, 3)
-        posterior = _laplace_e_step(lds, data, states, num_laplace_mode_iters=num_laplace_mode_iters)
+        posterior = _laplace_e_step(lds, data, states, 
+                                    laplace_mode_fit_method=laplace_mode_fit_method,
+                                    num_laplace_mode_iters=num_laplace_mode_iters)
         states = posterior.mean
         elbo = _elbo(elbo_rng, lds, data, posterior, num_samples=num_elbo_samples)
         lds = _laplace_m_step(m_step_rng, lds, data, posterior, num_approx_m_iters=num_approx_m_iters)
