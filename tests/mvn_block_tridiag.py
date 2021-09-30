@@ -23,12 +23,12 @@ def random_lds(key, T=10, D=2, N=4):
     dynamics_distribution = GaussianLinearRegression(
         random_rotation(k1, D, theta=np.pi/20),
         np.zeros(D),
-        0.1**2 * np.eye(D))
+        0.1 * np.eye(D))
 
     emissions_distribution = GaussianLinearRegression(
         jr.normal(k2, shape=(N, D)),
         np.zeros(N),
-        1.0**2 * np.eye(N))
+        1.0 * np.eye(N))
 
     return GaussianLDS(initial_distribution,
                        dynamics_distribution,
@@ -80,7 +80,6 @@ def test_mean_to_h(key, T=10, D=2, N=4):
         np.einsum('tij,tj->ti', J_lower_diag, mean[:-1]))
 
     assert np.allclose(linear_potential, linear_potential_comp)
-    print("success")
 
 
 def test_mvn_log_prob(key, T=10, D=2, N=4):
@@ -103,7 +102,7 @@ def test_mvn_log_prob(key, T=10, D=2, N=4):
     mvn = MultivariateNormalBlockTridiag(J_diag, J_lower_diag, h)
     lp = mvn.log_prob(x)
 
-    assert np.isclose(lp, lp_comp, atol=1e-2)
+    assert np.isclose(lp, lp_comp)
     assert np.isfinite(lp)
 
 
@@ -135,12 +134,27 @@ def test_lds_log_prob(key, T=10, D=2, N=4):
     lp_comp = posterior.log_normalizer + logc
     lp = _exact_marginal_likelihood(lds, y)
 
-    assert np.isclose(lp, lp_comp, atol=1e-2)
+    assert np.isclose(lp, lp_comp)
     assert np.isfinite(lp)
+
+
+def test_lds_laplace_em_hessian(key, T=10, D=2, N=4):
+    from ssm.inference.lds import _laplace_negative_hessian
+
+    k1, k2 = jr.split(key, 2)
+    lds = random_lds(k1, T=T, D=D, N=N)
+    x, y = lds.sample(k2, T)
+
+    J_diag_comp, J_lower_diag_comp, _ = lds.natural_parameters(y)
+    J_diag, J_lower_diag = _laplace_negative_hessian(lds, x, y)
+
+    assert np.allclose(J_diag, J_diag_comp)
+    assert np.allclose(J_lower_diag, J_lower_diag_comp)
 
 
 if __name__ == "__main__":
     key = jr.PRNGKey(0)
-    # test_mean_to_h(key)
-    # test_mvn_log_prob(key)
+    test_mean_to_h(key)
+    test_mvn_log_prob(key)
     test_lds_log_prob(key)
+    test_lds_laplace_em_hessian(key)

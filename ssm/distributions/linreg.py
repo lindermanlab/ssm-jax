@@ -3,10 +3,7 @@ import jax.numpy as np
 
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
-# from tensorflow_probability.python.internal import parameter_properties
-# from tensorflow_probability.python.internal import prefer_static as ps
-# from tfp.bijectors import fill_scale_tril as fill_scale_tril_bijector
-# from tensorflow_probability.python.internal import dtype_util
+
 
 class GaussianLinearRegression(tfp.distributions.Distribution):
     """Linear regression with Gaussian noise.

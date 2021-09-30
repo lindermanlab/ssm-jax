@@ -28,7 +28,7 @@ class GLMLDS(SSM):
         self._initial_distribution = initial_distribution
         self._dynamics_distribution = dynamics_distribution
         self._emissions_distribution = emissions_distribution
-        
+
     @property
     def latent_dim(self):
         return self._emissions_distribution.weights.shape[-1]
@@ -207,14 +207,3 @@ class GaussianLDS(SSM):
         h = h.at[:-1].add(-np.dot(A.T, np.linalg.solve(Q, b)))
         h = h.at[1:].add(np.linalg.solve(Q, b))
         return J_diag, J_lower_diag, h
-
-        # logc = -0.5 * seq_len * self.latent_dim * np.log(2 * np.pi)
-        # logc += -0.5 * np.linalg.slogdet(Q1)[1]
-        # logc += -0.5 * np.dot(m1, np.linalg.solve(Q1, m1))
-        # logc += -0.5 * (seq_len - 1) * np.linalg.slogdet(Q)[1]
-        # logc += -0.5 * (seq_len - 1) * np.dot(b, np.linalg.solve(Q, b))
-        # logc += -0.5 * seq_len * self.emissions_dim * np.log(2 * np.pi)
-        # logc += -0.5 * seq_len * np.linalg.slogdet(R)[1]
-        # logc += -0.5 * np.sum((data - d) * np.linalg.solve(R, (data - d).T).T)
-        # return J_diag, J_lower_diag, h, logc
-

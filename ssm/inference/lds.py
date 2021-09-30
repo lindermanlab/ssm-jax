@@ -8,7 +8,7 @@ from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 
 import jax.experimental.optimizers as optimizers
-import tensorflow_probability.substrates.jax as tfp 
+import tensorflow_probability.substrates.jax as tfp
 import jax.scipy.optimize
 
 
@@ -192,20 +192,20 @@ def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, method="Adam", num_ite
 
     scale = x0.size
     dim = x0.shape[-1]
-    
+
     if method == "BFGS":
         # scipy minimize expects x to be shape (n,) so we flatten / unflatten
         def _objective(x_flattened):
             x = x_flattened.reshape(-1, dim)
             return -1 * np.sum(lds.log_probability(x, data)) / scale
         optimize_results = jax.scipy.optimize.minimize(_objective, x0.ravel(), method="BFGS")
-        
+
         # NOTE: optimize_results.status ==> 3 ("zoom failed") although it seems to be finding a max?
-        
+
         x_mode = optimize_results.x.reshape(-1, dim)  # reshape back to (T, D)
-    
+
     elif method == "Adam":
-        
+
         _objective = lambda x: -1 * np.sum(lds.log_probability(x, data)) / scale
         opt_init, opt_update, get_params = optimizers.adam(learning_rate)
         opt_state = opt_init(x0)
@@ -219,7 +219,7 @@ def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, method="Adam", num_ite
         for i in range(num_iters):
             value, opt_state = step(i, opt_state)
         x_mode = get_params(opt_state)
-        
+
     else:
         raise ValueError(f"method = {method} is not recognized. Should be one of ['Adam', 'BFGS']")
 
@@ -238,7 +238,6 @@ def _laplace_negative_hessian(lds, states, data):
         J_diag
         J_lower_diag
     """
-
     # initial distribution
     J_init = -1 * hessian(lds.initial_distribution().log_prob)(states[0])
 
@@ -246,14 +245,12 @@ def _laplace_negative_hessian(lds, states, data):
     f = lambda xt, xtp1: lds.dynamics_distribution(xt).log_prob(xtp1)
     J_11 = -1 * vmap(hessian(f, argnums=0))(states[:-1], states[1:])
     J_22 = -1 * vmap(hessian(f, argnums=1))(states[:-1], states[1:])
-    
-    # TODO @collin: Check that this gives us the lower diagonal blocks and not the upper!
-    J_21 = -1 * vmap(jacfwd(jacrev(f, argnums=1), argnums=0))(states[:-1], states[1:]) # (dxtp1 dxt f)(states[:-1], states[1:])
+    J_21 = -1 * vmap(jacfwd(jacrev(f, argnums=1), argnums=0))(states[:-1], states[1:])
 
     # emissions
-    f = lambda x, y: np.mean(lds.emissions_distribution(x).log_prob(y), axis=-1) # TODO: should I be summing here? mean does better...
+    f = lambda x, y: lds.emissions_distribution(x).log_prob(y) #, axis=-1) # TODO: should I be summing here? mean does better...
     J_obs = -1 * vmap(hessian(f, argnums=0))(states, data)  # shape should be (T, D, D)
-    
+
     # combine into diagonal and lower diagonal blocks
     J_diag = J_obs
     J_diag = J_diag.at[0].add(J_init)
@@ -297,12 +294,12 @@ def _elbo(rng, model, data, posterior, num_samples=1):
     else:
         # TODO: implement cls._sample_n for mvn_block_tridiag
         raise NotImplementedError
-    
+
     # hacky accounting for init state?
     new_states =  np.zeros((500, 2))
     new_states = new_states.at[1:].add(states)
     states = new_states
-    
+
     return np.mean(model.log_probability(states, data) - posterior.log_prob(states))
 
 
@@ -316,7 +313,7 @@ def _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=None,
     new_states =  np.zeros((500, 2))
     new_states = new_states.at[1:].add(x_sample)
     x_sample = new_states
-    
+
     def _objective(_emissions_distribution):
         return -1 * np.sum(_emissions_distribution.predict(x_sample).log_prob(data))
 
@@ -384,7 +381,7 @@ def laplace_em(
     @jit
     def step(rng, lds, states):
         rng, elbo_rng, m_step_rng = jr.split(rng, 3)
-        posterior = _laplace_e_step(lds, data, states, 
+        posterior = _laplace_e_step(lds, data, states,
                                     laplace_mode_fit_method=laplace_mode_fit_method,
                                     num_laplace_mode_iters=num_laplace_mode_iters)
         states = posterior.mean
