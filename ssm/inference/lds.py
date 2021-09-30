@@ -178,7 +178,7 @@ def em(lds,
 
 
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
-def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, method="Adam", num_iters=50):
+def _compute_laplace_mean(lds, x0, data, learning_rate=1e-3, method="Adam", num_iters=50):
     """Find the mode of the log joint for the Laplace approximation.
 
     Args:
@@ -231,7 +231,7 @@ def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, method="Adam", num_ite
     return x_mode
 
 
-def _laplace_negative_hessian(lds, states, data):
+def _compute_laplace_precision_blocks(lds, states, data):
     """[summary]
 
     Args:
@@ -253,17 +253,15 @@ def _laplace_negative_hessian(lds, states, data):
     J_21 = -1 * vmap(jacfwd(jacrev(f, argnums=1), argnums=0))(states[:-1], states[1:])
 
     # emissions
-    f = lambda x, y: lds.emissions_distribution(x).log_prob(y) #, axis=-1) # TODO: should I be summing here? mean does better...
-    J_obs = -1 * vmap(hessian(f, argnums=0))(states, data)  # shape should be (T, D, D)
+    f = lambda x, y: lds.emissions_distribution(x).log_prob(y)
+    J_obs = -1 * vmap(hessian(f, argnums=0))(states, data)
 
     # combine into diagonal and lower diagonal blocks
     J_diag = J_obs
     J_diag = J_diag.at[0].add(J_init)
     J_diag = J_diag.at[:-1].add(J_11)
     J_diag = J_diag.at[1:].add(J_22)
-
     J_lower_diag = J_21
-
     return J_diag, J_lower_diag
 
 
@@ -274,13 +272,19 @@ def _laplace_e_step(lds, data, initial_states, num_laplace_mode_iters=10, laplac
     q <-- N(x*, -1 * J)
     J := H_{xx} \log p(y, x; \theta) |_{x=x*}
     """
-    # find mode x*
-    states = _laplace_find_mode(lds, initial_states, data, num_iters=num_laplace_mode_iters, method=laplace_mode_fit_method)
-    # compute negative hessian at the mode, J(x*)
-    J_diag, J_lower_diag = _laplace_negative_hessian(lds, states, data)
+    # Find the mean and precision of the Laplace approximation
+    most_likely_states = _compute_laplace_mean(
+        lds, initial_states, data,
+        num_iters=num_laplace_mode_iters,
+        method=laplace_mode_fit_method)
+
+    # The precision is given by the negative hessian at the mode
+    J_diag, J_lower_diag = _compute_laplace_precision_blocks(
+        lds, most_likely_states, data)
+
     return MultivariateNormalBlockTridiag(J_diag,
                                           J_lower_diag,
-                                          mean=states)
+                                          mean=most_likely_states)
 
 
 def _elbo(rng, model, data, posterior, num_samples=1):

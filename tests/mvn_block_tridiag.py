@@ -139,14 +139,14 @@ def test_lds_log_prob(key, T=10, D=2, N=4):
 
 
 def test_lds_laplace_em_hessian(key, T=10, D=2, N=4):
-    from ssm.inference.lds import _laplace_negative_hessian
+    from ssm.inference.lds import _compute_laplace_precision_blocks
 
     k1, k2 = jr.split(key, 2)
     lds = random_lds(k1, T=T, D=D, N=N)
     x, y = lds.sample(k2, T)
 
     J_diag_comp, J_lower_diag_comp, _ = lds.natural_parameters(y)
-    J_diag, J_lower_diag = _laplace_negative_hessian(lds, x, y)
+    J_diag, J_lower_diag = _compute_laplace_precision_blocks(lds, x, y)
 
     assert np.allclose(J_diag, J_diag_comp)
     assert np.allclose(J_lower_diag, J_lower_diag_comp)
