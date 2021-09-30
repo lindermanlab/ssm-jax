@@ -1,6 +1,7 @@
 import jax.numpy as np
 from jax import jit, value_and_grad, grad, hessian, vmap, jacfwd, jacrev
 import jax.random as jr
+from jax.flatten_util import ravel_pytree
 
 from ssm.models.lds import GLMLDS, GaussianLDS
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
@@ -198,10 +199,14 @@ def _laplace_find_mode(lds, x0, data, learning_rate=1e-3, method="Adam", num_ite
         def _objective(x_flattened):
             x = x_flattened.reshape(-1, dim)
             return -1 * np.sum(lds.log_probability(x, data)) / scale
-        optimize_results = jax.scipy.optimize.minimize(_objective, x0.ravel(), method="BFGS")
+
+        optimize_results = jax.scipy.optimize.minimize(
+            _objective,
+            x0.ravel(),
+            method="BFGS",
+            options=dict(maxiter=num_iters))
 
         # NOTE: optimize_results.status ==> 3 ("zoom failed") although it seems to be finding a max?
-
         x_mode = optimize_results.x.reshape(-1, dim)  # reshape back to (T, D)
 
     elif method == "Adam":
@@ -295,11 +300,6 @@ def _elbo(rng, model, data, posterior, num_samples=1):
         # TODO: implement cls._sample_n for mvn_block_tridiag
         raise NotImplementedError
 
-    # hacky accounting for init state?
-    new_states =  np.zeros((500, 2))
-    new_states = new_states.at[1:].add(states)
-    states = new_states
-
     return np.mean(model.log_probability(states, data) - posterior.log_prob(states))
 
 
@@ -310,29 +310,22 @@ def _elbo(rng, model, data, posterior, num_samples=1):
 
 def _approx_m_step_emissions_distribution(rng, lds, data, posterior, prior=None, learning_rate=1e-3, num_timesteps=50):
     x_sample = posterior._sample(seed=rng)
-    new_states =  np.zeros((500, 2))
-    new_states = new_states.at[1:].add(x_sample)
-    x_sample = new_states
 
-    def _objective(_emissions_distribution):
-        return -1 * np.sum(_emissions_distribution.predict(x_sample).log_prob(data))
+    # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
+    flat_emissions_distribution, unravel = ravel_pytree(lds._emissions_distribution)
+    def _objective(flat_emissions_distribution):
+        # TODO: Consider proximal gradient descent to counter sampling noise
+        emissions_distribution = unravel(flat_emissions_distribution)
+        return -1 * np.mean(emissions_distribution.predict(x_sample).log_prob(data))
 
-    # do gradient descent on _emissions_distribution
-    current_emissions_distribution = lds._emissions_distribution
-    opt_init, opt_update, get_params = optimizers.adam(learning_rate)
-    opt_state = opt_init(current_emissions_distribution)
+    optimize_results = jax.scipy.optimize.minimize(
+        _objective,
+        flat_emissions_distribution,
+        method="BFGS")
 
-    # @jit
-    def step(step, opt_state):
-        grads = grad(_objective)(get_params(opt_state))
-        opt_state = opt_update(step, grads, opt_state)
-        return opt_state
+    # NOTE: optimize_results.status ==> 3 ("zoom failed") although it seems to be finding a max?
 
-    for i in range(num_timesteps):
-        opt_state = step(i, opt_state)
-
-    new_emissions_distribution = get_params(opt_state)
-    return new_emissions_distribution
+    return unravel(optimize_results.x)
 
 
 def _laplace_m_step(rng, lds, data, posterior, prior=None, num_approx_m_iters=100):

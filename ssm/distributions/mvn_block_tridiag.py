@@ -191,10 +191,10 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         if not self.ran_message_passing:
             self.message_passing()
         return self._ExxT, self._ExnxT
-    
+
     # def _sample_n(self, n, seed=None):
     #     # keys = jr.split(seed, n)
-        
+
     #     # samples = []
     #     # for i in range(n):
     #     #     self._sample(seed=keys[i], sample_shape=)
@@ -232,8 +232,8 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         seed_T, seed = jr.split(seed)
         x_T = _sample_info_gaussian(seed_T, filtered_Js[-1], filtered_hs[-1], sample_shape)
         inputs = (filtered_Js[:-1][::-1], filtered_hs[:-1][::-1], J_lower_diag[::-1])
-        _, samples = lax.scan(_step, (x_T, seed), inputs)
-        return samples
+        _, x_rev = lax.scan(_step, (x_T, seed), inputs)
+        return np.concatenate((x_rev[::-1], x_T[None, ...]), axis=0)
 
     def _entropy(self):
         """
