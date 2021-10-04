@@ -4,13 +4,14 @@ from jax.tree_util import register_pytree_node_class
 from tensorflow_probability.substrates import jax as tfp
 
 from ssm.models.base import SSM
-from ssm.distributions.glm import GaussianGLM, PoissonGLM
+from ssm.distributions.glm import BernoulliGLM, GaussianGLM, PoissonGLM
 from ssm.distributions.linreg import GaussianLinearRegression
 
 # supported emissions classes for GLM-LDS
 _GLM_DISTRIBUTIONS = [
     GaussianGLM,
-    PoissonGLM
+    PoissonGLM,
+    BernoulliGLM
 ]
 
 @register_pytree_node_class

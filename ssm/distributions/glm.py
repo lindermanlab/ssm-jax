@@ -4,6 +4,8 @@ import jax.numpy as np
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
 
+from ssm.distributions.linreg import GaussianLinearRegression
+
 
 class GeneralizedLinearModel(tfp.distributions.Distribution):
     """Linear regression with Exponential Family Noise
@@ -119,6 +121,41 @@ class PoissonGLM(GeneralizedLinearModel):
             tfp.distributions.Poisson(mean),
             reinterpreted_batch_ndims=1
         )
+
+
+class BernoulliGLM(GeneralizedLinearModel):
+    def __init__(
+        self,
+        weights,
+        bias,
+        validate_args=False,
+        allow_nan_stats=True,
+        name="BernoulliGLM",
+    ):
+
+        super(BernoulliGLM, self).__init__(
+            weights=weights,
+            bias=bias,
+            validate_args=validate_args,
+            allow_nan_stats=allow_nan_stats,
+            name=name,
+        )
+
+    @classmethod
+    def _parameter_properties(cls, dtype, num_classes=None):
+        # pylint: disable=g-long-lambda
+        return dict(
+            weights=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
+            bias=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1)) 
+
+    def _mean_function(self, predicted_linear_response):
+        return 1/(1 + np.exp(-1 * predicted_linear_response))
+
+    def _get_noise_distribution(self, mean):
+        return tfp.distributions.Independent(
+            tfp.distributions.Bernoulli(probs=mean),
+            reinterpreted_batch_ndims=1
+        ) 
 
 
 class GaussianGLM(GeneralizedLinearModel):
