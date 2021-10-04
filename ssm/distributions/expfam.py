@@ -155,6 +155,14 @@ EXPFAM_DISTRIBUTIONS["GaussianLinearRegression"] = ExponentialFamily(
     _gaussian_linreg_suff_stats,
 )
 
+EXPFAM_DISTRIBUTIONS["GaussianGLM"] = ExponentialFamily(
+    _mniw_pseudo_obs_and_counts,
+    _mniw_from_stats,
+    _gaussian_linreg_from_params,
+    _gaussian_linreg_suff_stats,
+)
+
+
 ### Gamma / Poisson
 def _gamma_from_stats(stats, counts):
     (alpha,) = stats

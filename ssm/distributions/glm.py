@@ -14,17 +14,23 @@ class GeneralizedLinearModel(tfp.distributions.Distribution):
         bias,
         validate_args=False,
         allow_nan_stats=True,
+        parameters=None,
         name="GeneralizedLinearModel",
     ):
+
         self._weights = weights
         self._bias = bias
+
+        # default parameter set if not overridden
+        if parameters is None:
+            parameters = dict(weights=weights, bias=bias)
 
         super(GeneralizedLinearModel, self).__init__(
             dtype=weights.dtype,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
-            parameters=dict(weights=weights, bias=bias),
+            parameters=parameters,
             name=name,
         )
 
@@ -127,11 +133,16 @@ class GaussianGLM(GeneralizedLinearModel):
     ):
         self._scale_tril = scale_tril
 
+        parameters = dict(weights=weights,
+                          bias=bias,
+                          scale_tril=scale_tril)
+
         super(GaussianGLM, self).__init__(
             weights=weights,
             bias=bias,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
+            parameters=parameters,
             name=name,
         )
 
@@ -147,6 +158,14 @@ class GaussianGLM(GeneralizedLinearModel):
                 # default_constraining_bijector_fn=lambda: tfp.bijectors.fill_scale_tril.FillScaleTriL(diag_shift=dtype_util.eps(dtype)))
             )
         )
+
+    @property
+    def scale_tril(self):
+        return self._scale_tril
+
+    @property
+    def scale(self):
+        return np.einsum('...ij,...ji->...ij', self.scale_tril, self.scale_tril)
 
     def _mean_function(self, predicted_linear_response):
         return predicted_linear_response

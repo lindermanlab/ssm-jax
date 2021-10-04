@@ -5,17 +5,6 @@ Base state-space model class.
 import jax.random as jr
 from jax import lax
 
-def test(states, data):
-    """This is a test docstring in Libby's format.
-    
-    Args:
-        states (array, (num_timesteps, state_dim)):
-            Latent state vectors over time.
-        
-    Returns:
-        log_likelihoods (array; (num_timesteps,)):
-            Per-timestep log likelihoods of the form :math:`log p(y_t | x_t)`
-    """
 
 class SSM(object):
     """ 
