@@ -295,21 +295,22 @@ def em(hmm,
         return hmm, posterior
 
     # Run the EM algorithm to convergence
-    log_probs = [np.nan]
-    pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, log_probs[-1])
+    log_probs = []
+    pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
     if verbosity:
         pbar.set_description("[jit compiling...]")
     init_patience = patience
     for itr in pbar:
         hmm, posterior = step(hmm)
         lp = posterior.marginal_likelihood
+        assert np.isfinite(lp), "NaNs in marginal log probability"
         log_probs.append(lp)
         if verbosity:
             pbar.set_description("LP: {:.3f}".format(lp))
 
         # Check for convergence
         # TODO: make this cleaner with patience
-        if abs(log_probs[-1] - log_probs[-2]) < tol and itr > 1:
+        if itr > 1 and abs(log_probs[-1] - log_probs[-2]) < tol:
             if patience == 0:
                 if verbosity:
                     pbar.set_description("[converged] LP: {:.3f}".format(lp))

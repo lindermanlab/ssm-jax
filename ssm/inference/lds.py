@@ -12,6 +12,7 @@ import jax.experimental.optimizers as optimizers
 import tensorflow_probability.substrates.jax as tfp
 import jax.scipy.optimize
 
+from functools import partial
 
 # Expectation-Maximization
 def _exact_e_step(lds, data):
@@ -162,7 +163,7 @@ def em(lds,
     # Run the EM algorithm to convergence
     log_probs = []
     pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
-    if verbosity:
+    if verbosity and not jax.config.jax_disable_jit:
         pbar.set_description("[jit compiling...]")
 
     for itr in pbar:
@@ -280,6 +281,14 @@ def _compute_laplace_precision_blocks(lds, states, data):
     f = lambda x, y: lds.emissions_distribution(x).log_prob(y)
     J_obs = -1 * vmap(hessian(f, argnums=0))(states, data)
 
+    # debug only if this flag is set
+    if jax.config.jax_disable_jit:
+        assert not np.any(np.isnan(J_init)), "nans in J_init"
+        assert not np.any(np.isnan(J_11)), "nans in J_11"
+        assert not np.any(np.isnan(J_22)), "nans in J_22"
+        assert not np.any(np.isnan(J_21)), "nans in J_21"
+        assert not np.any(np.isnan(J_obs)), "nans in J_obs"
+
     # combine into diagonal and lower diagonal blocks
     J_diag = J_obs
     J_diag = J_diag.at[0].add(J_init)
@@ -392,6 +401,7 @@ def laplace_em(
     rng,
     lds,
     data,
+    learning: bool=True,
     num_iters: int=100,
     num_elbo_samples: int=1,
     num_approx_m_iters: int=100,
@@ -427,28 +437,29 @@ def laplace_em(
         posterior (LDSPosterior): The corresponding posterior distribution of the fitted LDS.
     """
 
-    @jit
-    def step(rng, lds, states):
+    @partial(jit, static_argnums=(3,))
+    def step(rng, lds, states, learning):
         rng, elbo_rng, m_step_rng = jr.split(rng, 3)
         posterior = _laplace_e_step(lds, data, states,
                                     laplace_mode_fit_method=laplace_mode_fit_method,
                                     num_laplace_mode_iters=num_laplace_mode_iters)
         states = posterior.mean
         elbo = _elbo(elbo_rng, lds, data, posterior, num_samples=num_elbo_samples)
-        lds = _laplace_m_step(m_step_rng, lds, data, posterior, num_approx_m_iters=num_approx_m_iters)
+        if learning:
+            lds = _laplace_m_step(m_step_rng, lds, data, posterior, num_approx_m_iters=num_approx_m_iters)
         return rng, lds, posterior, states, elbo
 
     # Run the Laplace EM algorithm to convergence
     elbos = []
     pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
-    if verbosity:
+    if verbosity and not jax.config.jax_disable_jit:
         pbar.set_description("[jit compiling...]")
 
     # Initialize the latent states to all zeros
     states = np.zeros((len(data), lds.latent_dim))
 
     for itr in pbar:
-        rng, lds, posterior, states, elbo = step(rng, lds, states)
+        rng, lds, posterior, states, elbo = step(rng, lds, states, learning)
         elbos.append(elbo)
         if verbosity:
             pbar.set_description("ELBO: {:.3f}".format(elbo))

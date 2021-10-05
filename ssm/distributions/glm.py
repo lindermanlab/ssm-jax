@@ -65,13 +65,15 @@ class GeneralizedLinearModel(tfp.distributions.Distribution):
     @staticmethod
     def _mean_function(predicted_linear_response):
         """
-        Function mapping the predicted linear response to the mean of the noise distribution.
+        Function mapping the predicted linear response to the parameters of the noise distribution.
 
-        Inverse of the link function g^{-1}.
+        Generally speaking, the parameters should be the mean, in which case this would be
+        the inverse of the link function g^{-1}. However, we may choose to parameterize our 
+        distribution as, e.g., log mean, so this is a more general function.
         """
         return NotImplementedError
 
-    def _get_noise_distribution(self, mean):
+    def _get_noise_distribution(self, params):
         raise NotImplementedError
 
     def predict(self, covariates=None):
@@ -113,12 +115,18 @@ class PoissonGLM(GeneralizedLinearModel):
             weights=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
             bias=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1))
 
-    def _mean_function(self, predicted_linear_response):
-        return np.exp(predicted_linear_response)
 
-    def _get_noise_distribution(self, mean):
+    def _mean_function(self, predicted_linear_response):
+        """
+        The mean function is np.exp(predicted_linear_response) but we 
+        parameterize the noise distribution as `log_rate` so here we
+        just pass the predicted_linear_response.
+        """
+        return predicted_linear_response
+
+    def _get_noise_distribution(self, params):
         return tfp.distributions.Independent(
-            tfp.distributions.Poisson(mean),
+            tfp.distributions.Poisson(log_rate=params),
             reinterpreted_batch_ndims=1
         )
 
@@ -149,11 +157,13 @@ class BernoulliGLM(GeneralizedLinearModel):
             bias=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1)) 
 
     def _mean_function(self, predicted_linear_response):
+        """Mean function is sigmoid
+        """
         return 1/(1 + np.exp(-1 * predicted_linear_response))
 
-    def _get_noise_distribution(self, mean):
+    def _get_noise_distribution(self, params):
         return tfp.distributions.Independent(
-            tfp.distributions.Bernoulli(probs=mean),
+            tfp.distributions.Bernoulli(probs=params),
             reinterpreted_batch_ndims=1
         ) 
 
