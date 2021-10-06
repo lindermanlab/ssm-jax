@@ -61,6 +61,9 @@ def hmm_log_normalizer(log_initial_state_probs, log_transition_matrix, log_likel
     Returns:
         The log probability of the sequence, summing out the discrete states.
     """
+
+    # print("calling HMM log noramlizer!")
+
     assert log_initial_state_probs.ndim == 1 and log_likelihoods.ndim == 2
     num_states = len(log_initial_state_probs)
     num_timesteps = len(log_likelihoods)

@@ -19,7 +19,7 @@ from ssm.utils import Verbosity
 Array = Any
 
 from ssm.components.posterior import HMMPosterior
-from ssm.inference.message_passing import hmm_log_normalizer
+from ssm.inference.message_passing import hmm_log_normalizer, hmm_expected_states
 from ssm.inference.em import em
 
 from ssm.components.initial_distributions import CategoricalInitialDistribution
@@ -115,15 +115,19 @@ class HMM(SSM):
 
     ### Methods for inference
 
-    # TODO: should this be defined in message passing or here?
+    # TODO: should this be defined in message passing or here? 
+    # not here probably b/c it won't remained jitted
     def expected_states(self, data):
         marginal_likelihood, (Ez0, Ezzp1, Ez) = \
             jit(value_and_grad(hmm_log_normalizer, argnums=(0, 1, 2)))\
                 (*self.natural_parameters(data))
         return marginal_likelihood, (Ez0, Ezzp1, Ez)
 
+    # Looks like we want hmm_expected_states to be defined elsewhere because otherwise this 
+    # re-jits every time!
     def posterior(self, data):
-        marginal_likelihood, (Ez0, Ezzp1, Ez) = self.expected_states(data)
+        marginal_likelihood, (Ez0, Ezzp1, Ez) = hmm_expected_states(*self.natural_parameters(data))
+        # marginal_likelihood, (Ez0, Ezzp1, Ez) = self.expected_states(data) # re-jits every step (bc of class reinit?)
         return HMMPosterior(marginal_likelihood, Ez, Ezzp1)
 
     def e_step(self, data):
