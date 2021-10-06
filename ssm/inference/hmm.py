@@ -1,5 +1,8 @@
 """
 TODO: organize HMM-specific EM functions elsewhere
+
+IDEA:
+    - decompose this file into `message_passing.py` routines
 """
 from collections import namedtuple
 from textwrap import dedent
@@ -13,7 +16,7 @@ import jax.scipy.special as spsp
 import jax.random as npr
 import jax.experimental.optimizers as optimizers
 
-from ssm.models.hmm import HMM
+# from ssm.models.hmm import HMM
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 
@@ -168,140 +171,30 @@ hmm_expected_states.__doc__ = dedent(
     """
 )
 
-def hmm_expected_log_joint(log_initial_state_probs,
-                           log_transition_matrix,
-                           log_likelihoods,
-                           posterior):
-    """The expected log joint probability of an HMM given a posterior over the latent states.
-    
-    .. math::
-        \mathbb{E}_{q(z)} \left[\log p(x, z, \\theta)\\right]
-        
-    where,
-    
-    .. math:: 
-        q(z) = p(z|x, \\theta).
-        
-    Recall that this is the component of the ELBO that is dependent upon the parameters.
-    
-    .. math::
-        \mathcal{L}(q, \\theta) = \mathbb{E}_{q(z)} \left[\log p(x, z, \\theta) - \log q(z) \\right]
-
-    Args:
-        log_initial_state_probs ([type]): [description]
-        log_transition_matrix ([type]): [description]
-        log_likelihoods ([type]): [description]
-        posterior ([type]): [description]
-
-    Returns:
-        elp ([type]): expected log probability
-    """
-    elp = np.sum(posterior.expected_states[0] * log_initial_state_probs)
-    elp += np.sum(posterior.expected_transitions * log_transition_matrix)
-    elp += np.sum(posterior.expected_states * log_likelihoods)
-    return elp
-
 
 ### EM algorithm
-def _e_step(hmm, data):
-    marginal_likelihood, (Ez0, Ezzp1, Ez) = \
-        hmm_expected_states(*hmm.natural_parameters(data))
-
-    return HMMPosterior(marginal_likelihood, Ez, Ezzp1)
-
-def _exact_m_step_initial_distribution(hmm, data, posterior, prior=None):
-    expfam = EXPFAM_DISTRIBUTIONS["Categorical"]
-    stats, counts = (posterior.expected_states[0],), 1
-
-    if prior is not None:
-        # Get stats from the prior
-        prior_stats, prior_counts = \
-            expfam.prior_pseudo_obs_and_counts(prior.initial_prior)
-    else:
-        # Default to uniform prior (0 stats, 1 counts)
-        prior_stats, prior_counts = (np.ones(hmm.num_states) + 1e-4,), 0
-
-    stats = sum_tuples(stats, prior_stats)
-    counts += prior_counts
-
-    param_posterior = expfam.posterior_from_stats(stats, counts)
-    return expfam.from_params(param_posterior.mode())
-
-def _exact_m_step_transition_distribution(hmm, data, posterior, prior=None):
-    expfam = EXPFAM_DISTRIBUTIONS["Categorical"]
-    stats, counts = (posterior.expected_transitions,), 0
-
-    if prior is not None:
-        # Get stats from the prior
-        prior_stats, prior_counts = \
-            expfam.prior_pseudo_obs_and_counts(prior.transition_prior)
-    else:
-        # Default to uniform prior (0 stats, 1 counts)
-        prior_stats, prior_counts = (np.ones((hmm.num_states, hmm.num_states)) + 1e-4,), 0
-
-    stats = sum_tuples(stats, prior_stats)
-    counts += prior_counts
-
-    param_posterior = expfam.posterior_from_stats(stats, counts)
-    return expfam.from_params(param_posterior.mode())
-
-def _exact_m_step_emissions_distribution(hmm, data, posterior, prior=None):
-    # Use exponential family stuff for the emissions
-    expfam = EXPFAM_DISTRIBUTIONS[hmm._emissions_distribution.name]
-    stats = tuple(
-        np.einsum('tk,t...->k...', posterior.expected_states, s)
-        for s in expfam.suff_stats(data))
-    counts = np.sum(posterior.expected_states, axis=0)
-
-    if prior is not None:
-        prior_stats, prior_counts = \
-            expfam.prior_pseudo_obs_and_counts(prior.emissions_prior)
-        stats = sum_tuples(stats, prior_stats)
-        counts += prior_counts
-
-    param_posterior = expfam.posterior_from_stats(stats, counts)
-    return expfam.from_params(param_posterior.mode())
-
-def _exact_m_step(hmm, data, posterior, prior=None):
-    initial_distribution = _exact_m_step_initial_distribution(hmm, data, posterior, prior=prior)
-    transition_distribution = _exact_m_step_transition_distribution(hmm, data, posterior, prior=prior)
-    emissions_distribution = _exact_m_step_emissions_distribution(hmm, data, posterior, prior=prior)
-    return HMM(hmm.num_states,
-               initial_distribution,
-               transition_distribution,
-               emissions_distribution)
-
-def em(hmm,
+def em(model,
        data,
        num_iters=100,
        tol=1e-4,
        verbosity=Verbosity.DEBUG,
-       m_step_type="exact",
-       num_inner=1,
-       patience=5,
     ):
 
-    @jit
-    def step(hmm):
-        posterior = _e_step(hmm, data)
-        if m_step_type == "exact":
-            hmm = _exact_m_step(hmm, data, posterior)
-        # elif m_step_type == "sgd_marginal_likelihood":
-        #     _generic_m_step(hmm, data, posterior, num_iters=num_inner)
-        # elif m_step_type == "sgd_expected_log_prob":
-        #     _generic_m_step_elbo(hmm, data, posterior, num_iters=num_inner)
-        # else:
-        #     raise ValueError("unrecognized")
-        return hmm, posterior
+    # @jit
+    def update(model):
+        posterior = model.e_step(data)
+        model = model.m_step(data, posterior)
+        return model, posterior
 
     # Run the EM algorithm to convergence
     log_probs = []
     pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
+    
     if verbosity:
         pbar.set_description("[jit compiling...]")
-    init_patience = patience
+
     for itr in pbar:
-        hmm, posterior = step(hmm)
+        model, posterior = update(model)
         lp = posterior.marginal_likelihood
         assert np.isfinite(lp), "NaNs in marginal log probability"
         log_probs.append(lp)
@@ -309,19 +202,13 @@ def em(hmm,
             pbar.set_description("LP: {:.3f}".format(lp))
 
         # Check for convergence
-        # TODO: make this cleaner with patience
         if itr > 1 and abs(log_probs[-1] - log_probs[-2]) < tol:
-            if patience == 0:
-                if verbosity:
-                    pbar.set_description("[converged] LP: {:.3f}".format(lp))
-                    pbar.refresh()
-                break
-            else:
-                patience -= 1
-        else:
-            patience = init_patience
+            if verbosity:
+                pbar.set_description("[converged] LP: {:.3f}".format(lp))
+                pbar.refresh()
+            break
 
-    return np.array(log_probs), hmm, posterior
+    return np.array(log_probs), model, posterior
 
 def stochastic_em(hmm,
                   datas,
