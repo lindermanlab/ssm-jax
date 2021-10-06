@@ -1,3 +1,8 @@
+"""
+see emissions.py for design notes
+"""
+
+
 import jax.numpy as np
 from jax.tree_util import register_pytree_node_class
 

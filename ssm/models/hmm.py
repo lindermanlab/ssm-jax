@@ -5,7 +5,7 @@ Module defining model behavior for Hidden Markov Models (HMMs).
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
-from jax import jit
+from jax import jit, value_and_grad
 
 from jax import vmap
 from jax.tree_util import register_pytree_node_class
@@ -19,8 +19,8 @@ from ssm.utils import Verbosity
 Array = Any
 
 from ssm.components.posterior import HMMPosterior
-from ssm.inference.hmm import hmm_expected_states
-from ssm.inference.hmm import em
+from ssm.inference.message_passing import hmm_log_normalizer
+from ssm.inference.em import em
 
 from ssm.components.initial_distributions import CategoricalInitialDistribution
 from ssm.components.dynamics import CategoricalDynamics
@@ -113,10 +113,17 @@ class HMM(SSM):
 
         return log_initial_state_distn, log_transition_matrix, log_likelihoods
 
-    #### Methods for HMM Inference
-    def posterior(self, data):
+    ### Methods for inference
+
+    # TODO: should this be defined in message passing or here?
+    def expected_states(self, data):
         marginal_likelihood, (Ez0, Ezzp1, Ez) = \
-            hmm_expected_states(*self.natural_parameters(data))
+            jit(value_and_grad(hmm_log_normalizer, argnums=(0, 1, 2)))\
+                (*self.natural_parameters(data))
+        return marginal_likelihood, (Ez0, Ezzp1, Ez)
+
+    def posterior(self, data):
+        marginal_likelihood, (Ez0, Ezzp1, Ez) = self.expected_states(data)
         return HMMPosterior(marginal_likelihood, Ez, Ezzp1)
 
     def e_step(self, data):

@@ -12,6 +12,7 @@ General design notes:
         - .permute(permutation)                        ==> permute the latent states defined by the distribution
         - .exact_m_step(data, posterior, prior=None)   ==> (if possible) return an updated distribution
         - .sgd_update(data, posterior)                 ==> SGD on -log_prob objective (when m_step isn't available)
+        - .initialize(data)                            ==> Initialize parameters of distribution in data-aware way
         - [...]
 - Like the ssm.jax_refactor branch, we could bundle a list of different distributions / state
 
