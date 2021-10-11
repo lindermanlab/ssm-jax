@@ -147,6 +147,11 @@ class HMM(SSM):
     def m_step(self, data, posterior, prior=None):
         return self.fit_using_posterior(data, posterior, prior=None)
 
+    def marginal_likelihood(self, data, posterior=None):
+        if posterior is None:
+            posterior = self.posterior(data)
+        return posterior.marginal_likelihood
+
     def expected_log_joint(self, data, posterior):
         """The expected log joint probability of an HMM given a posterior over the latent states.
             
@@ -183,7 +188,7 @@ class HMM(SSM):
         if method == "em":
             log_probs, model, posterior = em(model, data, **kwargs)
         else:
-            raise ValueError(f"Method {method} is not recognized.")
+            raise ValueError(f"Method {method} is not recognized/supported.")
 
         return log_probs, model, posterior
 

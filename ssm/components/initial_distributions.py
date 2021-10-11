@@ -51,3 +51,25 @@ class CategoricalInitialDistribution(InitialDistribution):
 
         param_posterior = expfam.posterior_from_stats(stats, counts)
         return expfam.from_params(param_posterior.mode())
+
+
+@register_pytree_node_class
+class GaussianInitialDistribution(InitialDistribution):
+    def exact_m_step(self, data, posterior, prior=None):
+        expfam = EXPFAM_DISTRIBUTIONS["MultivariateNormalTriL"]
+
+        # Extract sufficient statistics
+        Ex = posterior.mean[0]
+        ExxT = posterior.expected_states_squared[0]
+
+        stats = (1.0, Ex, ExxT)
+        counts = 1.0
+
+        if prior is not None:
+            prior_stats, prior_counts = \
+                expfam.prior_pseudo_obs_and_counts(prior.initial_prior)
+            stats = sum_tuples(stats, prior_stats)
+            counts += prior_counts
+
+        param_posterior = expfam.posterior_from_stats(stats, counts)
+        return expfam.from_params(param_posterior.mode())

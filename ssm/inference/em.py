@@ -22,11 +22,12 @@ def em(model,
        verbosity=Verbosity.DEBUG,
     ):
 
-    # @jit
+    @jit
     def update(model):
         posterior = model.e_step(data)
+        lp = model.marginal_likelihood(data, posterior=posterior)
         model = model.m_step(data, posterior)
-        return model, posterior
+        return model, posterior, lp
 
     # Run the EM algorithm to convergence
     log_probs = []
@@ -36,8 +37,7 @@ def em(model,
         pbar.set_description("[jit compiling...]")
 
     for itr in pbar:
-        model, posterior = update(model)
-        lp = posterior.marginal_likelihood
+        model, posterior, lp = update(model)
         assert np.isfinite(lp), "NaNs in marginal log probability"
         log_probs.append(lp)
         if verbosity:
