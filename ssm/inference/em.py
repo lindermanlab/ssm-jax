@@ -1,3 +1,7 @@
+"""
+General EM routines
+"""
+
 from collections import namedtuple
 from textwrap import dedent
 
@@ -10,7 +14,6 @@ import jax.scipy.special as spsp
 import jax.random as npr
 import jax.experimental.optimizers as optimizers
 
-# from ssm.models.hmm import HMM
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 

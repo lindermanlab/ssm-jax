@@ -191,6 +191,8 @@ class GaussianLDS(LDS):
         h = h.at[1:].add(np.linalg.solve(Q, b))
         return J_diag, J_lower_diag, h
 
+    # Methods for inference
+    
     def e_step(self, data):
         return MultivariateNormalBlockTridiag(*self.natural_parameters(data))
 

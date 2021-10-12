@@ -1,8 +1,5 @@
 """
-TODO: organize HMM-specific EM functions elsewhere
-
-IDEA:
-    - decompose this file into `message_passing.py` routines
+HMM Message Passing Routines
 """
 from collections import namedtuple
 from textwrap import dedent

@@ -1,3 +1,7 @@
+"""
+Laplace EM (for non-conjugate LDS models such as GLM-LDS)
+"""
+
 import jax.numpy as np
 from jax import jit, value_and_grad, grad, hessian, vmap, jacfwd, jacrev
 import jax.random as jr
@@ -129,7 +133,7 @@ def _compute_laplace_precision_blocks(lds, states, data):
 
 def _laplace_e_step(lds, data, initial_states, laplace_mode_fit_method="BFGS", num_laplace_mode_iters=10, ):
     """
-    Laplace approximation to the posterior distribution for nonconjugate models.
+    Laplace approximation to the posterior distribution for nonconjugate LDS models.
     """
     # Find the mean and precision of the Laplace approximation
     most_likely_states = _compute_laplace_mean(
