@@ -22,14 +22,14 @@ class Dynamics:
         raise NotImplementedError
 
     def tree_flatten(self):
-        children = (self.distribution)
+        children = (self.distribution,)
         aux_data = (self.num_states,)
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         num_states, = aux_data
-        distribution = children
+        distribution, = children
         return cls(num_states,
                    distribution=distribution)
 
