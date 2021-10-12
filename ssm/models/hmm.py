@@ -56,20 +56,20 @@ class HMM(SSM):
                 self.emissions = GaussianEmissions(num_states, emissions_distribution)
 
     def tree_flatten(self):
-        children = (self.initials,
-                    self.dynamics,
-                    self.emissions)
+        children = (self.initials.distribution,
+                    self.dynamics.distribution,
+                    self.emissions.distribution)
         aux_data = (self.num_states,)
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
+        initial_distribution, dynamics_distribution, emissions_distribution = children
         num_states, = aux_data
-        initials, dynamics, emissions = children
         return cls(num_states,
-                   initial_distribution=initials.distribution,
-                   transition_distribution=dynamics.distribution,
-                   emissions_distribution=emissions.distribution)
+                   initial_distribution,
+                   dynamics_distribution,
+                   emissions_distribution)
 
     def initial_distribution(self):
         return self.initials.distribution
