@@ -6,7 +6,7 @@ from collections import namedtuple
 from textwrap import dedent
 
 import jax.numpy as np
-from jax import jit, lax, value_and_grad
+from jax import jit, lax, value_and_grad, vmap
 
 from functools import partial
 
@@ -25,12 +25,14 @@ def em(model,
        verbosity=Verbosity.DEBUG,
     ):
 
+    assert len(data.shape) == 3, "must have batch dimension"
+
     @jit
     def update(model):
-        posterior = model.e_step(data)
-        lp = model.marginal_likelihood(data, posterior=posterior)
-        model = model.m_step(data, posterior)
-        return model, posterior, lp
+        posteriors = vmap(model.e_step)(data)
+        lp = vmap(model.marginal_likelihood)(data, posterior=posteriors).mean()
+        model = model.m_step(data, posteriors)
+        return model, posteriors, lp
 
     # Run the EM algorithm to convergence
     log_probs = []

@@ -66,10 +66,18 @@ class GaussianEmissions(Emissions):
         """If we have the right posterior, we can perform an exact update here.
         """
         expfam = EXPFAM_DISTRIBUTIONS["MultivariateNormalTriL"]
-        stats = tuple(
-            np.einsum('tk,t...->k...', posterior.expected_states, s)
-            for s in expfam.suff_stats(data))
-        counts = np.sum(posterior.expected_states, axis=0)
+
+        # make sure batch dim matches
+        assert data.shape[0] == posterior.expected_states.shape[0]
+
+        counts = 0
+        stats = None
+        for i in range(data.shape[0]):
+            these_stats = tuple(
+                        np.einsum('tk,t...->k...', posterior.expected_states[i], s)
+                        for s in expfam.suff_stats(data[i]))
+            stats = sum_tuples(stats, these_stats)
+            counts += np.sum(posterior.expected_states[i], axis=0)
 
         if prior is not None:
             prior_stats, prior_counts = \
@@ -86,10 +94,15 @@ class PoissonEmissions(Emissions):
         """If we have the right posterior, we can perform an exact update here.
         """
         expfam = EXPFAM_DISTRIBUTIONS["IndependentPoisson"]
-        stats = tuple(
-            np.einsum('tk,t...->k...', posterior.expected_states, s)
-            for s in expfam.suff_stats(data))
-        counts = np.sum(posterior.expected_states, axis=0)
+
+        counts = 0
+        stats = None
+        for i in range(data.shape[0]):
+            these_stats = tuple(
+                np.einsum('tk,t...->k...', posterior.expected_states[i], s)
+                for s in expfam.suff_stats(data[i]))
+            stats = sum_tuples(stats, these_stats)
+            counts += np.sum(posterior.expected_states[i], axis=0)
 
         if prior is not None:
             prior_stats, prior_counts = \

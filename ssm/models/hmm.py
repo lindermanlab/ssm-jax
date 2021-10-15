@@ -172,14 +172,25 @@ class HMM(SSM):
 
     def fit(self, data, method="em", num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
         model = self
+        single_batch_mode = False
         kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
 
+        # ensure data has a batch dimension
+        if len(data.shape) == 2:
+            single_batch_mode = True
+            data = data[None, :]
+        assert len(data.shape) == 3, "data must have a batch dimension (B, T, N)"
+
         if method == "em":
-            log_probs, model, posterior = em(model, data, **kwargs)
+            log_probs, model, posteriors = em(model, data, **kwargs)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
-        return log_probs, model, posterior
+        # if we passed in a single batch, unpack the single posterior
+        if single_batch_mode:
+            posteriors = HMMPosterior(*[component[0] for component in posteriors])
+
+        return log_probs, model, posteriors
 
 class HMMConjugatePrior(object):
     """ TODO @schlagercollin

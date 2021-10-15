@@ -39,7 +39,9 @@ class Dynamics:
 class CategoricalDynamics(Dynamics):
     def exact_m_step(self, data, posterior, prior=None):
         expfam = EXPFAM_DISTRIBUTIONS["Categorical"]
-        stats, counts = (posterior.expected_transitions,), 0
+        # stats, counts = (posterior.expected_transitions,), 0
+        stats = (posterior.expected_transitions.sum(axis=0),)
+        counts = posterior.expected_transitions.shape[0]  # TODO: what should counts be here?
 
         if prior is not None:
             # Get stats from the prior
@@ -62,8 +64,8 @@ class GaussianLinearRegressionDynamics(Dynamics):
         expfam = EXPFAM_DISTRIBUTIONS["GaussianGLM"]
 
         # Extract expected sufficient statistics from posterior
-        Ex = posterior.mean
-        ExxT, ExnxT = posterior.second_moments
+        Ex = posterior.mean.sum(axis=0)
+        ExxT, ExnxT = (component.sum(axis=0) for component in posterior.second_moments)
 
         # Sum over time
         sum_x = Ex[:-1].sum(axis=0)
@@ -72,7 +74,8 @@ class GaussianLinearRegressionDynamics(Dynamics):
         sum_yxT = ExnxT.sum(axis=0)
         sum_yyT = ExxT[1:].sum(axis=0)
         stats = (sum_x, sum_y, sum_xxT, sum_yxT, sum_yyT)
-        counts = len(data) - 1
+        # counts = len(data) - 1
+        counts = data.size - data.shape[0]
 
         if prior is not None:
             prior_stats, prior_counts = \
