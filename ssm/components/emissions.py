@@ -30,6 +30,8 @@ import jax
 import jax.numpy as np
 from jax.tree_util import register_pytree_node_class
 
+from jax import lax, vmap, tree_util
+
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 
@@ -70,14 +72,16 @@ class GaussianEmissions(Emissions):
         # make sure batch dim matches
         assert data.shape[0] == posterior.expected_states.shape[0]
 
-        counts = 0
-        stats = None
-        for i in range(data.shape[0]):
-            these_stats = tuple(
-                        np.einsum('tk,t...->k...', posterior.expected_states[i], s)
-                        for s in expfam.suff_stats(data[i]))
-            stats = sum_tuples(stats, these_stats)
-            counts += np.sum(posterior.expected_states[i], axis=0)
+        def compute_stats_and_counts(data, posterior):
+            stats = tuple(
+                        np.einsum('tk,t...->k...', posterior.expected_states, s)
+                        for s in expfam.suff_stats(data))
+            counts = np.sum(posterior.expected_states, axis=0)
+            return stats, counts
+
+        stats, counts = vmap(compute_stats_and_counts)(data, posterior)
+        stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
+        counts = counts.sum(axis=0)
 
         if prior is not None:
             prior_stats, prior_counts = \
@@ -95,14 +99,16 @@ class PoissonEmissions(Emissions):
         """
         expfam = EXPFAM_DISTRIBUTIONS["IndependentPoisson"]
 
-        counts = 0
-        stats = None
-        for i in range(data.shape[0]):
-            these_stats = tuple(
-                np.einsum('tk,t...->k...', posterior.expected_states[i], s)
-                for s in expfam.suff_stats(data[i]))
-            stats = sum_tuples(stats, these_stats)
-            counts += np.sum(posterior.expected_states[i], axis=0)
+        def compute_stats_and_counts(data, posterior):
+            stats = tuple(
+                        np.einsum('tk,t...->k...', posterior.expected_states, s)
+                        for s in expfam.suff_stats(data))
+            counts = np.sum(posterior.expected_states, axis=0)
+            return stats, counts
+
+        stats, counts = vmap(compute_stats_and_counts)(data, posterior)
+        stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
+        counts = counts.sum(axis=0)
 
         if prior is not None:
             prior_stats, prior_counts = \
