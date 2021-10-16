@@ -125,18 +125,24 @@ class GaussianLinearRegressionEmissions(Emissions):
         # Use exponential family stuff for the emissions
         expfam = EXPFAM_DISTRIBUTIONS["GaussianGLM"]
 
-        # Extract expected sufficient statistics from posterior
-        Ex = posterior.mean
-        ExxT, _ = posterior.second_moments
+        def compute_stats_and_counts(data, posterior):
+            # Extract expected sufficient statistics from posterior
+            Ex = posterior.mean
+            ExxT, _ = posterior.second_moments
 
-        # Sum over time
-        sum_x = Ex.sum(axis=0)
-        sum_y = data.sum(axis=0)
-        sum_xxT = ExxT.sum(axis=0)
-        sum_yxT = data.T.dot(Ex)
-        sum_yyT = data.T.dot(data)
-        stats = (sum_x, sum_y, sum_xxT, sum_yxT, sum_yyT)
-        counts = len(data)
+            # Sum over time
+            sum_x = Ex.sum(axis=0)
+            sum_y = data.sum(axis=0)
+            sum_xxT = ExxT.sum(axis=0)
+            sum_yxT = data.T.dot(Ex)
+            sum_yyT = data.T.dot(data)
+            stats = (sum_x, sum_y, sum_xxT, sum_yxT, sum_yyT)
+            counts = len(data)
+            return stats, counts
+
+        stats, counts = vmap(compute_stats_and_counts)(data, posterior)
+        stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
+        counts = counts.sum(axis=0)
 
         if prior is not None:
             prior_stats, prior_counts = \

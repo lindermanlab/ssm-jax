@@ -4,6 +4,7 @@ see emissions.py for design notes
 
 
 import jax.numpy as np
+from jax import jit, vmap, tree_util
 from jax.tree_util import register_pytree_node_class
 
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
@@ -40,8 +41,14 @@ class CategoricalDynamics(Dynamics):
     def exact_m_step(self, data, posterior, prior=None):
         expfam = EXPFAM_DISTRIBUTIONS["Categorical"]
         # stats, counts = (posterior.expected_transitions,), 0
-        stats = (posterior.expected_transitions.sum(axis=0),)
-        counts = posterior.expected_transitions.shape[0]  # TODO: what should counts be here?
+
+        def compute_stats_and_counts(data, posterior):
+            stats, counts = (posterior.expected_transitions,), 0
+            return stats, counts
+
+        stats, counts = vmap(compute_stats_and_counts)(data, posterior)
+        stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
+        counts = counts.sum(axis=0)
 
         if prior is not None:
             # Get stats from the prior
@@ -64,18 +71,23 @@ class GaussianLinearRegressionDynamics(Dynamics):
         expfam = EXPFAM_DISTRIBUTIONS["GaussianGLM"]
 
         # Extract expected sufficient statistics from posterior
-        Ex = posterior.mean.sum(axis=0)
-        ExxT, ExnxT = (component.sum(axis=0) for component in posterior.second_moments)
+        def compute_stats_and_counts(data, posterior):
+            Ex = posterior.mean
+            ExxT, ExnxT = posterior.second_moments
 
-        # Sum over time
-        sum_x = Ex[:-1].sum(axis=0)
-        sum_y = Ex[1:].sum(axis=0)
-        sum_xxT = ExxT[:-1].sum(axis=0)
-        sum_yxT = ExnxT.sum(axis=0)
-        sum_yyT = ExxT[1:].sum(axis=0)
-        stats = (sum_x, sum_y, sum_xxT, sum_yxT, sum_yyT)
-        # counts = len(data) - 1
-        counts = data.size - data.shape[0]
+            # Sum over time
+            sum_x = Ex[:-1].sum(axis=0)
+            sum_y = Ex[1:].sum(axis=0)
+            sum_xxT = ExxT[:-1].sum(axis=0)
+            sum_yxT = ExnxT.sum(axis=0)
+            sum_yyT = ExxT[1:].sum(axis=0)
+            stats = (sum_x, sum_y, sum_xxT, sum_yxT, sum_yyT)
+            counts = len(data) - 1
+            return stats, counts
+
+        stats, counts = vmap(compute_stats_and_counts)(data, posterior)
+        stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
+        counts = counts.sum(axis=0)
 
         if prior is not None:
             prior_stats, prior_counts = \

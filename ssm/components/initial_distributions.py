@@ -3,6 +3,7 @@ see emission.py for design notes
 """
 
 import jax.numpy as np
+from jax import jit, vmap, tree_util
 from jax.tree_util import register_pytree_node_class
 
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
@@ -38,8 +39,13 @@ class CategoricalInitialDistribution(InitialDistribution):
         expfam = EXPFAM_DISTRIBUTIONS["Categorical"]
 
         # stats, counts = (posterior.expected_states[0],), 1
-        stats = (posterior.expected_states[:, 0].sum(axis=0),)
-        counts = posterior.expected_states.shape[0]
+        def compute_stats_and_counts(data, posterior):
+            stats, counts = (posterior.expected_states[0],), 1
+            return stats, counts
+
+        stats, counts = vmap(compute_stats_and_counts)(data, posterior)
+        stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
+        counts = counts.sum(axis=0)
 
         if prior is not None:
             # Get stats from the prior
@@ -61,16 +67,16 @@ class GaussianInitialDistribution(InitialDistribution):
     def exact_m_step(self, data, posterior, prior=None):
         expfam = EXPFAM_DISTRIBUTIONS["MultivariateNormalTriL"]
 
-        # Extract sufficient statistics
-        # Ex = posterior.mean[0]
-        # ExxT = posterior.expected_states_squared[0]
+        def compute_stats_and_counts(data, posteiror):
+            Ex = posterior.mean[0]
+            ExxT = posterior.expected_states_squared[0]
+            stats = (1.0, Ex, ExxT)
+            counts = 1.0
+            return stats, counts
 
-        Ex = posterior.mean[:, 0].sum(axis=0)
-        ExxT = posterior.expected_states_squared[:, 0].sum(axis=0)
-
-        stats = (1.0, Ex, ExxT)
-        # counts = 1.0
-        counts = posterior.mean.shape[0]
+        stats, counts = vmap(compute_stats_and_counts)(data, posterior)
+        stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
+        counts = counts.sum(axis=0)
 
         if prior is not None:
             prior_stats, prior_counts = \
