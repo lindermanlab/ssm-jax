@@ -218,6 +218,15 @@ def laplace_em(
     @jit
     def step(rng, lds, states):
         rng, elbo_rng, m_step_rng = jr.split(rng, 3)
+
+        # we can't seem to vmap over a function when lds is an argument
+        # (even if we exclude lds from the vmap in_axes)
+        # seems like it's an issue vmapping over tfp.dist objects (which are in lds' pytree)
+        # a fix that I've found is to construct partial functions to fold-in the lds prior to
+        # vmapping
+
+        # this issue seems to be related to the general issue of using tfp distributions
+        # with vmap (see https://github.com/tensorflow/probability/issues/1271)
         _laplace_e_step_partial = partial(_laplace_e_step, lds, 
                                           laplace_mode_fit_method=laplace_mode_fit_method,
                                           num_laplace_mode_iters=num_laplace_mode_iters)
