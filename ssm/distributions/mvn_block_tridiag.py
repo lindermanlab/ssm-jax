@@ -239,40 +239,55 @@ class MultivariateNormalBlockTridiag:
         return self._ExxT, self._ExnxT
 
     def _sample(self, seed=None, sample_shape=()):
+        if not self.ran_message_passing:
+            self.message_passing()
+
+        # TODO make these parameters w/ lazy op?
         filtered_Js = self._filtered_Js
         filtered_hs = self._filtered_hs
         J_lower_diag = self._precision_lower_diag_blocks
 
-        def _sample_info_gaussian(seed, J, h, shape):
-            # TODO: avoid inversion. see https://github.com/mattjj/pybasicbayes/blob/master/pybasicbayes/util/stats.py#L117-L122
-            # L = np.linalg.cholesky(J)
-            # x = np.random.randn(h.shape[0])
-            # return scipy.linalg.solve_triangular(L,x,lower=True,trans='T') \
-            #     + dpotrs(L,h,lower=True)[0]
-            cov = np.linalg.inv(J)
-            loc = np.einsum("...ij,...j->...i", cov, h)
-            return tfp.distributions.MultivariateNormalFullCovariance(
-                loc=loc, covariance_matrix=cov).sample(sample_shape=shape, seed=seed)
+        def sample_single(seed, filtered_Js, filtered_hs, J_lower_diag):
 
-        def _step(carry, inpt):
-            x_next, seed = carry
-            Jf, hf, L = inpt
+            def _sample_info_gaussian(seed, J, h, shape):
+                # TODO: avoid inversion. see https://github.com/mattjj/pybasicbayes/blob/master/pybasicbayes/util/stats.py#L117-L122
+                # L = np.linalg.cholesky(J)
+                # x = np.random.randn(h.shape[0])
+                # return scipy.linalg.solve_triangular(L,x,lower=True,trans='T') \
+                #     + dpotrs(L,h,lower=True)[0]
+                cov = np.linalg.inv(J)
+                loc = np.einsum("...ij,...j->...i", cov, h)
+                return tfp.distributions.MultivariateNormalFullCovariance(
+                    loc=loc, covariance_matrix=cov).sample(sample_shape=shape, seed=seed)
 
-            # Condition on the next observation
-            Jc = Jf
-            hc = hf - x_next @ L
+            def _step(carry, inpt):
+                x_next, seed = carry
+                Jf, hf, L = inpt
 
-            # Split the seed
-            seed, this_seed = jr.split(seed)
-            x = _sample_info_gaussian(this_seed, Jc, hc, sample_shape)
-            return (x, seed), x
+                # Condition on the next observation
+                Jc = Jf
+                hc = hf - x_next @ L
 
-        # Initialize with sample of last state
-        seed_T, seed = jr.split(seed)
-        x_T = _sample_info_gaussian(seed_T, filtered_Js[-1], filtered_hs[-1], sample_shape)
-        inputs = (filtered_Js[:-1][::-1], filtered_hs[:-1][::-1], J_lower_diag[::-1])
-        _, x_rev = lax.scan(_step, (x_T, seed), inputs)
-        return np.concatenate((x_rev[::-1], x_T[None, ...]), axis=0)
+                # Split the seed
+                seed, this_seed = jr.split(seed)
+                x = _sample_info_gaussian(this_seed, Jc, hc, sample_shape)
+                return (x, seed), x
+
+            # Initialize with sample of last state
+            seed_T, seed = jr.split(seed)
+            x_T = _sample_info_gaussian(seed_T, filtered_Js[-1], filtered_hs[-1], sample_shape)
+            inputs = (filtered_Js[:-1][::-1], filtered_hs[:-1][::-1], J_lower_diag[::-1])
+            _, x_rev = lax.scan(_step, (x_T, seed), inputs)
+            return np.concatenate((x_rev[::-1], x_T[None, ...]), axis=0)
+
+        # batch mode
+        if filtered_Js.ndim == 4:
+            samples = vmap(sample_single)(seed, filtered_Js, filtered_hs, J_lower_diag)
+        
+        # non-batch mode
+        else:
+            samples = sample_single(seed, filtered_Js, filtered_hs, J_lower_diag)
+        return samples
 
     def _entropy(self):
         """

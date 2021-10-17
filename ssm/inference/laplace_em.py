@@ -15,6 +15,8 @@ import jax.experimental.optimizers as optimizers
 import tensorflow_probability.substrates.jax as tfp
 import jax.scipy.optimize
 
+from functools import partial
+
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
 def _compute_laplace_mean(lds, x0, data, method="BFGS", num_iters=50, learning_rate=1e-3):
     """Find the mode of the log joint for the Laplace approximation.
@@ -150,7 +152,7 @@ def _laplace_e_step(lds, data, initial_states, laplace_mode_fit_method="BFGS", n
                                           mean=most_likely_states)
 
 
-def _elbo(rng, model, data, posterior, num_samples=1):
+def _elbo(model, rng, data, posterior, num_samples=1):
         """
         For nonconjugate models like an LDS with GLM emissions, we can compute
         an _evidence lower bound_ (ELBO) using the joint probability and an
@@ -216,13 +218,18 @@ def laplace_em(
     @jit
     def step(rng, lds, states):
         rng, elbo_rng, m_step_rng = jr.split(rng, 3)
-        posterior = _laplace_e_step(lds, data, states,
-                                    laplace_mode_fit_method=laplace_mode_fit_method,
-                                    num_laplace_mode_iters=num_laplace_mode_iters)
-        states = posterior.mean
-        elbo = _elbo(elbo_rng, lds, data, posterior, num_samples=num_elbo_samples)
-        lds = lds.fit_with_posterior(data, posterior, rng=m_step_rng)
-        return rng, lds, posterior, states, elbo
+        _laplace_e_step_partial = partial(_laplace_e_step, lds, 
+                                          laplace_mode_fit_method=laplace_mode_fit_method,
+                                          num_laplace_mode_iters=num_laplace_mode_iters)
+        posteriors = vmap(_laplace_e_step_partial)(data, states)
+        states = posteriors.mean
+        elbo_rng = jr.split(elbo_rng, data.shape[0])
+        _elbo_partial = partial(_elbo, lds, num_samples=num_elbo_samples)
+        elbos = vmap(_elbo_partial)(elbo_rng, data, posteriors)
+        elbo = np.mean(elbos)
+        m_step_rng = jr.split(rng, data.shape[0])
+        lds = lds.fit_with_posterior(data, posteriors, rng=m_step_rng)
+        return rng, lds, posteriors, states, elbo
 
     # Run the Laplace EM algorithm to convergence
     elbos = []
@@ -231,10 +238,10 @@ def laplace_em(
         pbar.set_description("[jit compiling...]")
 
     # Initialize the latent states to all zeros
-    states = np.zeros((len(data), lds.latent_dim))
+    states = np.zeros((data.shape[0], data.shape[1], lds.latent_dim))
 
     for itr in pbar:
-        rng, lds, posterior, states, elbo = step(rng, lds, states)
+        rng, lds, posteriors, states, elbo = step(rng, lds, states)
         elbos.append(elbo)
         if verbosity:
             pbar.set_description("ELBO: {:.3f}".format(elbo))
@@ -247,4 +254,4 @@ def laplace_em(
                 pbar.refresh()
                 break
 
-    return np.array(elbos), lds, posterior
+    return np.array(elbos), lds, posteriors
