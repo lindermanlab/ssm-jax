@@ -1,19 +1,23 @@
+"""
+LDS Model Classes
+=================
+"""
 import jax.numpy as np
-from jax.tree_util import register_pytree_node_class
-
-from tensorflow_probability.substrates import jax as tfp
-
-from ssm.models.base import SSM
+from jax.tree_util import register_pytree_node_class, tree_map
 from ssm.distributions.glm import BernoulliGLM, GaussianGLM, PoissonGLM
 from ssm.distributions.linreg import GaussianLinearRegression
-
-from ssm.components.initial_distributions import CategoricalInitialDistribution, GaussianInitialDistribution
-from ssm.components.dynamics import CategoricalDynamics, GaussianLinearRegressionDynamics
-from ssm.components.emissions import BernoulliGLMEmissions, GaussianEmissions, GaussianLinearRegressionEmissions, PoissonEmissions, PoissonGLMEmissions
-
 from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
-
+from ssm.inference.em import em
 from ssm.inference.laplace_em import _laplace_e_step, laplace_em
+from ssm.models.base import SSM
+from tensorflow_probability.substrates import jax as tfp
+
+from ssm.utils import Verbosity
+
+from .dynamics import GaussianLinearRegressionDynamics
+from .emissions import (BernoulliGLMEmissions,
+                        GaussianLinearRegressionEmissions, PoissonGLMEmissions)
+from .initial_distributions import GaussianInitialDistribution
 
 # supported emissions classes for GLM-LDS
 _GLM_DISTRIBUTIONS = [
@@ -41,17 +45,17 @@ class LDS(SSM):
         assert isinstance(dynamics_distribution, GaussianGLM) or isinstance(dynamics_distribution, GaussianLinearRegression)
         assert type(emissions_distribution) in _GLM_DISTRIBUTIONS
 
-        self.initials = GaussianInitialDistribution(num_states=-1, distribution=initial_distribution)
-        self.dynamics = GaussianLinearRegressionDynamics(num_states=-1, distribution=dynamics_distribution)
-        
+        # initialize initial_distribution, dynamics, and emissions components
         # TODO: make look-up table
+        self.initials = GaussianInitialDistribution(distribution=initial_distribution)
+        self.dynamics = GaussianLinearRegressionDynamics(distribution=dynamics_distribution)
         if isinstance(emissions_distribution, GaussianGLM):
-            self.emissions = GaussianLinearRegressionEmissions(num_states=-1, distribution=emissions_distribution)
+            self.emissions = GaussianLinearRegressionEmissions(distribution=emissions_distribution)
             # TODO can we have a constructor that returns appropriate child instance?
         elif isinstance(emissions_distribution, PoissonGLM):
-            self.emissions = PoissonGLMEmissions(num_states=-1, distribution=emissions_distribution)
+            self.emissions = PoissonGLMEmissions(distribution=emissions_distribution)
         elif isinstance(emissions_distribution, BernoulliGLM):
-            self.emissions = BernoulliGLMEmissions(num_states=-1, distribution=emissions_distribution)
+            self.emissions = BernoulliGLMEmissions(distribution=emissions_distribution)
 
     @property
     def latent_dim(self):
@@ -126,13 +130,26 @@ class LDS(SSM):
                    transition_distribution,
                    emissions_distribution)
 
-    def fit(self, data, method="laplace_em", rng=None):
+    def fit(self, data, method="laplace_em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
+
+        # ensure data has a batch dimension
+        single_batch_mode = True
+        if data.ndim == 2:
+            single_batch_mode = True
+            data = np.expand_dims(data, axis=0)
+        assert data.ndim == 3, "data must have a batch dimension (B, T, N)"
+
         model = self
         if method == "laplace_em":
-            elbos, lds, posterior = laplace_em(rng, model, data)
+            elbos, lds, posteriors = laplace_em(rng, model, data)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
-        return elbos, lds, posterior
+
+        # squeeze first dimension
+        if single_batch_mode:
+            posteriors = tree_map(lambda x: x[0], posteriors)
+
+        return elbos, lds, posteriors
 
 @register_pytree_node_class
 class GaussianLDS(LDS):
@@ -150,9 +167,9 @@ class GaussianLDS(LDS):
         assert isinstance(initial_distribution, tfp.distributions.MultivariateNormalTriL)
         assert isinstance(dynamics_distribution, GaussianLinearRegression)
         assert isinstance(emissions_distribution, GaussianLinearRegression)
-        self.initials = GaussianInitialDistribution(num_states=-1, distribution=initial_distribution)
-        self.dynamics = GaussianLinearRegressionDynamics(num_states=-1, distribution=dynamics_distribution)
-        self.emissions = GaussianLinearRegressionEmissions(num_states=-1, distribution=emissions_distribution)
+        self.initials = GaussianInitialDistribution(distribution=initial_distribution)
+        self.dynamics = GaussianLinearRegressionDynamics(distribution=dynamics_distribution)
+        self.emissions = GaussianLinearRegressionEmissions(distribution=emissions_distribution)
 
     @property
     def emissions_noise_covariance(self):
@@ -192,7 +209,6 @@ class GaussianLDS(LDS):
         return J_diag, J_lower_diag, h
 
     # Methods for inference
-    
     def e_step(self, data):
         return MultivariateNormalBlockTridiag(*self.natural_parameters(data))
 
@@ -233,4 +249,31 @@ class GaussianLDS(LDS):
             posterior = self.e_step(data)
         states = posterior.mean
         return self.log_probability(states, data) - posterior.log_prob(states)
+
+    def fit(self, data, method="em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
+
+            single_batch_mode = False
+            # ensure data has a batch dimension
+            if data.ndim == 2:
+                single_batch_mode = True
+                data = np.expand_dims(data, axis=0)
+            assert data.ndim == 3, "data must have a batch dimension (B, T, N)"
+
+            model = self
+            kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
+
+            if method == "em":
+                elbos, lds, posteriors = em(model, data, **kwargs)
+            elif method == "laplace_em":
+                if rng is None:
+                    raise ValueError("Laplace EM requires a PRNGKey. Please provide an rng to fit.")
+                elbos, lds, posteriors = laplace_em(rng, model, data, **kwargs)
+            else:
+                raise ValueError(f"Method {method} is not recognized/supported.")
+
+            # squeeze first dimension
+            if single_batch_mode:
+                posteriors = tree_map(lambda x: x[0], posteriors)
+
+            return elbos, lds, posteriors
 

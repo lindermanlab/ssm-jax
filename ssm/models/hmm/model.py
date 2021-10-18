@@ -1,30 +1,31 @@
 """
+HMM Model Classes
+=================
+
 Module defining model behavior for Hidden Markov Models (HMMs).
 """
+from typing import Any
 
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
-from jax import jit, value_and_grad
-
-from jax import vmap
-from jax.tree_util import register_pytree_node_class
+from jax import jit, value_and_grad, vmap
+from jax.tree_util import register_pytree_node_class, tree_map
+from ssm.models.base import SSM
+from ssm.utils import Verbosity
 from tensorflow_probability.substrates import jax as tfp
 
-from ssm.models.base import SSM
-
-from typing import Any
-
-from ssm.utils import Verbosity
 Array = Any
 
-from ssm.components.posterior import HMMPosterior
-from ssm.inference.message_passing import hmm_log_normalizer, hmm_expected_states
 from ssm.inference.em import em
+from ssm.inference.message_passing import (hmm_expected_states,
+                                           hmm_log_normalizer)
 
-from ssm.components.initial_distributions import CategoricalInitialDistribution
-from ssm.components.dynamics import CategoricalDynamics
-from ssm.components.emissions import GaussianEmissions, PoissonEmissions
+from .dynamics import CategoricalDynamics
+from .emissions import GaussianEmissions, PoissonEmissions
+from .initial_distributions import CategoricalInitialDistribution
+from .posterior import HMMPosterior
+
 
 @register_pytree_node_class
 class HMM(SSM):
@@ -43,33 +44,15 @@ class HMM(SSM):
         """
         self.num_states = num_states
 
-        # TODO: should constructor take in a TFP distribution directly OR our wrapperized version?
-        # TODO: this could be reason to not use the wrapperized version (i.e. is it too light?)
-        self.initials = CategoricalInitialDistribution(num_states, initial_distribution)
-        self.dynamics = CategoricalDynamics(num_states, transition_distribution)
-
-        # TODO: this should be a lookup table
+        # Initalize initial_distribution, dynamics, and emissions components
+        # TODO: this should be a lookup table based on constructor params
+        self.initials = CategoricalInitialDistribution(initial_distribution, num_states)
+        self.dynamics = CategoricalDynamics(transition_distribution, num_states)        
         if isinstance(emissions_distribution, tfp.distributions.Distribution):
             if emissions_distribution.name == "IndependentPoisson":
-                self.emissions = PoissonEmissions(num_states, emissions_distribution)
+                self.emissions = PoissonEmissions(emissions_distribution, num_states)
             elif emissions_distribution.name == "MultivariateNormalTriL":
-                self.emissions = GaussianEmissions(num_states, emissions_distribution)
-
-    def tree_flatten(self):
-        children = (self.initials.distribution,
-                    self.dynamics.distribution,
-                    self.emissions.distribution)
-        aux_data = (self.num_states,)
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        initial_distribution, dynamics_distribution, emissions_distribution = children
-        num_states, = aux_data
-        return cls(num_states,
-                   initial_distribution,
-                   dynamics_distribution,
-                   emissions_distribution)
+                self.emissions = GaussianEmissions(emissions_distribution, num_states)
 
     def initial_distribution(self):
         return self.initials.distribution
@@ -176,21 +159,37 @@ class HMM(SSM):
         kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
 
         # ensure data has a batch dimension
-        if len(data.shape) == 2:
+        if data.ndim == 2:
             single_batch_mode = True
-            data = data[None, :]
-        assert len(data.shape) == 3, "data must have a batch dimension (B, T, N)"
+            data = np.expand_dims(data, axis=0)
+        assert data.ndim == 3, "data must have a batch dimension (B, T, N)"
 
         if method == "em":
             log_probs, model, posteriors = em(model, data, **kwargs)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
-        # if we passed in a single batch, unpack the single posterior
+        # squeeze first dimension
         if single_batch_mode:
-            posteriors = HMMPosterior(*[component[0] for component in posteriors])
+            posteriors = tree_map(lambda x: x[0], posteriors)
 
         return log_probs, model, posteriors
+
+    def tree_flatten(self):
+            children = (self.initials.distribution,
+                        self.dynamics.distribution,
+                        self.emissions.distribution)
+            aux_data = (self.num_states,)
+            return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        initial_distribution, dynamics_distribution, emissions_distribution = children
+        num_states, = aux_data
+        return cls(num_states,
+                   initial_distribution,
+                   dynamics_distribution,
+                   emissions_distribution)
 
 class HMMConjugatePrior(object):
     """ TODO @schlagercollin

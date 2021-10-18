@@ -218,7 +218,6 @@ def laplace_em(
     @jit
     def step(rng, lds, states):
         rng, elbo_rng, m_step_rng = jr.split(rng, 3)
-
         # we can't seem to vmap over a function when lds is an argument
         # (even if we exclude lds from the vmap in_axes)
         # seems like it's an issue vmapping over tfp.dist objects (which are in lds' pytree)

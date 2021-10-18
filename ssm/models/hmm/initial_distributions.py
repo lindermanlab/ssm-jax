@@ -1,40 +1,18 @@
 """
-see emission.py for design notes
+HMM Initial Distribution Classes
+================================
 """
-
 import jax.numpy as np
-from jax import jit, vmap, tree_util
+import tensorflow_probability.substrates.jax as tfp
+from jax import jit, tree_util, vmap
 from jax.tree_util import register_pytree_node_class
-
 from ssm.distributions import EXPFAM_DISTRIBUTIONS
+from ssm.models.base.components import DiscreteComponent
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 
-import tensorflow_probability.substrates.jax as tfp
 
 @register_pytree_node_class
-class InitialDistribution:
-    def __init__(self, num_states, distribution):
-        assert isinstance(distribution, tfp.distributions.Distribution)
-        self.distribution = distribution
-        self.num_states = num_states
-
-    def exact_m_step(self, data, posterior, prior=None):
-        raise NotImplementedError
-
-    def tree_flatten(self):
-        children = (self.distribution,)
-        aux_data = (self.num_states,)
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        num_states, = aux_data
-        distribution, = children
-        return cls(num_states,
-                   distribution=distribution)
-
-@register_pytree_node_class
-class CategoricalInitialDistribution(InitialDistribution):
+class CategoricalInitialDistribution(DiscreteComponent):
     def exact_m_step(self, data, posterior, prior=None):
         expfam = EXPFAM_DISTRIBUTIONS["Categorical"]
 
@@ -63,7 +41,7 @@ class CategoricalInitialDistribution(InitialDistribution):
 
 
 @register_pytree_node_class
-class GaussianInitialDistribution(InitialDistribution):
+class GaussianInitialDistribution(DiscreteComponent):
     def exact_m_step(self, data, posterior, prior=None):
         expfam = EXPFAM_DISTRIBUTIONS["MultivariateNormalTriL"]
 
