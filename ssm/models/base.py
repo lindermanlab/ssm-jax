@@ -3,7 +3,7 @@ Base state-space model class.
 """
 
 import jax.random as jr
-from jax import lax
+from jax import lax, vmap
 
 
 class SSM(object):
@@ -88,7 +88,7 @@ class SSM(object):
         (_, lp), _ = lax.scan(_step, (states[0], lp), (states[1:], data[1:]))
         return lp
 
-    def sample(self, key, num_steps: int, covariates=None, initial_state=None):
+    def sample(self, key, num_steps: int, covariates=None, initial_state=None, num_samples=1):
         """
         Sample from the joint distribution defined by the state space model.
         
@@ -108,17 +108,26 @@ class SSM(object):
             emissions: A ``(timesteps, obs_dim)`` array of the observations across time (:math:`y`). 
 
         """
-        if initial_state is None:
-            key1, key = jr.split(key, 2)
-            initial_state = self.initial_distribution().sample(seed=key1)
 
-        def _step(state, key):
-            key1, key2 = jr.split(key, 2)
-            emission = self.emissions_distribution(state).sample(seed=key1)
-            next_state = self.dynamics_distribution(state).sample(seed=key2)
-            return next_state, (state, emission)
+        def _sample(key, covariates=None, initial_state=None):
+            if initial_state is None:
+                key1, key = jr.split(key, 2)
+                initial_state = self.initial_distribution().sample(seed=key1)
 
-        keys = jr.split(key, num_steps)
-        _, (states, emissions) = lax.scan(_step, initial_state, keys)
+            def _step(state, key):
+                key1, key2 = jr.split(key, 2)
+                emission = self.emissions_distribution(state).sample(seed=key1)
+                next_state = self.dynamics_distribution(state).sample(seed=key2)
+                return next_state, (state, emission)
+
+            keys = jr.split(key, num_steps)
+            _, (states, emissions) = lax.scan(_step, initial_state, keys)
+            return states, emissions
+        
+        if num_samples > 1:
+            batch_keys = jr.split(key, num_samples)
+            states, emissions = vmap(_sample)(batch_keys, covariates, initial_state)
+        else:
+            states, emissions = _sample(key)
 
         return states, emissions
