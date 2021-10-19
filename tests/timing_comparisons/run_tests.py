@@ -1,0 +1,87 @@
+from tqdm.auto import trange
+import numpy as np
+import importlib
+import functools
+import time
+import json
+
+TIMING_TESTS = dict()
+
+def get_test_func(mode, test_file, test_name):
+    """Test function should return _, elapsed_time for a given trial.
+    """
+    module = importlib.import_module(f"{mode}.{test_file}")
+    test_func = getattr(module, test_name)
+    return test_func
+
+def register(func):
+    """Register a timing test function as a test"""
+    TIMING_TESTS[func.__name__] = func
+    return func
+
+# TODO: make decorator?
+# def TimeTest(test_file, test_name):
+#     def decorator(func):
+#         @functools.wraps(func)
+#         def wrapper(mode, test_func):
+#             test_func = get_test_func(mode, test_file, test_name)
+#             times = func(mode, test_func)
+#             x = list(times.keys())
+#             y = list(times.values())
+#             out = np.array([x, y])
+#             np.save("../data/{self.mode}/{self.test_name}", out)
+#             return out
+#         return wrapper
+#     return decorator
+
+#### Define Tests
+@register
+def test_num_trials(mode):
+    """Test different trials for Laplace EM
+    """
+    test_file = "laplace_em"
+    test_name = "time_laplace_em"
+    parameter_name = "num_trials"
+    laplace_em_func = get_test_func(mode, test_file, test_name)
+
+    outfile = f"data/{mode}/{test_file}.{test_name}.{parameter_name}-{time.strftime('%Y%m%d-%H%M%S')}.json"
+
+    results = []
+    for num_trials in range(0, 250, 25):
+        if num_trials == 0: num_trials += 1
+        _, elapsed_time = laplace_em_func(num_trials=num_trials)
+        
+        results.append(dict(
+            params={"num_trials": num_trials},
+            time=elapsed_time)                  
+        )
+        
+        # dump to file each iteration to save progress
+        with open(outfile, "w") as f:
+            json.dump(results, f, indent=4, sort_keys=True)
+
+    return results
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", type=str, default="ssm_jax", choices=["ssm_jax", "ssm_old"])
+    parser.add_argument("--name", type=str, default="test_num_trials", choices=TIMING_TESTS, nargs="+")
+    args = parser.parse_args()
+
+    # run tests
+    for test_name in args.name:
+        print("="*5, "Running timing test: ", test_name, "="*5)
+        results = TIMING_TESTS[test_name](mode=args.mode)
+        print(f"{'Parameters':<17} =", [i["params"] for i in results])
+        print(f"{'Time Elapsed (s)':<17} =", [i["time"] for i in results])
+
+
+
+
+    
+
+
+
+
+

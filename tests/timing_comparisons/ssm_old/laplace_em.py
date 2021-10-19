@@ -25,7 +25,7 @@ def sample_lds(true_lds, num_trials):
         all_data.append(data)
     return all_states, all_data
 
-def test_laplace_em(N=10, D=2, T=200, num_trials=1):
+def time_laplace_em(N=10, D=2, T=200, num_trials=1):
     true_lds = LDS(N, D, dynamics="gaussian", emissions="poisson")
     all_states, all_data = sample_lds(true_lds, num_trials=num_trials)
     test_lds = LDS(N, D, dynamics="gaussian", emissions="poisson")
@@ -41,7 +41,7 @@ def run_test():
     times = dict()
     for t in trange(0, 31, 5):
         if t==0: t+=1
-        _, time_elapsed = test_laplace_em(num_trials=t)
+        _, time_elapsed = time_laplace_em(num_trials=t)
         times[t] = time_elapsed
     x = list(times.keys())
     y = list(times.values())
