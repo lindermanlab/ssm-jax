@@ -1,19 +1,31 @@
 """
+HMM Model Classes
+=================
+
 Module defining model behavior for Hidden Markov Models (HMMs).
 """
+from typing import Any
 
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
-
-from jax import vmap
-from jax.tree_util import register_pytree_node_class
+from jax import jit, value_and_grad, vmap
+from jax.tree_util import register_pytree_node_class, tree_map
+from ssm.models.base import SSM
+from ssm.utils import Verbosity
 from tensorflow_probability.substrates import jax as tfp
 
-from ssm.models.base import SSM
-
-from typing import Any
 Array = Any
+
+from ssm.inference.em import em
+from ssm.inference.message_passing import (hmm_expected_states,
+                                           hmm_log_normalizer)
+
+from .dynamics import CategoricalDynamics
+from .emissions import GaussianEmissions, PoissonEmissions
+from .initial_distributions import CategoricalInitialDistribution
+from .posterior import HMMPosterior
+
 
 @register_pytree_node_class
 class HMM(SSM):
@@ -32,45 +44,32 @@ class HMM(SSM):
         """
         self.num_states = num_states
 
-        assert isinstance(initial_distribution, tfp.distributions.Categorical)
-        assert isinstance(transition_distribution, tfp.distributions.Categorical)
-        assert isinstance(transition_distribution, tfp.distributions.Distribution)
-        self._initial_distribution = initial_distribution
-        self._transition_distribution = transition_distribution
-        self._emissions_distribution = emissions_distribution
-
-    def tree_flatten(self):
-        children = (self._initial_distribution,
-                    self._transition_distribution,
-                    self._emissions_distribution)
-        aux_data = (self.num_states,)
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        num_states, = aux_data
-        initial_distribution, transition_distribution, emission_distribution = children
-        return cls(num_states,
-                   initial_distribution=initial_distribution,
-                   transition_distribution=transition_distribution,
-                   emissions_distribution=emission_distribution)
+        # Initalize initial_distribution, dynamics, and emissions components
+        # TODO: this should be a lookup table based on constructor params
+        self.initials = CategoricalInitialDistribution(initial_distribution, num_states)
+        self.dynamics = CategoricalDynamics(transition_distribution, num_states)        
+        if isinstance(emissions_distribution, tfp.distributions.Distribution):
+            if emissions_distribution.name == "IndependentPoisson":
+                self.emissions = PoissonEmissions(emissions_distribution, num_states)
+            elif emissions_distribution.name == "MultivariateNormalTriL":
+                self.emissions = GaussianEmissions(emissions_distribution, num_states)
 
     def initial_distribution(self):
-        return self._initial_distribution
+        return self.initials.distribution
 
     def dynamics_distribution(self, state):
-        return self._transition_distribution[state]
+        return self.dynamics.distribution[state]
 
     def emissions_distribution(self, state):
-        return self._emissions_distribution[state]
+        return self.emissions.distribution[state]
 
     @property
     def initial_state_probs(self):
-        return self._initial_distribution.probs_parameter()
+        return self.initials.distribution.probs_parameter()
 
     @property
     def transition_matrix(self):
-        return self._transition_distribution.probs_parameter()
+        return self.dynamics.distribution.probs_parameter()
 
     def natural_parameters(self, data: Array):
         """Obtain the natural parameters for the HMM given observation data.
@@ -88,15 +87,109 @@ class HMM(SSM):
             log_transition_matrix (Array): log of transition matrix
             log_likelihoods (Array): log probability of emissions
         """
-        log_initial_state_distn = self._initial_distribution.logits_parameter()
-        log_transition_matrix = self._transition_distribution.logits_parameter()
+        log_initial_state_distn = self.initials.distribution.logits_parameter()
+        log_transition_matrix = self.dynamics.distribution.logits_parameter()
         log_transition_matrix -= spsp.logsumexp(log_transition_matrix, axis=1, keepdims=True)
         log_likelihoods = vmap(lambda k:
-                               vmap(lambda x: self._emissions_distribution[k].log_prob(x))(data)
+                               vmap(lambda x: self.emissions.distribution[k].log_prob(x))(data)
                                )(np.arange(self.num_states)).T
 
         return log_initial_state_distn, log_transition_matrix, log_likelihoods
 
+    ### Methods for inference
+
+    def posterior(self, data):
+        marginal_likelihood, (Ez0, Ezzp1, Ez) = hmm_expected_states(*self.natural_parameters(data))
+        return HMMPosterior(marginal_likelihood, Ez, Ezzp1)
+
+    def e_step(self, data):
+        return self.posterior(data)
+
+    def fit_using_posterior(self, data, posterior, prior=None):
+        new_initial_distribution = self.initials.exact_m_step(data, posterior, prior=prior)
+        new_dynamics_distribution = self.dynamics.exact_m_step(data, posterior, prior=prior)
+        new_emissions_distribution = self.emissions.exact_m_step(data, posterior, prior=prior)
+
+        # TODO: should this return a new object in this class-based formulation?
+        return HMM(self.num_states,
+                new_initial_distribution,
+                new_dynamics_distribution,
+                new_emissions_distribution)
+
+    def m_step(self, data, posterior, prior=None):
+        return self.fit_using_posterior(data, posterior, prior=None)
+
+    def marginal_likelihood(self, data, posterior=None):
+        if posterior is None:
+            posterior = self.posterior(data)
+        return posterior.marginal_likelihood
+
+    def expected_log_joint(self, data, posterior):
+        """The expected log joint probability of an HMM given a posterior over the latent states.
+            
+            .. math::
+                \mathbb{E}_{q(z)} \left[\log p(x, z, \\theta)\\right]
+                
+            where,
+            
+            .. math:: 
+                q(z) = p(z|x, \\theta).
+                
+            Recall that this is the component of the ELBO that is dependent upon the parameters.
+            
+            .. math::
+                \mathcal{L}(q, \\theta) = \mathbb{E}_{q(z)} \left[\log p(x, z, \\theta) - \log q(z) \\right]
+
+            Args:
+                data ([type]): [description]
+                posterior ([type]): [description]
+
+            Returns:
+                elp ([type]): expected log probability
+            """
+        log_initial_state_probs, log_transition_matrix, log_likelihoods = self.natural_parameters(data)
+        elp = np.sum(posterior.expected_states[0] * log_initial_state_probs)
+        elp += np.sum(posterior.expected_transitions * log_transition_matrix)
+        elp += np.sum(posterior.expected_states * log_likelihoods)
+        return elp
+
+    def fit(self, data, method="em", num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
+        model = self
+        single_batch_mode = False
+        kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
+
+        # ensure data has a batch dimension
+        if data.ndim == 2:
+            single_batch_mode = True
+            data = np.expand_dims(data, axis=0)
+        assert data.ndim == 3, "data must have a batch dimension (B, T, N)"
+
+        if method == "em":
+            log_probs, model, posteriors = em(model, data, **kwargs)
+        else:
+            raise ValueError(f"Method {method} is not recognized/supported.")
+
+        # squeeze first dimension
+        if single_batch_mode:
+            posteriors = tree_map(lambda x: x[0], posteriors)
+
+        return log_probs, model, posteriors
+
+    def tree_flatten(self):
+            children = (self.initials.distribution,
+                        self.dynamics.distribution,
+                        self.emissions.distribution)
+            aux_data = (self.num_states,)
+            return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        initial_distribution, dynamics_distribution, emissions_distribution = children
+        num_states, = aux_data
+        return cls(num_states,
+                   initial_distribution,
+                   dynamics_distribution,
+                   emissions_distribution)
 
 class HMMConjugatePrior(object):
     """ TODO @schlagercollin
@@ -116,6 +209,8 @@ class HMMConjugatePrior(object):
     def emissions_prior(self):
         return self._emissions_prior
 
+
+# TODO: can we clean up these functions so that they are more usable?
 
 # Helper functions to construct HMMs
 def _make_standard_hmm(num_states, initial_state_probs=None,

@@ -1,8 +1,12 @@
+"""
+https://github.com/tensorflow/probability/issues/1271
+"""
 
 import jax.numpy as np
 import jax.random as jr
-from jax import lax, value_and_grad
+from jax import lax, value_and_grad, vmap
 from jax.scipy.linalg import solve_triangular
+from jax.tree_util import register_pytree_node_class
 
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
@@ -50,8 +54,8 @@ def _forward_pass(J_diag, J_lower_diag, h):
     (_, _, log_Z), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, 0), np.arange(num_timesteps))
     return log_Z, (filtered_Js, filtered_hs)
 
-
-class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
+@register_pytree_node_class
+class MultivariateNormalBlockTridiag:
     """
     Multivariate normal distribution whose _precision_ matrix is
     block tridiagonal.
@@ -122,25 +126,47 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         # Keep track of whether or not we've run message passing
         self.ran_message_passing = False
 
-        super().__init__(
-            dtype=precision_diag_blocks.dtype,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
-            parameters=dict(precision_diag_blocks=self._precision_diag_blocks,
-                            precision_lower_diag_blocks=self._precision_lower_diag_blocks,
-                            linear_potential=self._linear_potential),
-            name=name,
-        )
+    @classmethod
+    def restore(cls, children, aux_data):
+        obj = object.__new__(cls)
+        obj._precision_diag_blocks = children[0]
+        obj._precision_lower_diag_blocks = children[1]
+        obj._linear_potential = children[2]
+        obj._num_timesteps = aux_data[0]
+        obj._dim = aux_data[0]
+        obj.ran_message_passing = False
+        return obj
+
+        # super().__init__(
+        #     dtype=precision_diag_blocks.dtype,
+        #     validate_args=validate_args,
+        #     allow_nan_stats=allow_nan_stats,
+        #     reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+        #     parameters=dict(precision_diag_blocks=self._precision_diag_blocks,
+        #                     precision_lower_diag_blocks=self._precision_lower_diag_blocks,
+        #                     linear_potential=self._linear_potential),
+        #     name=name,
+        # )
+
+    # @classmethod
+    # def _parameter_properties(cls, dtype, num_classes=None):
+    #     # pylint: disable=g-long-lambda
+    #     return dict(
+    #         precision_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+    #         precision_lower_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+    #         linear_potential=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+    #     )
+
+    def tree_flatten(self):
+        children = (self._precision_diag_blocks,
+                    self._precision_lower_diag_blocks,
+                    self._linear_potential)
+        aux_data = (self._num_timesteps, self._dim)
+        return children, aux_data
 
     @classmethod
-    def _parameter_properties(cls, dtype, num_classes=None):
-        # pylint: disable=g-long-lambda
-        return dict(
-            precision_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
-            precision_lower_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
-            linear_potential=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
-        )
+    def tree_unflatten(cls, aux_data, children):
+        return cls.restore(children, aux_data)
 
     def _log_prob(self, data, **kwargs):
         lp = -0.5 * np.einsum('...ti,tij,...tj->...', data, self._precision_diag_blocks, data)
@@ -149,19 +175,34 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         lp -= self.log_normalizer
         return lp
 
+    def log_prob(self, data):
+        return self._log_prob(data)
+
     def message_passing(self):
         # Run message passing code to get the log normalizer, the filtering potentials,
         # and the expected values of x.
-        f = value_and_grad(_forward_pass, argnums=(0, 1, 2), has_aux=True)
-        (self._log_normalizer, (self._filtered_Js, self._filtered_hs)), grads = \
-            f(self._precision_diag_blocks,
-              self._precision_lower_diag_blocks,
-              self._linear_potential)
+        # assumes a batch dim
+        def _message_passing_single(J, J_lower, h):
+            f = value_and_grad(_forward_pass, argnums=(0, 1, 2), has_aux=True)
+            (_log_normalizer, (_filtered_Js, _filtered_hs)), grads = \
+                f(J, J_lower, h)
 
-        self._ExxT = -2 * grads[0]
-        self._ExnxT = -grads[1]
-        self._Ex = grads[2]
+            _ExxT = -2 * grads[0]
+            _ExnxT = -grads[1] 
+            _Ex = grads[2]
 
+            return _log_normalizer, _filtered_Js, _filtered_hs, _Ex, _ExxT, _ExnxT
+
+        if self._precision_diag_blocks.ndim == 4:
+            self._log_normalizer, self._filtered_Js, self._filtered_hs, self._Ex, self._ExxT, self._ExnxT =\
+                vmap(_message_passing_single)(self._precision_diag_blocks, 
+                                            self._precision_lower_diag_blocks, 
+                                            self._linear_potential)
+        else:
+            self._log_normalizer, self._filtered_Js, self._filtered_hs, self._Ex, self._ExxT, self._ExnxT =\
+                (_message_passing_single)(self._precision_diag_blocks, 
+                                            self._precision_lower_diag_blocks, 
+                                            self._linear_potential)
         self.ran_message_passing = True
 
     @property
@@ -181,10 +222,15 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
         """
         NOTE: This computes the _marginal_ covariance Cov[x_t] for each t
         """
-        # TODO: support batching?
         Ex = self.mean
         ExxT, _ = self.second_moments
-        return ExxT - Ex[:, :, None] * Ex[:, None, :]
+        
+        # if there's a batch dim
+        # TODO make this better
+        if Ex.ndim == 3:
+            return ExxT - Ex[:, :, :, None] * Ex[:, :, None, :]
+        else:
+            return ExxT - Ex[:, :, None] * Ex[:, None, :]
 
     @property
     def second_moments(self):
@@ -192,48 +238,56 @@ class MultivariateNormalBlockTridiag(tfp.distributions.Distribution):
             self.message_passing()
         return self._ExxT, self._ExnxT
 
-    # def _sample_n(self, n, seed=None):
-    #     # keys = jr.split(seed, n)
-
-    #     # samples = []
-    #     # for i in range(n):
-    #     #     self._sample(seed=keys[i], sample_shape=)
-
     def _sample(self, seed=None, sample_shape=()):
+        if not self.ran_message_passing:
+            self.message_passing()
+
+        # TODO make these parameters w/ lazy op?
         filtered_Js = self._filtered_Js
         filtered_hs = self._filtered_hs
         J_lower_diag = self._precision_lower_diag_blocks
 
-        def _sample_info_gaussian(seed, J, h, shape):
-            # TODO: avoid inversion. see https://github.com/mattjj/pybasicbayes/blob/master/pybasicbayes/util/stats.py#L117-L122
-            # L = np.linalg.cholesky(J)
-            # x = np.random.randn(h.shape[0])
-            # return scipy.linalg.solve_triangular(L,x,lower=True,trans='T') \
-            #     + dpotrs(L,h,lower=True)[0]
-            cov = np.linalg.inv(J)
-            loc = np.einsum("...ij,...j->...i", cov, h)
-            return tfp.distributions.MultivariateNormalFullCovariance(
-                loc=loc, covariance_matrix=cov).sample(sample_shape=shape, seed=seed)
+        def sample_single(seed, filtered_Js, filtered_hs, J_lower_diag):
 
-        def _step(carry, inpt):
-            x_next, seed = carry
-            Jf, hf, L = inpt
+            def _sample_info_gaussian(seed, J, h, shape):
+                # TODO: avoid inversion. see https://github.com/mattjj/pybasicbayes/blob/master/pybasicbayes/util/stats.py#L117-L122
+                # L = np.linalg.cholesky(J)
+                # x = np.random.randn(h.shape[0])
+                # return scipy.linalg.solve_triangular(L,x,lower=True,trans='T') \
+                #     + dpotrs(L,h,lower=True)[0]
+                cov = np.linalg.inv(J)
+                loc = np.einsum("...ij,...j->...i", cov, h)
+                return tfp.distributions.MultivariateNormalFullCovariance(
+                    loc=loc, covariance_matrix=cov).sample(sample_shape=shape, seed=seed)
 
-            # Condition on the next observation
-            Jc = Jf
-            hc = hf - x_next @ L
+            def _step(carry, inpt):
+                x_next, seed = carry
+                Jf, hf, L = inpt
 
-            # Split the seed
-            seed, this_seed = jr.split(seed)
-            x = _sample_info_gaussian(this_seed, Jc, hc, sample_shape)
-            return (x, seed), x
+                # Condition on the next observation
+                Jc = Jf
+                hc = hf - x_next @ L
 
-        # Initialize with sample of last state
-        seed_T, seed = jr.split(seed)
-        x_T = _sample_info_gaussian(seed_T, filtered_Js[-1], filtered_hs[-1], sample_shape)
-        inputs = (filtered_Js[:-1][::-1], filtered_hs[:-1][::-1], J_lower_diag[::-1])
-        _, x_rev = lax.scan(_step, (x_T, seed), inputs)
-        return np.concatenate((x_rev[::-1], x_T[None, ...]), axis=0)
+                # Split the seed
+                seed, this_seed = jr.split(seed)
+                x = _sample_info_gaussian(this_seed, Jc, hc, sample_shape)
+                return (x, seed), x
+
+            # Initialize with sample of last state
+            seed_T, seed = jr.split(seed)
+            x_T = _sample_info_gaussian(seed_T, filtered_Js[-1], filtered_hs[-1], sample_shape)
+            inputs = (filtered_Js[:-1][::-1], filtered_hs[:-1][::-1], J_lower_diag[::-1])
+            _, x_rev = lax.scan(_step, (x_T, seed), inputs)
+            return np.concatenate((x_rev[::-1], x_T[None, ...]), axis=0)
+
+        # batch mode
+        if filtered_Js.ndim == 4:
+            samples = vmap(sample_single)(seed, filtered_Js, filtered_hs, J_lower_diag)
+        
+        # non-batch mode
+        else:
+            samples = sample_single(seed, filtered_Js, filtered_hs, J_lower_diag)
+        return samples
 
     def _entropy(self):
         """

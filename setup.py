@@ -22,6 +22,7 @@ setup(
         "h5py",
         "jupyter",
         "ipywidgets",
+        "tensorflow-probability",
     ],
     packages=["ssm"],
 )
