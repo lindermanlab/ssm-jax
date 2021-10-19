@@ -236,7 +236,7 @@ def laplace_em(
         elbos = vmap(_elbo_partial)(elbo_rng, data, posteriors)
         elbo = np.mean(elbos)
         m_step_rng = jr.split(rng, data.shape[0])
-        lds = lds.fit_with_posterior(data, posteriors, rng=m_step_rng)
+        lds = lds.m_step(data, posteriors, rng=m_step_rng)
         return rng, lds, posteriors, states, elbo
 
     # Run the Laplace EM algorithm to convergence

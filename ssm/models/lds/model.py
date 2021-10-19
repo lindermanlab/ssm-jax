@@ -118,14 +118,19 @@ class LDS(SSM):
     def emissions_distribution(self, state):
         return self.emissions.distribution.predict(state)
 
+    # Inference Routines
+
     def approximate_posterior(self, data, initial_states=None):
-        model = self
+        """Approximate E step
+        """
         return _laplace_e_step(self, data, initial_states)
 
-    def fit_with_posterior(self, data, posterior, prior=None, rng=None):
+    def m_step(self, data, posterior, prior=None, rng=None):
+        """M step for model
+        """
         initial_distribution = self.initials.distribution  # TODO initial dist needs prior
         transition_distribution = self.dynamics.exact_m_step(data, posterior, prior=prior)
-        emissions_distribution = self.emissions.approx_m_step(data, posterior, rng=rng)  # TODO this causes 2x jit?
+        emissions_distribution = self.emissions.approx_m_step(data, posterior, rng=rng)  # TODO can this cause 2x jit?
         return LDS(initial_distribution,
                    transition_distribution,
                    emissions_distribution)
@@ -206,22 +211,19 @@ class GaussianLDS(LDS):
         h = h.at[0].add(np.linalg.solve(Q1, m1))
         h = h.at[:-1].add(-np.dot(A.T, np.linalg.solve(Q, b)))
         h = h.at[1:].add(np.linalg.solve(Q, b))
+
+        # should J_obs, J_dyn, J_init be separate?
         return J_diag, J_lower_diag, h
 
     # Methods for inference
     def e_step(self, data):
         return MultivariateNormalBlockTridiag(*self.natural_parameters(data))
 
-    def fit_with_posterior(self, data, posterior, prior=None):
+    def m_step(self, data, posterior, prior=None, rng=None):
         initial_distribution = self.initials.distribution  # TODO: initial needs prior
         transition_distribution = self.dynamics.exact_m_step(data, posterior, prior=prior)
         emissions_distribution = self.emissions.exact_m_step(data, posterior, prior=prior)
-        return GaussianLDS(initial_distribution,
-                           transition_distribution,
-                           emissions_distribution)
-
-    def m_step(self, data, posterior, prior=None):
-        return self.fit_with_posterior(data, posterior, prior)
+        return GaussianLDS(initial_distribution, transition_distribution, emissions_distribution)
 
     def marginal_likelihood(self, data, posterior=None):
         """The exact marginal likelihood of the observed data.
