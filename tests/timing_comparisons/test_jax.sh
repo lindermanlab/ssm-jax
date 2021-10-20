@@ -6,7 +6,6 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=8G
-#SBATCH --output="logs/ssmjax.%A.log"
 
 source ~/.bashrc
 conda activate ssmjax
@@ -16,8 +15,9 @@ echo "Using python ..."
 which python
 
 echo "\n\n ===== Beginning Test ======"
+echo $TEST_NAME
 
-python run_tests.py --mode "ssm_jax" --name "test_num_trials"
+python run_tests.py --mode "ssm_jax" --name $TEST_NAME
 
 echo "======= End Test ======= "
 
