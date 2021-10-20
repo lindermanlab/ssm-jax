@@ -95,6 +95,34 @@ def test_hmm_em_num_timesteps(test_fn, mode="ssm_jax", write_to_file=True):
         params = dict(num_timesteps=num_timesteps)
         yield params, elapsed_time
 
+@make_time_test("hmm_em", "time_hmm_em", "latent_dim")
+def test_hmm_em_latent_dim(test_fn, mode="ssm_jax", write_to_file=True):
+    for latent_dim in range(1, 128, 5):
+        _, elapsed_time = test_fn(latent_dim=latent_dim)
+        params = dict(latent_dim=latent_dim)
+        yield params, elapsed_time
+
+@make_time_test("lds_em", "time_lds_em", "latent_dim")
+def test_lds_em_latent_dim(test_fn, mode="ssm_jax", write_to_file=True):
+    for latent_dim in range(1, 128, 5):
+        _, elapsed_time = test_fn(latent_dim=latent_dim)
+        params = dict(latent_dim=latent_dim)
+        yield params, elapsed_time
+
+@make_time_test("laplace_em", "time_laplace_em", "num_timesteps")
+def test_laplace_em_num_timesteps(test_fn, mode="ssm_jax", write_to_file=True):
+    for num_timesteps in range(100, 100000, 1000):
+        _, elapsed_time = test_fn(num_trials=5, time_bins=num_timesteps)
+        params = dict(num_timesteps=num_timesteps)
+        yield params, elapsed_time
+
+@make_time_test("laplace_em", "time_laplace_em", "latent_dim")
+def test_laplace_em_latent_dim(test_fn, mode="ssm_jax", write_to_file=True):
+    for latent_dim in range(1, 128, 5):
+        _, elapsed_time = test_fn(latent_dim=latent_dim)
+        params = dict(latent_dim=latent_dim)
+        yield params, elapsed_time
+
 
 if __name__ == "__main__":
     import argparse

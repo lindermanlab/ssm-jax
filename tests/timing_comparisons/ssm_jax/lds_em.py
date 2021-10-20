@@ -25,7 +25,7 @@ def timer(func):
         return result, t_elapsed
     return wrap_func
 
-def create_random_lds(emissions_dim=10, latent_dim=2, rng=jr.PRNGKey(0)):
+def create_random_lds(emission_dim=10, latent_dim=2, rng=jr.PRNGKey(0)):
     key1, key2 = jr.split(rng, 2)
     
     initial_distribution = tfp.distributions.MultivariateNormalTriL(
@@ -37,9 +37,9 @@ def create_random_lds(emissions_dim=10, latent_dim=2, rng=jr.PRNGKey(0)):
         0.1**2 * np.eye(latent_dim))
 
     emissions_distribution = GaussianLinearRegression(
-        jr.normal(key2, shape=(emissions_dim, latent_dim)), 
-        np.zeros(emissions_dim), 
-        1.0**2 * np.eye(emissions_dim))
+        jr.normal(key2, shape=(emission_dim, latent_dim)), 
+        np.zeros(emission_dim), 
+        1.0**2 * np.eye(emission_dim))
 
     # Initialize our Gaussian LDS model
     lds = GaussianLDS(initial_distribution, 

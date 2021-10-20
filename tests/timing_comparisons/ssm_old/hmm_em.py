@@ -26,13 +26,9 @@ def sample_hmm(true_hmm, num_trials, time_bins):
     return all_states, all_data
 
 def time_hmm_em(emission_dim=10, latent_dim=2, num_trials=5, time_bins=200, num_iters=100):
-
-    N = emission_dim
-    D = latent_dim
-    
-    true_hmm = HMM(N, D, dynamics="gaussian", emissions="gaussian")
+    true_hmm = HMM(emission_dim, latent_dim, dynamics="gaussian", emissions="gaussian")
     all_states, all_data = sample_hmm(true_hmm, num_trials=num_trials, time_bins=time_bins)
-    test_hmm = HMM(N, D, dynamics="gaussian", emissions="gaussian")
+    test_hmm = HMM(emission_dim, latent_dim, dynamics="gaussian", emissions="gaussian")
     (lls), time_elapsed = timer(test_hmm.fit)(
         datas=all_data,
         method="em",

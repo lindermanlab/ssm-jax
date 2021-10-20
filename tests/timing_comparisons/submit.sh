@@ -8,8 +8,13 @@ launch_test () {
     sbatch --job-name ssmjax.$TEST_NAME --export=TEST_NAME=$TEST_NAME --output="logs/ssmjax.$TEST_NAME.%A.log" test_jax.sh 
 }
 
-launch_test "test_laplace_em_num_trials"
-launch_test "test_lds_em_num_trials"
-launch_test "test_lds_em_num_timesteps"
-launch_test "test_hmm_em_num_trials"
-launch_test "test_hmm_em_num_timesteps"
+# launch_test "test_laplace_em_num_trials"
+# launch_test "test_lds_em_num_trials"
+# launch_test "test_lds_em_num_timesteps"
+# launch_test "test_hmm_em_num_trials"
+# launch_test "test_hmm_em_num_timesteps"
+
+launch_test "test_hmm_em_latent_dim"
+launch_test "test_lds_em_latent_dim"
+launch_test "test_laplace_em_num_timesteps"
+launch_test "test_laplace_em_latent_dim"

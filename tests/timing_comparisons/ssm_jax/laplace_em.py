@@ -25,7 +25,7 @@ def timer(func):
         return result, t_elapsed
     return wrap_func
 
-def create_random_plds(emissions_dim=10, latent_dim=2, rng=jr.PRNGKey(0)):
+def create_random_plds(emission_dim=10, latent_dim=2, rng=jr.PRNGKey(0)):
     key1, key2 = jr.split(rng, 2)
     
     initial_distribution = tfp.distributions.MultivariateNormalTriL(
@@ -37,8 +37,8 @@ def create_random_plds(emissions_dim=10, latent_dim=2, rng=jr.PRNGKey(0)):
         0.1**2 * np.eye(latent_dim))
 
     emissions_distribution = PoissonGLM(
-        jr.normal(key2, shape=(emissions_dim, latent_dim)), 
-        np.ones(emissions_dim))
+        jr.normal(key2, shape=(emission_dim, latent_dim)), 
+        np.ones(emission_dim))
 
     # Initialize our true Poisson LDS model
     lds = LDS(initial_distribution, 
