@@ -37,8 +37,7 @@ def time_hmm_em(emission_dim=10, latent_dim=2, num_trials=5, time_bins=200, num_
         datas=all_data,
         method="em",
         num_init_iters=0, 
-        num_iters=num_iters, 
-        verbose=False,
+        num_iters=num_iters,
         tolerance=-1,
     )
     return (lls), time_elapsed
