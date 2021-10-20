@@ -37,8 +37,7 @@ def time_lds_em(emission_dim=10, latent_dim=2, num_trials=5, time_bins=200, num_
         datas=all_data,
         method="laplace_em",
         variational_posterior="structured_meanfield",
-        num_init_iters=0, num_iters=num_iters, verbose=False,
-        tolerance=-1
+        num_init_iters=0, num_iters=num_iters, verbose=False
     )
     return (q_elbos_lem_train, q_lem_train), time_elapsed
 

@@ -89,6 +89,35 @@ def test_lds_em_num_trials(mode):
 
     return results
 
+@register
+def test_lds_em_num_timesteps(mode, write_to_file=True):
+    """Test different trials for LDS EM
+    """
+    test_file = "lds_em"
+    test_name = "time_lds_em"
+    parameter_name = "num_timesteps"
+    lds_em_func = get_test_func(mode, test_file, test_name)
+
+    outfile = f"data/{mode}/{test_file}.{test_name}.{parameter_name}-{time.strftime('%Y%m%d-%H%M%S')}.json"
+
+    results = []
+    for num_timesteps in range(50, 1000, 100):
+        _, elapsed_time = lds_em_func(num_trials=5, time_bins=num_timesteps)
+        
+        result = dict(
+            params={"num_timesteps": num_timesteps},
+            time=elapsed_time
+        )   
+        print(result)
+        results.append(result)
+        
+        # dump to file each iteration to save progress
+        if write_to_file:
+            with open(outfile, "w") as f:
+                json.dump(results, f, indent=4, sort_keys=True)
+
+    return results
+
 
 @register
 def test_hmm_em_num_trials(mode):
@@ -118,7 +147,7 @@ def test_hmm_em_num_trials(mode):
     return results
 
 @register
-def test_hmm_em_num_timesteps(mode):
+def test_hmm_em_num_timesteps(mode, write_to_file=True):
     """Test different timestep lengths for HMM EM
     """
     test_file = "hmm_em"
@@ -129,7 +158,7 @@ def test_hmm_em_num_timesteps(mode):
     outfile = f"data/{mode}/{test_file}.{test_name}.{parameter_name}-{time.strftime('%Y%m%d-%H%M%S')}.json"
 
     results = []
-    for num_timesteps in range(50, 2000, 100):
+    for num_timesteps in range(50, 10000, 1000):
         _, elapsed_time = hmm_em_func(num_trials=5, time_bins=num_timesteps)
         
         results.append(dict(
@@ -138,8 +167,9 @@ def test_hmm_em_num_timesteps(mode):
         )
         
         # dump to file each iteration to save progress
-        with open(outfile, "w") as f:
-            json.dump(results, f, indent=4, sort_keys=True)
+        if write_to_file:
+            with open(outfile, "w") as f:
+                json.dump(results, f, indent=4, sort_keys=True)
 
     return results
 
@@ -149,12 +179,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="ssm_jax", choices=["ssm_jax", "ssm_old"])
     parser.add_argument("--name", type=str, default=["test_num_trials"], choices=TIMING_TESTS, nargs="+")
+    parser.add_argument('--save', default=True, action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
 
     # run tests
     for test_name in args.name:
         print("="*5, "Running timing test: ", test_name, "="*5)
-        results = TIMING_TESTS[test_name](mode=args.mode)
+        results = TIMING_TESTS[test_name](mode=args.mode, write_to_file=args.save)
         print(f"{'Parameters':<17} =", [i["params"] for i in results])
         print(f"{'Time Elapsed (s)':<17} =", [i["time"] for i in results])
 
