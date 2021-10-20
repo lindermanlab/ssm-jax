@@ -8,10 +8,10 @@
 # test_hmm_em_num_timesteps
 
 launch_test () {
-    echo "Launching jobs for $TEST_NAME"
     TEST_NAME=$1
-    sbatch --jobname ssmold.$TEST_NAME --export=TEST_NAME=$TEST_NAME --output="logs/ssmold.%A.log" test_old.sh 
-    sbatch --jobname ssmjax.$TEST_NAME --export=TEST_NAME=$TEST_NAME --output="logs/ssmold.%A.log" test_jax.sh 
+    echo "Launching jobs for $TEST_NAME"
+    sbatch --job-name ssmold.$TEST_NAME --export=TEST_NAME=$TEST_NAME --output="logs/ssmold.%A.log" test_old.sh 
+    sbatch --job-name ssmjax.$TEST_NAME --export=TEST_NAME=$TEST_NAME --output="logs/ssmold.%A.log" test_jax.sh 
 }
 
 # launch_test "test_hmm_em_num_timesteps"
