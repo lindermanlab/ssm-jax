@@ -1,4 +1,4 @@
-from tqdm.auto import trange
+from tqdm.auto import tqdm
 import numpy as np
 import importlib
 import functools
@@ -15,177 +15,85 @@ def get_test_func(mode, test_file, test_name):
     test_func = getattr(module, test_name)
     return test_func
 
-def register(func):
-    """Register a timing test function as a test"""
-    TIMING_TESTS[func.__name__] = func
-    return func
 
-# TODO: make decorator?
-# def TimeTest(test_file, test_name):
-#     def decorator(func):
-#         @functools.wraps(func)
-#         def wrapper(mode, test_func):
-#             test_func = get_test_func(mode, test_file, test_name)
-#             times = func(mode, test_func)
-#             x = list(times.keys())
-#             y = list(times.values())
-#             out = np.array([x, y])
-#             np.save("../data/{self.mode}/{self.test_name}", out)
-#             return out
-#         return wrapper
-#     return decorator
+def make_time_test(test_file, test_name, parameter_name):
+    """Fancy decorator to define the testing harness.
+
+    Runs the test_func for various parameters and collects and 
+    writes outputs to a json file.
+
+    Parameters to the decorator specify the test_func that should be
+    imported in.
+
+    Decorator should decorate a generator object that generates
+    (params: dict<str,value>, time_elapsed: float) by running the 
+    test_func over various parameters.
+    """
+    def Inner(my_generator):
+        def wrapper(mode, write_to_file):
+            # import the appropriate test function (params => output, elapsed_time)
+            test_func = get_test_func(mode, test_file, test_name)
+
+            # get name for data output file
+            outfile_base = f"data/{mode}.{test_file}.{test_name}.{parameter_name}"
+            num_existing = len(glob.glob(f"{outfile_base}*.json"))
+            outfile = f"{outfile_base}-{num_existing+1}.json"
+            
+            results = []
+            # run through params in test
+            for (params, elapsed_time) in tqdm(my_generator(test_func, mode, write_to_file)):
+                res = dict(params=params, time=elapsed_time)
+                results.append(res)
+                print(res)
+                # dump to file each iteration to save progress
+                if write_to_file:
+                    with open(outfile, "w") as f:
+                        json.dump(results, f, indent=4, sort_keys=True)
+            return results
+        # register wrappered functions using generator's name
+        TIMING_TESTS[my_generator.__name__] = wrapper
+        return wrapper
+    return Inner
 
 #### Define Tests
-@register
-def test_laplace_em_num_trials(mode, write_to_file=True):
-    """Test different trials for Laplace EM
-    """
-    test_file = "laplace_em"
-    test_name = "time_laplace_em"
-    parameter_name = "num_trials"
-    laplace_em_func = get_test_func(mode, test_file, test_name)
 
-    outfile_base = f"data/{mode}/{test_file}.{test_name}.{parameter_name}"
-    num_existing = len(glob.glob(f"{outfile_base}*.json"))
-    outfile = f"{outfile_base}-{num_existing+1}.json"
-
-    results = []
-    for num_trials in trange(0, 250, 25):
+@make_time_test("laplace_em", "time_laplace_em", "num_trials")
+def test_laplace_em_num_trials(test_fn, mode, write_to_file=True):
+    for num_trials in range(0, 250, 25):
         if num_trials == 0: num_trials += 1
-        _, elapsed_time = laplace_em_func(num_trials=num_trials)
-        
-        results.append(dict(
-            params={"num_trials": num_trials},
-            time=elapsed_time)                  
-        )
-        
-        # dump to file each iteration to save progress
-        if write_to_file:
-            with open(outfile, "w") as f:
-                json.dump(results, f, indent=4, sort_keys=True)
+        _, elapsed_time = test_fn(num_trials=num_trials)
+        params = dict(num_trials=num_trials)
+        yield params, elapsed_time
 
-    return results
-
-@register
-def test_lds_em_num_trials(mode, write_to_file=True):
-    """Test different trials for LDS EM
-    """
-    test_file = "lds_em"
-    test_name = "time_lds_em"
-    parameter_name = "num_trials"
-    lds_em_func = get_test_func(mode, test_file, test_name)
-
-    outfile_base = f"data/{mode}/{test_file}.{test_name}.{parameter_name}"
-    num_existing = len(glob.glob(f"{outfile_base}*.json"))
-    outfile = f"{outfile_base}-{num_existing+1}.json"
-
-    results = []
+@make_time_test("lds_em", "time_lds_em", "num_trials")
+def test_lds_em_num_trials(test_fn, mode, write_to_file=True):
     for num_trials in range(0, 500, 25):
         if num_trials == 0: num_trials += 1
-        _, elapsed_time = lds_em_func(num_trials=num_trials)
-        
-        results.append(dict(
-            params={"num_trials": num_trials},
-            time=elapsed_time)                  
-        )
-        
-        # dump to file each iteration to save progress
-        if write_to_file:
-            with open(outfile, "w") as f:
-                json.dump(results, f, indent=4, sort_keys=True)
+        _, elapsed_time = test_fn(num_trials=num_trials)
+        params = dict(num_trials=num_trials)
+        yield params, elapsed_time
 
-    return results
-
-@register
-def test_lds_em_num_timesteps(mode, write_to_file=True):
-    """Test different trials for LDS EM
-    """
-    test_file = "lds_em"
-    test_name = "time_lds_em"
-    parameter_name = "num_timesteps"
-    lds_em_func = get_test_func(mode, test_file, test_name)
-
-    outfile_base = f"data/{mode}/{test_file}.{test_name}.{parameter_name}"
-    num_existing = len(glob.glob(f"{outfile_base}*.json"))
-    outfile = f"{outfile_base}-{num_existing+1}.json"
-
-    results = []
+@make_time_test("lds_em", "time_lds_em", "num_timesteps")
+def test_lds_em_num_timesteps(test_fn, mode, write_to_file=True): 
     for num_timesteps in range(100, 100000, 1000):
-        _, elapsed_time = lds_em_func(num_trials=5, time_bins=num_timesteps)
-        
-        result = dict(
-            params={"num_timesteps": num_timesteps},
-            time=elapsed_time
-        )   
-        print(result)
-        results.append(result)
-        
-        # dump to file each iteration to save progress
-        if write_to_file:
-            with open(outfile, "w") as f:
-                json.dump(results, f, indent=4, sort_keys=True)
+        _, elapsed_time = test_fn(num_trials=5, time_bins=num_timesteps)
+        params = dict(num_timesteps=num_timesteps)
+        yield params, elapsed_time
 
-    return results
-
-
-@register
-def test_hmm_em_num_trials(mode, write_to_file=True):
-    """Test different trials for LDS EM
-    """
-    test_file = "hmm_em"
-    test_name = "time_hmm_em"
-    parameter_name = "num_trials"
-    hmm_em_func = get_test_func(mode, test_file, test_name)
-
-    outfile_base = f"data/{mode}/{test_file}.{test_name}.{parameter_name}"
-    num_existing = len(glob.glob(f"{outfile_base}*.json"))
-    outfile = f"{outfile_base}-{num_existing+1}.json"
-
-    results = []
-    for num_trials in trange(0, 500, 25):
+@make_time_test("hmm_em", "time_hmm_em", "num_trials")
+def test_hmm_em_num_trials(test_fn, mode, write_to_file=True):
+    for num_trials in range(0, 500, 25):
         if num_trials == 0: num_trials += 1
-        _, elapsed_time = hmm_em_func(num_trials=num_trials)
-        
-        results.append(dict(
-            params={"num_trials": num_trials},
-            time=elapsed_time)                  
-        )
-        
-        # dump to file each iteration to save progress
-        if write_to_file:
-            with open(outfile, "w") as f:
-                json.dump(results, f, indent=4, sort_keys=True)
+        _, elapsed_time = test_fn(num_trials=num_trials)
+        params = dict(num_trials=num_trials)
+        yield params, elapsed_time
 
-    return results
-
-@register
-def test_hmm_em_num_timesteps(mode, write_to_file=True):
-    """Test different timestep lengths for HMM EM
-    """
-    test_file = "hmm_em"
-    test_name = "time_hmm_em"
-    parameter_name = "num_timesteps"
-    hmm_em_func = get_test_func(mode, test_file, test_name)
-
-    outfile_base = f"data/{mode}/{test_file}.{test_name}.{parameter_name}"
-    num_existing = len(glob.glob(f"{outfile_base}*.json"))
-    outfile = f"{outfile_base}-{num_existing+1}.json"
-
-    results = []
+@make_time_test("hmm_em", "time_hmm_em", "num_timesteps")
+def test_hmm_em_num_timesteps(test_fn, mode="ssm_jax", write_to_file=True):
     for num_timesteps in range(100, 100000, 1000):
-        _, elapsed_time = hmm_em_func(num_trials=5, time_bins=num_timesteps)
-        
-        results.append(dict(
-            params={"num_timesteps": num_timesteps},
-            time=elapsed_time)                  
-        )
-        
-        # dump to file each iteration to save progress
-        if write_to_file:
-            with open(outfile, "w") as f:
-                json.dump(results, f, indent=4, sort_keys=True)
-
-    return results
+        _, elapsed_time = test_fn(num_trials=5, time_bins=num_timesteps)
+        params = dict(num_timesteps=num_timesteps)
+        yield params, elapsed_time
 
 
 if __name__ == "__main__":
