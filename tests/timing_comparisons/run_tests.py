@@ -66,7 +66,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="ssm_jax", choices=["ssm_jax", "ssm_old"])
-    parser.add_argument("--name", type=str, default="test_num_trials", choices=TIMING_TESTS, nargs="+")
+    parser.add_argument("--name", type=str, default=["test_num_trials"], choices=TIMING_TESTS, nargs="+")
     args = parser.parse_args()
 
     # run tests

@@ -17,38 +17,27 @@ def timer(func):
         return result, t_elapsed
     return wrap_func
 
-def sample_lds(true_lds, num_trials):
+def sample_lds(true_lds, num_trials, time_bins):
     all_states, all_data = [], []
     for i in range(num_trials):
-        states, data = true_lds.sample(T=200)
+        states, data = true_lds.sample(T=time_bins)
         all_states.append(states)
         all_data.append(data)
     return all_states, all_data
 
-def time_laplace_em(N=10, D=2, T=200, num_trials=1):
+def time_laplace_em(emission_dim=10, latent_dim=2, num_trials=5, time_bins=200, num_iters=100):
+
+    N = emission_dim
+    D = latent_dim
+    
     true_lds = LDS(N, D, dynamics="gaussian", emissions="poisson")
-    all_states, all_data = sample_lds(true_lds, num_trials=num_trials)
+    all_states, all_data = sample_lds(true_lds, num_trials=num_trials, time_bins=time_bins)
     test_lds = LDS(N, D, dynamics="gaussian", emissions="poisson")
     (q_elbos_lem_train, q_lem_train), time_elapsed = timer(test_lds.fit)(
         datas=all_data,
         method="laplace_em",
         variational_posterior="structured_meanfield",
-        num_init_iters=0, num_iters=100, verbose=False
+        num_init_iters=0, num_iters=num_iters, verbose=False
     )
     return (q_elbos_lem_train, q_lem_train), time_elapsed
 
-def run_test():
-    times = dict()
-    for t in trange(0, 31, 5):
-        if t==0: t+=1
-        _, time_elapsed = time_laplace_em(num_trials=t)
-        times[t] = time_elapsed
-    x = list(times.keys())
-    y = list(times.values())
-    out = np.array([x, y])
-    np.save("../data/ssm_old/laplace_em_num_trials", out)
-    print(out)
-    return out
-
-if __name__ == "__main__":
-    run_test()
