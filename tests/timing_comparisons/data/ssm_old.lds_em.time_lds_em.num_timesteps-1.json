@@ -1,0 +1,224 @@
+[
+    {
+        "params": {
+            "num_timesteps": 100
+        },
+        "time": 15.776037216186523
+    },
+    {
+        "params": {
+            "num_timesteps": 1100
+        },
+        "time": 49.00645995140076
+    },
+    {
+        "params": {
+            "num_timesteps": 2100
+        },
+        "time": 71.29174447059631
+    },
+    {
+        "params": {
+            "num_timesteps": 3100
+        },
+        "time": 96.6268949508667
+    },
+    {
+        "params": {
+            "num_timesteps": 4100
+        },
+        "time": 126.5479621887207
+    },
+    {
+        "params": {
+            "num_timesteps": 5100
+        },
+        "time": 162.49189496040344
+    },
+    {
+        "params": {
+            "num_timesteps": 6100
+        },
+        "time": 200.09242343902588
+    },
+    {
+        "params": {
+            "num_timesteps": 7100
+        },
+        "time": 223.15278005599976
+    },
+    {
+        "params": {
+            "num_timesteps": 8100
+        },
+        "time": 279.4866826534271
+    },
+    {
+        "params": {
+            "num_timesteps": 9100
+        },
+        "time": 297.68859815597534
+    },
+    {
+        "params": {
+            "num_timesteps": 10100
+        },
+        "time": 334.2137734889984
+    },
+    {
+        "params": {
+            "num_timesteps": 11100
+        },
+        "time": 351.39127945899963
+    },
+    {
+        "params": {
+            "num_timesteps": 12100
+        },
+        "time": 373.8448841571808
+    },
+    {
+        "params": {
+            "num_timesteps": 13100
+        },
+        "time": 415.8570957183838
+    },
+    {
+        "params": {
+            "num_timesteps": 14100
+        },
+        "time": 418.55897426605225
+    },
+    {
+        "params": {
+            "num_timesteps": 15100
+        },
+        "time": 474.8414857387543
+    },
+    {
+        "params": {
+            "num_timesteps": 16100
+        },
+        "time": 523.1247270107269
+    },
+    {
+        "params": {
+            "num_timesteps": 17100
+        },
+        "time": 550.8649039268494
+    },
+    {
+        "params": {
+            "num_timesteps": 18100
+        },
+        "time": 537.1184136867523
+    },
+    {
+        "params": {
+            "num_timesteps": 19100
+        },
+        "time": 572.2142081260681
+    },
+    {
+        "params": {
+            "num_timesteps": 20100
+        },
+        "time": 608.1958146095276
+    },
+    {
+        "params": {
+            "num_timesteps": 21100
+        },
+        "time": 622.2200703620911
+    },
+    {
+        "params": {
+            "num_timesteps": 22100
+        },
+        "time": 655.1603484153748
+    },
+    {
+        "params": {
+            "num_timesteps": 23100
+        },
+        "time": 710.5687837600708
+    },
+    {
+        "params": {
+            "num_timesteps": 24100
+        },
+        "time": 696.079537153244
+    },
+    {
+        "params": {
+            "num_timesteps": 25100
+        },
+        "time": 745.0170481204987
+    },
+    {
+        "params": {
+            "num_timesteps": 26100
+        },
+        "time": 769.7456905841827
+    },
+    {
+        "params": {
+            "num_timesteps": 27100
+        },
+        "time": 782.1966784000397
+    },
+    {
+        "params": {
+            "num_timesteps": 28100
+        },
+        "time": 783.9254634380341
+    },
+    {
+        "params": {
+            "num_timesteps": 29100
+        },
+        "time": 862.1629590988159
+    },
+    {
+        "params": {
+            "num_timesteps": 30100
+        },
+        "time": 854.3996376991272
+    },
+    {
+        "params": {
+            "num_timesteps": 31100
+        },
+        "time": 906.3695025444031
+    },
+    {
+        "params": {
+            "num_timesteps": 32100
+        },
+        "time": 907.0070555210114
+    },
+    {
+        "params": {
+            "num_timesteps": 33100
+        },
+        "time": 982.8942768573761
+    },
+    {
+        "params": {
+            "num_timesteps": 34100
+        },
+        "time": 987.1147363185883
+    },
+    {
+        "params": {
+            "num_timesteps": 35100
+        },
+        "time": 1047.407280921936
+    },
+    {
+        "params": {
+            "num_timesteps": 36100
+        },
+        "time": 1291.6845915317535
+    }
+]

@@ -1,0 +1,122 @@
+[
+    {
+        "params": {
+            "num_trials": 1
+        },
+        "time": 2.9292092323303223
+    },
+    {
+        "params": {
+            "num_trials": 25
+        },
+        "time": 3.839481830596924
+    },
+    {
+        "params": {
+            "num_trials": 50
+        },
+        "time": 4.925206184387207
+    },
+    {
+        "params": {
+            "num_trials": 75
+        },
+        "time": 5.865586519241333
+    },
+    {
+        "params": {
+            "num_trials": 100
+        },
+        "time": 6.812864065170288
+    },
+    {
+        "params": {
+            "num_trials": 125
+        },
+        "time": 7.253129005432129
+    },
+    {
+        "params": {
+            "num_trials": 150
+        },
+        "time": 8.468791007995605
+    },
+    {
+        "params": {
+            "num_trials": 175
+        },
+        "time": 9.631805658340454
+    },
+    {
+        "params": {
+            "num_trials": 200
+        },
+        "time": 9.378458976745605
+    },
+    {
+        "params": {
+            "num_trials": 225
+        },
+        "time": 10.430354356765747
+    },
+    {
+        "params": {
+            "num_trials": 250
+        },
+        "time": 11.414790630340576
+    },
+    {
+        "params": {
+            "num_trials": 275
+        },
+        "time": 12.248980045318604
+    },
+    {
+        "params": {
+            "num_trials": 300
+        },
+        "time": 12.949541807174683
+    },
+    {
+        "params": {
+            "num_trials": 325
+        },
+        "time": 13.940569162368774
+    },
+    {
+        "params": {
+            "num_trials": 350
+        },
+        "time": 14.745868444442749
+    },
+    {
+        "params": {
+            "num_trials": 375
+        },
+        "time": 16.26377582550049
+    },
+    {
+        "params": {
+            "num_trials": 400
+        },
+        "time": 16.361637353897095
+    },
+    {
+        "params": {
+            "num_trials": 425
+        },
+        "time": 17.16253685951233
+    },
+    {
+        "params": {
+            "num_trials": 450
+        },
+        "time": 18.106370449066162
+    },
+    {
+        "params": {
+            "num_trials": 475
+        },
+        "time": 19.392996311187744
+    }
+]

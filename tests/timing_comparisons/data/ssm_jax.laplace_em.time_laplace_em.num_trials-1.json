@@ -1,0 +1,62 @@
+[
+    {
+        "params": {
+            "num_trials": 1
+        },
+        "time": 33.527647495269775
+    },
+    {
+        "params": {
+            "num_trials": 25
+        },
+        "time": 319.20114850997925
+    },
+    {
+        "params": {
+            "num_trials": 50
+        },
+        "time": 734.2099552154541
+    },
+    {
+        "params": {
+            "num_trials": 75
+        },
+        "time": 1666.8889045715332
+    },
+    {
+        "params": {
+            "num_trials": 100
+        },
+        "time": 1460.0618343353271
+    },
+    {
+        "params": {
+            "num_trials": 125
+        },
+        "time": 2964.269914150238
+    },
+    {
+        "params": {
+            "num_trials": 150
+        },
+        "time": 3206.1372668743134
+    },
+    {
+        "params": {
+            "num_trials": 175
+        },
+        "time": 2747.971264600754
+    },
+    {
+        "params": {
+            "num_trials": 200
+        },
+        "time": 4432.901037693024
+    },
+    {
+        "params": {
+            "num_trials": 225
+        },
+        "time": 3319.9603459835052
+    }
+]
