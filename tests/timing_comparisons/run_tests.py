@@ -74,7 +74,7 @@ def test_lds_em_num_trials(mode):
     outfile = f"data/{mode}/{test_file}.{test_name}.{parameter_name}-{time.strftime('%Y%m%d-%H%M%S')}.json"
 
     results = []
-    for num_trials in range(0, 250, 25):
+    for num_trials in range(0, 500, 25):
         if num_trials == 0: num_trials += 1
         _, elapsed_time = lds_em_func(num_trials=num_trials)
         
@@ -102,12 +102,38 @@ def test_hmm_em_num_trials(mode):
     outfile = f"data/{mode}/{test_file}.{test_name}.{parameter_name}-{time.strftime('%Y%m%d-%H%M%S')}.json"
 
     results = []
-    for num_trials in range(0, 250, 25):
+    for num_trials in range(0, 500, 25):
         if num_trials == 0: num_trials += 1
         _, elapsed_time = hmm_em_func(num_trials=num_trials)
         
         results.append(dict(
             params={"num_trials": num_trials},
+            time=elapsed_time)                  
+        )
+        
+        # dump to file each iteration to save progress
+        with open(outfile, "w") as f:
+            json.dump(results, f, indent=4, sort_keys=True)
+
+    return results
+
+@register
+def test_hmm_em_num_timesteps(mode):
+    """Test different timestep lengths for HMM EM
+    """
+    test_file = "hmm_em"
+    test_name = "time_hmm_em"
+    parameter_name = "num_timesteps"
+    hmm_em_func = get_test_func(mode, test_file, test_name)
+
+    outfile = f"data/{mode}/{test_file}.{test_name}.{parameter_name}-{time.strftime('%Y%m%d-%H%M%S')}.json"
+
+    results = []
+    for num_timesteps in range(50, 2000, 100):
+        _, elapsed_time = hmm_em_func(num_trials=5, time_bins=num_timesteps)
+        
+        results.append(dict(
+            params={"num_timesteps": num_timesteps},
             time=elapsed_time)                  
         )
         
