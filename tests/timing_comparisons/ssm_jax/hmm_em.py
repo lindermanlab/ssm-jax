@@ -27,14 +27,10 @@ def timer(func):
     return wrap_func
 
 def create_random_hmm(emissions_dim=10, latent_dim=2, rng=jr.PRNGKey(0)):
-
-    seed = jr.PRNGKey(1)
-    num_states_est = 3
-    emission_means = 3 * jr.normal(seed, shape=(num_states_est, 2))
-    hmm = make_gaussian_hmm(num_states_est, 2, 
-                                transition_logits=np.zeros((num_states_est, num_states_est)), 
-                                emission_means=emission_means)
-    
+    emission_means = 3 * jr.normal(rng, shape=(latent_dim, emissions_dim))
+    hmm = make_gaussian_hmm(latent_dim, emissions_dim, 
+                            transition_logits=np.zeros((latent_dim, latent_dim)), 
+                            emission_means=emission_means)
     return hmm
 
 def sample_hmm(hmm, num_trials=5, time_bins=200, rng=jr.PRNGKey(0)):
