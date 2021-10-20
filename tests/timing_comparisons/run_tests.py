@@ -47,7 +47,7 @@ def test_num_trials(mode):
     outfile = f"data/{mode}/{test_file}.{test_name}.{parameter_name}-{time.strftime('%Y%m%d-%H%M%S')}.json"
 
     results = []
-    for num_trials in range(0, 250, 25):
+    for num_trials in trange(0, 250, 25):
         if num_trials == 0: num_trials += 1
         _, elapsed_time = laplace_em_func(num_trials=num_trials)
         

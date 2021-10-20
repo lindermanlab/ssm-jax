@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=8G
-#SBATCH --output="logs/ssmold.%A.log"
+#SBATCH --output="logs/ssmjax.%A.log"
 
 source ~/.bashrc
 conda activate ssmjax
