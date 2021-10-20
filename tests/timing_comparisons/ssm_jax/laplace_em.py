@@ -13,7 +13,7 @@ from tensorflow_probability.substrates import jax as tfp
 from tqdm.auto import trange
 import warnings
 from tqdm.auto import trange
-import time
+from time import time
 
 def timer(func):
     def wrap_func(*args, **kwargs):
