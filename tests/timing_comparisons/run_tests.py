@@ -36,7 +36,7 @@ def register(func):
 
 #### Define Tests
 @register
-def test_num_trials(mode):
+def test_laplace_em_num_trials(mode):
     """Test different trials for Laplace EM
     """
     test_file = "laplace_em"
@@ -61,6 +61,62 @@ def test_num_trials(mode):
             json.dump(results, f, indent=4, sort_keys=True)
 
     return results
+
+@register
+def test_lds_em_num_trials(mode):
+    """Test different trials for LDS EM
+    """
+    test_file = "lds_em"
+    test_name = "time_lds_em"
+    parameter_name = "num_trials"
+    lds_em_func = get_test_func(mode, test_file, test_name)
+
+    outfile = f"data/{mode}/{test_file}.{test_name}.{parameter_name}-{time.strftime('%Y%m%d-%H%M%S')}.json"
+
+    results = []
+    for num_trials in range(0, 250, 25):
+        if num_trials == 0: num_trials += 1
+        _, elapsed_time = lds_em_func(num_trials=num_trials)
+        
+        results.append(dict(
+            params={"num_trials": num_trials},
+            time=elapsed_time)                  
+        )
+        
+        # dump to file each iteration to save progress
+        with open(outfile, "w") as f:
+            json.dump(results, f, indent=4, sort_keys=True)
+
+    return results
+
+
+@register
+def test_hmm_em_num_trials(mode):
+    """Test different trials for LDS EM
+    """
+    test_file = "hmm_em"
+    test_name = "time_hmm_em"
+    parameter_name = "num_trials"
+    hmm_em_func = get_test_func(mode, test_file, test_name)
+
+    outfile = f"data/{mode}/{test_file}.{test_name}.{parameter_name}-{time.strftime('%Y%m%d-%H%M%S')}.json"
+
+    results = []
+    for num_trials in range(0, 250, 25):
+        if num_trials == 0: num_trials += 1
+        _, elapsed_time = hmm_em_func(num_trials=num_trials)
+        
+        results.append(dict(
+            params={"num_trials": num_trials},
+            time=elapsed_time)                  
+        )
+        
+        # dump to file each iteration to save progress
+        with open(outfile, "w") as f:
+            json.dump(results, f, indent=4, sort_keys=True)
+
+    return results
+
 
 if __name__ == "__main__":
     import argparse
