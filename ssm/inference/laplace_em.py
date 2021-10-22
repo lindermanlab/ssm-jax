@@ -15,6 +15,8 @@ import jax.experimental.optimizers as optimizers
 import tensorflow_probability.substrates.jax as tfp
 import jax.scipy.optimize
 
+from jax import lax
+
 from functools import partial
 
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
@@ -218,25 +220,29 @@ def laplace_em(
     @jit
     def step(rng, lds, states):
         rng, elbo_rng, m_step_rng = jr.split(rng, 3)
-        # we can't seem to vmap over a function when lds is an argument
-        # (even if we exclude lds from the vmap in_axes)
-        # seems like it's an issue vmapping over tfp.dist objects (which are in lds' pytree)
-        # a fix that I've found is to construct partial functions to fold-in the lds prior to
-        # vmapping
 
-        # this issue seems to be related to the general issue of using tfp distributions
-        # with vmap (see https://github.com/tensorflow/probability/issues/1271)
-        _laplace_e_step_partial = partial(_laplace_e_step, lds, 
-                                          laplace_mode_fit_method=laplace_mode_fit_method,
-                                          num_laplace_mode_iters=num_laplace_mode_iters)
-        posteriors = vmap(_laplace_e_step_partial)(data, states)
+        def _laplace_e_step_single(xs):
+            data, states = xs
+            posterior = _laplace_e_step(lds, data, states, laplace_mode_fit_method, num_laplace_mode_iters)
+            return posterior
+
+        def _elbo_single(xs):
+            elbo_rng, data, posterior = xs
+            elbo = _elbo(lds, elbo_rng, data, posterior)
+            return elbo
+
+        xs = (data, states)
+        posteriors = lax.map(_laplace_e_step_single, xs)
         states = posteriors.mean
+
         elbo_rng = jr.split(elbo_rng, data.shape[0])
-        _elbo_partial = partial(_elbo, lds, num_samples=num_elbo_samples)
-        elbos = vmap(_elbo_partial)(elbo_rng, data, posteriors)
+        xs = (elbo_rng, data, posteriors)
+        elbos = lax.map(_elbo_single, xs)
         elbo = np.mean(elbos)
+
         m_step_rng = jr.split(rng, data.shape[0])
         lds = lds.m_step(data, posteriors, rng=m_step_rng)
+
         return rng, lds, posteriors, states, elbo
 
     # Run the Laplace EM algorithm to convergence
