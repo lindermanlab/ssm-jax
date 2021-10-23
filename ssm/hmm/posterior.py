@@ -1,29 +1,29 @@
 """
-HMM Message Passing Routines
+HMM message passing algorithms and posterior calculation
+========================================================
 """
-from collections import namedtuple
 from textwrap import dedent
+from collections import namedtuple
 
 import jax.numpy as np
+import jax.scipy.special as spsp
 from jax import jit, lax, value_and_grad
 
-from functools import partial
 
-import jax.scipy.special as spsp
-import jax.random as npr
-import jax.experimental.optimizers as optimizers
-
-# from ssm.models.hmm import HMM
-from ssm.distributions import EXPFAM_DISTRIBUTIONS
-from ssm.utils import Verbosity, ssm_pbar, sum_tuples
-
+HMMPosterior = namedtuple(
+    "HMMPosterior",
+    ["marginal_likelihood",
+     "expected_states",
+     "expected_transitions",
+     ]
+)
 
 ### Core message passing routines
 def hmm_log_normalizer(log_initial_state_probs, log_transition_matrix, log_likelihoods):
     """
     Compute the marginal likelihood (i.e. log normalizer) under
     a Hidden Markov Model (HMM) with the specified natural parameters.
-    
+
     The normalizer is computed via the forward message passing recursion,
 
     .. math::
@@ -32,8 +32,8 @@ def hmm_log_normalizer(log_initial_state_probs, log_transition_matrix, log_likel
                                 \log p(x_t | z_t = i) +
                                 \log p(z_{t+1} = j | z_t = i) \}
 
-    where, 
-    
+    where,
+
     .. math::
         \\alpha_{t+1} \propto p(z_{t+1} | x_{1:t}).
 
@@ -124,13 +124,13 @@ def _nonstationary_hmm_log_normalizer(
     return spsp.logsumexp(alpha_T + log_likelihoods[-1])
 
 hmm_expected_states = jit(value_and_grad(hmm_log_normalizer, argnums=(0, 1, 2)))
-hmm_expected_states.__doc__ = dedent(   
+hmm_expected_states.__doc__ = dedent(
     """
     Compute posterior expectations of the latent states in a Hidden Markov
-    Model (HMM) with the specified natural parameters. 
-    
-    The expectations are computed using a special property of exponential 
-    family distributions: the expected sufficient statistics are equal to 
+    Model (HMM) with the specified natural parameters.
+
+    The expectations are computed using a special property of exponential
+    family distributions: the expected sufficient statistics are equal to
     the gradient of the log normalizer with respect to the natural parameters.
 
     For an HMM, the sufficient statistics are simply indicator functions
@@ -140,7 +140,7 @@ hmm_expected_states.__doc__ = dedent(
             t(z)_1 &= [\mathbb{I}[z_1 = 1], \ldots, \mathbb{I}[z_1=K]] \\\\
             t(z)_2 &= [\mathbb{I}[z_t = 1], \ldots, \mathbb{I}[z_t=K]] \\text{ for } t = 1, ..., T \\\\
             t(z)_3 &= [\mathbb{I}[z_t = k_1, z_{t+1} = k_2]] \\text{ for } t = 1, ..., T-1; k_1 = 1,...,K; k_2 = 1, ..., K
-        
+
     The expected sufficient statistics are the probabilities of these
     events under the posterior distribution determined by the natural parameters,
     i.e. arguments to this function.
@@ -165,4 +165,3 @@ hmm_expected_states.__doc__ = dedent(
         The log normalizer and a tuple including of expected sufficient statistics.
     """
 )
-    

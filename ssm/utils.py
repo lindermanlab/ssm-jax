@@ -2,18 +2,19 @@
 Useful utility functions.
 """
 
-from scipy.optimize import linear_sum_assignment
 import jax.numpy as np
 import jax.random as jr
+import inspect
 from enum import IntEnum
 from tqdm.auto import trange
+from scipy.optimize import linear_sum_assignment
 from typing import Sequence, Optional
-
+from functools import wraps
 
 class Verbosity(IntEnum):
     """
     Convenience alias class for Verbosity values.
-    
+
     Currently, any value >= 1 corresponds to displaying progress bars
     for various function calls through JAX-SSM.
 
@@ -129,7 +130,7 @@ def random_rotation(seed, n, theta=None):
 
     Args:
         seed (jax.random.PRNGKey): JAX random seed.
-        n (int): Dimension of the rotation matrix. 
+        n (int): Dimension of the rotation matrix.
         theta (float, optional): If specified, this is the angle of the rotation, otherwise
             a random angle sampled from a standard Gaussian scaled by ::math::`\pi / 2`. Defaults to None.
 
@@ -152,3 +153,40 @@ def random_rotation(seed, n, theta=None):
     out = out.at[:2, :2].set(rot)
     q = np.linalg.qr(jr.uniform(key2, shape=(n, n)))[0]
     return q.dot(out).dot(q.T)
+
+
+def format_dataset(f):
+    sig = inspect.signature(f)
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        # Get the `dataset` argument
+        bound_args = sig.bind(*args, **kwargs)
+        bound_args.apply_defaults()
+        dataset = bound_args.arguments['dataset']
+
+        # Make sure dataset is a 3D tensor of shape (B, T, D)
+        if hasattr(dataset, "ndim"):
+            if dataset.ndim == 2:
+                dataset = dataset[None, :, :]
+            else:
+                assert dataset.ndim == 3
+
+        # if isinstance(dataset, (list, tuple)):
+        #     assert all([isinstance(d, dict) and "data" in d for d in dataset])
+        # elif isinstance(dataset, dict):
+        #     assert "data" in dataset
+        #     dataset = [dataset]
+        # elif isinstance(dataset, np.ndarray):
+        #     dataset = [dict(data=dataset)]
+        # else:
+        #     raise Exception("Expected `dataset` to be a numpy array, a dictionary, or a "
+        #                     "list of dictionaries.  See help(ssm.HMM) for more details.")
+
+        # Update the bound arguments
+        bound_args.arguments['dataset'] = dataset
+
+        # Call the function
+        return f(*bound_args.args, **bound_args.kwargs)
+
+    return wrapper

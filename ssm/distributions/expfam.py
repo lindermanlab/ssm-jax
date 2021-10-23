@@ -1,12 +1,14 @@
 import jax.numpy as np
-from jax import lax
+from jax import lax, vmap
+from jax.tree_util import tree_map
+
 from tensorflow_probability.substrates import jax as tfp
 from collections import namedtuple
 
 from ssm.distributions.niw import NormalInverseWishart
 from ssm.distributions.mniw import MatrixNormalInverseWishart
 from ssm.distributions.linreg import GaussianLinearRegression
-
+from ssm.utils import sum_tuples
 
 # Register the prior and likelihood functions
 # TODO: bundle these into a class
@@ -20,24 +22,67 @@ ExponentialFamily = namedtuple(
     ],
 )
 
-# class ExponentialFamily:
-#     def __init__(self):
-#         pass
-
-#     def posterior_from_stats(self, stats, counts):
-#         return NotImplementedError
-
-#     def prior_pseudo_obs_and_counts(self):
-#         return NotImplementedError
-
-#     def from_params(self):
-#         return NotImplementedError
-
-#     def suff_stats(self):
-#         return NotImplementedError
-
 
 EXPFAM_DISTRIBUTIONS = dict()
+
+
+def compute_conditional_with_stats(distribution_name,
+                                   sufficient_statistics,
+                                   num_datapoints,
+                                   prior=None,
+                                   **kwargs):
+    """Compute the maximum a posteriori (MAP) estimate of the distribution
+    parameters, given the sufficient statistics of the data and the number
+    of datapoints.
+    """
+    expfam = EXPFAM_DISTRIBUTIONS[distribution_name]
+
+    # Compute the posterior distribution given sufficient statistics
+    stats = sufficient_statistics
+    counts = num_datapoints
+
+    # Add prior stats if given
+    if prior is not None:
+        prior_stats, prior_counts = expfam.prior_pseudo_obs_and_counts(prior)
+        stats = sum_tuples(prior_stats, stats)
+        counts += prior_counts
+
+    # Construct the conditional distribution
+    return expfam.posterior_from_stats(stats, counts)
+
+
+def compute_conditional(distribution_name,
+                        data,
+                        weights=None,
+                        prior=None,
+                        **kwargs):
+    """Compute the conditional distribution over parameters of a distribution
+    given data.
+
+    distribution_name: string key into `EXPFAM_DISTRIBUTIONS`
+    data: (..., D) array of data assumed iid from distribution
+    weights: (...,) array of weights for each data point
+    prior: conjugate prior object
+    """
+    expfam = EXPFAM_DISTRIBUTIONS[distribution_name]
+
+    # Compute the sufficient statistics and the number of datapoints
+    stats = vmap(expfam.suff_stats)(data.reshape(-1, data.shape[-1]))
+
+
+    # weight the statistics if weights are given
+    if weights is not None:
+        stats = tree_map(lambda x: np.einsum('n,n...->...', weights.ravel(), x), stats)
+        counts = np.sum(weights)
+    else:
+        stats = tree_map(lambda x: np.sum(x, axis=0), stats)
+        counts = len(data)
+
+    return compute_conditional_with_stats(distribution_name,
+                                          stats,
+                                          counts,
+                                          prior=prior,
+                                          **kwargs)
 
 
 ### Normal inverse Wishart / Multivariate Normal
@@ -78,7 +123,7 @@ def _mvn_suff_stats(data):
     return (np.ones(data.shape[:-1]), data, np.einsum("...i,...j->...ij", data, data))
 
 
-EXPFAM_DISTRIBUTIONS["MultivariateNormalTriL"] = ExponentialFamily(
+EXPFAM_DISTRIBUTIONS["MultivariateNormal"] = ExponentialFamily(
     _niw_pseudo_obs_and_counts, _niw_from_stats, _mvn_from_params, _mvn_suff_stats
 )
 

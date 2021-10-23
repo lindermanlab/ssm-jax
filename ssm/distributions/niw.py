@@ -22,12 +22,22 @@ class NormalInverseWishart(tfp.distributions.Distribution):
         self.scale = scale
 
         super(NormalInverseWishart, self).__init__(
-            dtype=loc.dtype,
+            dtype=np.float32,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
             parameters=dict(locals()),
             name=name,
+        )
+
+    @classmethod
+    def _parameter_properties(cls, dtype, num_classes=None):
+        # pylint: disable=g-long-lambda
+        return dict(
+            loc=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+            mean_precision=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+            df=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+            scale=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
         )
 
     @property
@@ -54,7 +64,7 @@ class NormalInverseWishart(tfp.distributions.Distribution):
 
         if self.mean_precision > 0:
             mvn = tfp.distributions.MultivariateNormalFullCovariance(
-                self.loc, covariance_matrix / self.mean_precision
+                self.loc, Sigma / self.mean_precision
             )
             lp += mvn.log_prob(mu)
 
