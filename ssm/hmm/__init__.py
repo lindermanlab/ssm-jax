@@ -1,4 +1,2 @@
-from ssm.hmm.core import HMM
-from ssm.hmm.gaussian_hmm import GaussianHMM
-from ssm.hmm.poisson_hmm import PoissonHMM
-from ssm.hmm.posterior import hmm_expected_states, hmm_log_normalizer
+from ssm.hmm.models import HMM, GaussianHMM, PoissonHMM
+from ssm.hmm.posterior import HMMPosterior, hmm_expected_states, hmm_log_normalizer

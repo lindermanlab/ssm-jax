@@ -17,7 +17,7 @@ def em(model,
        verbosity=Verbosity.DEBUG,
     ):
 
-    # @jit
+    @jit
     def update(model):
         posteriors = model.e_step(dataset)
         lp = model.marginal_likelihood(dataset, posterior=posteriors).sum()
@@ -80,9 +80,6 @@ def stochastic_em(hmm,
     T = sum([data.shape[0] for data in datas])
 
     perm = np.array([npr.permutation(k, M) for k in npr.split(key, num_epochs)])
-
-    # import numpy as onp
-    # perm = [onp.random.permutation(M) for _ in range(num_epochs)]
 
     def _get_minibatch(itr):
         epoch = itr // M

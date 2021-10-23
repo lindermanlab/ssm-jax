@@ -10,9 +10,11 @@ Array = Any
 import jax.numpy as np
 import jax.scipy.special as spsp
 from jax import vmap
+from jax.tree_util import register_pytree_node_class, tree_map
+
 from tensorflow_probability.substrates import jax as tfp
 
-import ssm.distributions
+import ssm.distributions.expfam as expfam
 from ssm.base import SSM
 from ssm.inference.em import em
 from ssm.hmm.posterior import hmm_expected_states, HMMPosterior
@@ -125,18 +127,16 @@ class HMM(SSM):
         return self.infer_posterior(dataset)
 
     def _m_step_initial_distribution(self, posteriors):
-        stats = (np.sum(posteriors.expected_states[:, 0, :], axis=0),)
-        counts = posteriors.expected_states.shape[0]
-        dirichlet = ssm.distributions.compute_conditional_with_stats(
-            "Categorical", stats, counts, prior=self._initial_distribution_prior)
-        self._initial_distribution = tfp.distributions.Categorical(probs=dirichlet.mode())
+        stats = np.sum(posteriors.expected_states[:, 0, :], axis=0)
+        stats += self._initial_distribution_prior.concentration
+        conditional = tfp.distributions.Dirichlet(concentration=stats)
+        self._initial_distribution = tfp.distributions.Categorical(probs=conditional.mode())
 
     def _m_step_transition_distribution(self, posteriors):
-        stats = (np.sum(posteriors.expected_transitions, axis=0),)
-        counts = posteriors.expected_states.shape[0] * (posteriors.expected_states.shape[1] - 1)
-        dirichlet = ssm.distributions.compute_conditional_with_stats(
-            "Categorical", stats, counts, prior=self._transition_distribution_prior)
-        self._transition_distribution = tfp.distributions.Categorical(probs=dirichlet.mode())
+        stats = np.sum(posteriors.expected_transitions, axis=0)
+        stats += self._transition_distribution_prior.concentration
+        conditional =  tfp.distributions.Dirichlet(concentration=stats)
+        self._transition_distribution = tfp.distributions.Categorical(probs=conditional.mode())
 
     def _m_step_emission_distribution(self, dataset, posteriors):
         # TODO: We could do gradient ascent on the expected log likelihood
@@ -158,3 +158,63 @@ class HMM(SSM):
             raise ValueError(f"Method {method} is not recognized/supported.")
 
         return log_probs, model, posteriors
+
+
+@register_pytree_node_class
+class GaussianHMM(HMM):
+    """An HMM with Gaussian emissions."""
+
+    def _m_step_emission_distribution(self, dataset, posteriors):
+        """If we have the right posterior, we can perform an exact update here.
+        """
+        flatten = lambda x: x.reshape(-1, x.shape[-1])
+        flat_dataset = flatten(dataset)
+        flat_weights = flatten(posteriors.expected_states)
+
+        stats = vmap(expfam._mvn_suff_stats)(flat_dataset)
+        stats = tree_map(lambda x: np.einsum('nk,n...->k...', flat_weights, x), stats)
+        counts = flat_weights.sum(axis=0)
+
+        # Add the prior
+        if self._emission_distribution_prior is not None:
+            prior_stats, prior_counts = expfam._niw_pseudo_obs_and_counts(self._emission_distribution_prior)
+            stats = tree_map(np.add, stats, prior_stats)
+            counts = counts + prior_counts
+
+        # Compute the posterior
+        conditional = expfam._niw_from_stats(stats, counts)
+        mean, covariance = conditional.mode()
+
+        # Set the emissions to the posterior mode
+        self._emission_distribution = \
+            tfp.distributions.MultivariateNormalTriL(mean, np.linalg.cholesky(covariance))
+
+
+@register_pytree_node_class
+class PoissonHMM(HMM):
+    """
+    TODO
+    """
+    def _m_step_emission_distribution(self, dataset, posteriors):
+        flatten = lambda x: x.reshape(-1, x.shape[-1])
+        flat_dataset = flatten(dataset)
+        flat_weights = flatten(posteriors.expected_states)
+
+        stats = vmap(expfam._poisson_suff_stats)(flat_dataset)
+        stats = tree_map(lambda x: np.einsum('nk,n...->k...', flat_weights, x), stats)
+        counts = flat_weights.sum(axis=0)[:, None]  # (num_states, 1) to broadcast across multiple emission dims
+
+        # Add the prior
+        if self._emission_distribution_prior is not None:
+            prior_stats, prior_counts = expfam._gamma_pseudo_obs_and_counts(self._emission_distribution_prior)
+            stats = tree_map(np.add, stats, prior_stats)
+            counts = counts + prior_counts
+
+        # Compute the posterior
+        conditional = expfam._gamma_from_stats(stats, counts)
+
+        # Set the emissions to the posterior mode
+        self._emission_distribution = \
+            tfp.distributions.Independent(
+                tfp.distributions.Poisson(conditional.mode()),
+                reinterpreted_batch_ndims=1)
