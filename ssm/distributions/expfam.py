@@ -76,7 +76,7 @@ def compute_conditional(distribution_name,
         counts = np.sum(weights)
     else:
         stats = tree_map(lambda x: np.sum(x, axis=0), stats)
-        counts = len(data)
+        counts = len(data.reshape(-1, data.shape[-1]))
 
     return compute_conditional_with_stats(distribution_name,
                                           stats,
@@ -210,8 +210,8 @@ EXPFAM_DISTRIBUTIONS["GaussianGLM"] = ExponentialFamily(
 
 ### Gamma / Poisson
 def _gamma_from_stats(stats, counts):
-    (alpha,) = stats
-    return tfp.distributions.Gamma(alpha, rate=counts[:, None])
+    (shape,) = stats
+    return tfp.distributions.Gamma(shape, rate=counts)
 
 
 def _gamma_pseudo_obs_and_counts(gamma):

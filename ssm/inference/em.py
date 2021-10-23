@@ -17,10 +17,10 @@ def em(model,
        verbosity=Verbosity.DEBUG,
     ):
 
-    @jit
+    # @jit
     def update(model):
         posteriors = model.e_step(dataset)
-        lp = model.marginal_likelihood(dataset, posterior=posteriors).mean()
+        lp = model.marginal_likelihood(dataset, posterior=posteriors).sum()
         model.m_step(dataset, posteriors)
         return model, posteriors, lp
 
