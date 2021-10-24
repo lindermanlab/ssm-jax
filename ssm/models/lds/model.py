@@ -135,10 +135,10 @@ class LDS(SSM):
                    transition_distribution,
                    emissions_distribution)
 
-    def fit(self, data, method="laplace_em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
+    def fit(self, data, method="laplace_em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG, **kwargs):
 
         # ensure data has a batch dimension
-        single_batch_mode = True
+        single_batch_mode = False
         if data.ndim == 2:
             single_batch_mode = True
             data = np.expand_dims(data, axis=0)
@@ -146,7 +146,7 @@ class LDS(SSM):
 
         model = self
         if method == "laplace_em":
-            elbos, lds, posteriors = laplace_em(rng, model, data, num_iters=num_iters, tol=tol)
+            elbos, lds, posteriors = laplace_em(rng, model, data, num_iters=num_iters, tol=tol, **kwargs)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
