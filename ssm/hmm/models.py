@@ -9,6 +9,7 @@ from typing import Any
 Array = Any
 
 import jax.numpy as np
+import jax.random as jr
 import jax.scipy.special as spsp
 from jax import vmap, lax
 from jax.tree_util import register_pytree_node_class, tree_map
@@ -20,7 +21,7 @@ import ssm.distributions.expfam as expfam
 from ssm.base import SSM
 from ssm.inference.em import em
 from ssm.hmm.posterior import hmm_expected_states, HMMPosterior
-from ssm.utils import Verbosity, format_dataset
+from ssm.utils import Verbosity, format_dataset, one_hot
 
 
 class HMM(SSM):
@@ -87,6 +88,34 @@ class HMM(SSM):
         return self._transition_distribution.probs_parameter()
 
     ### Methods for posterior inference
+    @format_dataset
+    def initialize(self, dataset, key, method="kmeans"):
+        """
+        Initialize the model parameters by performing an M-step with state assignments
+        determined by the specified method (random or kmeans).
+        """
+        # initialize assignments and perform one M-step
+        num_states = self.num_states
+        if method.lower() == "random":
+            # randomly assign datapoints to clusters
+            assignments = jr.choice(key, self.num_states, dataset.shape[:-1])
+
+        elif method.lower() == "kmeans":
+            # cluster the data with kmeans
+            print("initializing with kmeans")
+            from sklearn.cluster import KMeans
+            km = KMeans(num_states)
+            flat_dataset = dataset.reshape(-1, dataset.shape[-1])
+            assignments = km.fit_predict(flat_dataset).reshape(dataset.shape[:-1])
+
+        else:
+            raise Exception("Observations.initialize: "
+                "Invalid initialize method: {}".format(method))
+
+        Ez = one_hot(assignments, self.num_states)
+        dummy_posteriors = HMMPosterior(None, Ez, None)
+        self._m_step_emission_distribution(dataset, dummy_posteriors)
+
     def natural_parameters(self, data: Array):
         """Obtain the natural parameters for the HMM given observation data.
 
@@ -150,9 +179,39 @@ class HMM(SSM):
         self._m_step_emission_distribution(dataset, posteriors)
 
     @format_dataset
-    def fit(self, dataset, method="em", num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
+    def fit(self, dataset,
+            method="em",
+            num_iters=100,
+            tol=1e-4,
+            initialization_method="kmeans",
+            key=None,
+            verbosity=Verbosity.DEBUG):
+        """
+        Fit the parameters of the HMM using the specified method.
+
+        Args:
+
+        dataset: see `help(HMM)` for details.
+
+        method: specification of how to fit the data.  Must be one
+        of the following strings:
+        - em
+
+        initialization_method: optional method name ("kmeans" or "random")
+        indicating how to initialize the model before fitting.
+
+        key: jax.PRNGKey for random initialization and/or fitting
+
+        verbosity: specify how verbose the print-outs should be.  See
+        `ssm.util.Verbosity`.
+        """
         model = self
         kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
+
+        if initialization_method is not None:
+            if verbosity >= Verbosity.LOUD : print("Initializing...")
+            self.initialize(dataset, key, method=initialization_method)
+            if verbosity >= Verbosity.LOUD: print("Done.", flush=True)
 
         if method == "em":
             log_probs, model, posteriors = em(model, dataset, **kwargs)

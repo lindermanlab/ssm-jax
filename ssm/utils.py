@@ -190,3 +190,13 @@ def format_dataset(f):
         return f(*bound_args.args, **bound_args.kwargs)
 
     return wrapper
+
+def one_hot(z, K):
+    z = np.atleast_1d(z).astype(int)
+    assert np.all(z >= 0) and np.all(z < K)
+    shp = z.shape
+    N = z.size
+    zoh = np.zeros((N, K))
+    zoh = zoh.at[np.arange(N), np.arange(K)[np.ravel(z)]].set(1)
+    zoh = np.reshape(zoh, shp + (K,))
+    return zoh
