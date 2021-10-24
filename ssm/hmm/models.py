@@ -4,19 +4,17 @@ HMM Model Classes
 
 Module defining model behavior for Hidden Markov Models (HMMs).
 """
-from functools import partial
 from typing import Any
 Array = Any
 
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
-from jax import vmap, lax
+from jax import vmap
 from jax.tree_util import register_pytree_node_class, tree_map
 
 from tensorflow_probability.substrates import jax as tfp
 
-import ssm.distributions
 import ssm.distributions.expfam as expfam
 from ssm.base import SSM
 from ssm.inference.em import em

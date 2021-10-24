@@ -13,15 +13,9 @@ import jax.scipy.special as spsp
 from jax import vmap, lax
 from jax.tree_util import register_pytree_node_class, tree_map
 
-from tensorflow_probability.substrates import jax as tfp
-
 import ssm.distributions
 import ssm.distributions.expfam as expfam
 from ssm.hmm import HMM
-from ssm.inference.em import em
-from ssm.hmm.posterior import hmm_expected_states, HMMPosterior
-from ssm.utils import Verbosity, format_dataset
-
 
 
 @register_pytree_node_class
