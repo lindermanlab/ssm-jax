@@ -67,17 +67,12 @@ class GaussianLinearRegression(tfp.distributions.Distribution):
         return np.einsum('...ij,...ji->...ij', self.scale_tril, self.scale_tril)
 
     def predict(self, covariates=None):
-        return tfp.distributions.MultivariateNormalTriL(
-            covariates @ self.weights.T + self.bias, self.scale_tril)
+        mean = np.einsum('...i,...ji->...j', covariates, self.weights) + self.bias
+        return tfp.distributions.MultivariateNormalTriL(mean, self.scale_tril)
 
-    def _sample(self, covariates=None, seed=None, sample_shape=()):
+    def _sample_n(self, n, covariates=None, seed=None):
         d = self.predict(covariates)
-        # d = tfp.distributions.MultivariateNormalTriL(
-            # self.predict(covariates), self.scale_tril)
-        return d.sample(sample_shape=sample_shape, seed=seed)
+        return d.sample(sample_shape=n, seed=seed)
 
     def _log_prob(self, data, covariates=None, **kwargs):
-        d = self.predict(covariates)
-        # d = tfp.distributions.MultivariateNormalTriL(
-            # self.predict(covariates), self.scale_tril)
-        return d.log_prob(data)
+        return self.predict(covariates).log_prob(data)

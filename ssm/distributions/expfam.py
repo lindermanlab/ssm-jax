@@ -144,29 +144,36 @@ def _mniw_from_stats(stats, counts):
         s_3 = \Psi_0 + M_0 V_0^{-1} M_0^\top
     """
     Ex, Ey, ExxT, EyxT, EyyT = stats
-    T = counts
+    n = np.array(counts)
 
     # Pad the sufficient statistics to include the bias
-    big_ExxT = np.row_stack([np.column_stack([ExxT, Ex]),
-                             np.concatenate( [Ex.T, np.array([T])])])
-    big_EyxT = np.column_stack([EyxT, Ey])
+    big_ExxT = np.concatenate([np.concatenate([ExxT,             Ex[..., :, None]],   axis=-1),
+                               np.concatenate([Ex[..., None, :], n[..., None, None]], axis=-1)],
+                              axis=-2)
+    big_EyxT = np.concatenate([EyxT, Ey[..., None]], axis=-1)
     out_dim, in_dim = big_EyxT.shape[-2:]
 
+    T = lambda X: np.swapaxes(X, -1, -2)
     nu0 = counts - out_dim - in_dim - 1
-    def _null_stats(operand):
-        V0 = 1e16 * np.eye(in_dim)
-        M0 = np.zeros_like(big_EyxT)
-        Psi0 = np.eye(out_dim)
-        return V0, M0, Psi0
+    V0 = np.linalg.inv(big_ExxT + 1e-8 * np.eye(in_dim))
+    # M0 = big_EyxT @ V0
+    M0 = T(np.linalg.solve(big_ExxT, T(big_EyxT)))
+    Psi0 = EyyT - M0 @ big_ExxT @ T(M0)
 
-    def _stats(operand):
-        # TODO: Use Cholesky factorization for these two steps
-        V0 = np.linalg.inv(big_ExxT + 1e-16 * np.eye(in_dim))
-        M0 = big_EyxT @ V0
-        Psi0 = EyyT - M0 @ big_ExxT @ M0.T
-        return V0, M0, Psi0
+    # def _null_stats(operand):
+    #     V0 = 1e16 * np.eye(in_dim)
+    #     M0 = np.zeros_like(big_EyxT)
+    #     Psi0 = np.eye(out_dim)
+    #     return V0, M0, Psi0
 
-    V0, M0, Psi0 = lax.cond(np.allclose(big_ExxT, 0), _null_stats, _stats, operand=None)
+    # def _stats(operand):
+    #     # TODO: Use Cholesky factorization for these two steps
+    #     V0 = np.linalg.inv(big_ExxT + 1e-16 * np.eye(in_dim))
+    #     M0 = big_EyxT @ V0
+    #     Psi0 = EyyT - M0 @ big_ExxT @ np.swapaxes(M0, -1, -2)
+    #     return V0, M0, Psi0
+
+    # V0, M0, Psi0 = lax.cond(np.allclose(big_ExxT, 0), _null_stats, _stats, operand=None)
     return MatrixNormalInverseWishart(M0, V0, nu0, Psi0)
 
 

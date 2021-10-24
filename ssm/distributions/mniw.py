@@ -81,7 +81,8 @@ class MatrixNormalInverseWishart(tfp.distributions.Distribution):
         allow_nan_stats=True,
         name="MatrixNormalInverseWishart",
     ):
-        symmetrize = lambda X: 0.5 * (X + X.T)
+
+        symmetrize = lambda X: 0.5 * (X + np.swapaxes(X, -1, -2))
         self.loc = loc
         self.column_covariance = column_covariance
         self.df = df
@@ -151,9 +152,6 @@ class MatrixNormalInverseWishart(tfp.distributions.Distribution):
             )
             lp += wish.log_prob(np.linalg.inv(covariance_matrix))
 
-            # import scipy.stats
-            # lp += scipy.stats.invwishart.logpdf(
-            #     covariance_matrix, self.df, self.scale)
         return lp
 
     def _mode(self):
@@ -170,7 +168,7 @@ class MatrixNormalInverseWishart(tfp.distributions.Distribution):
             \Sigma^* = \Psi_0 / (\nu_0 + p + n + 1)
         """
         A = self.loc
-        Sigma = self.scale / (self.df + self.in_dim + self.out_dim + 1)
-        Sigma += 1e-4 * np.eye(self.out_dim)
+        Sigma = self.scale / (self.df[..., None, None] + self.in_dim + self.out_dim + 1)
+        # Sigma += 1e-8 * np.eye(self.out_dim)
         return A, Sigma
 

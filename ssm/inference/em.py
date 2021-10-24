@@ -28,22 +28,27 @@ def em(model,
     log_probs = []
     pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
 
-    if verbosity:
+    if verbosity > Verbosity.OFF:
         pbar.set_description("[jit compiling...]")
 
     for itr in pbar:
         model, posterior, lp = update(model)
         assert np.isfinite(lp), "NaNs in marginal log probability"
+
         log_probs.append(lp)
-        if verbosity:
+        if verbosity > Verbosity.OFF:
             pbar.set_description("LP: {:.3f}".format(lp))
 
         # Check for convergence
-        if itr > 1 and abs(log_probs[-1] - log_probs[-2]) < tol:
-            if verbosity:
+        if itr > 1:
+            if log_probs[-1] < log_probs[-2]:
+                print("Warning: LP is decreasing!")
+                break
+
+            if abs(log_probs[-1] - log_probs[-2]) < tol and verbosity > Verbosity.OFF:
                 pbar.set_description("[converged] LP: {:.3f}".format(lp))
                 pbar.refresh()
-            break
+                break
 
     return np.array(log_probs), model, posterior
 

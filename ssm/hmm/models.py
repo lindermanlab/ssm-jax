@@ -4,16 +4,18 @@ HMM Model Classes
 
 Module defining model behavior for Hidden Markov Models (HMMs).
 """
+from functools import partial
 from typing import Any
 Array = Any
 
 import jax.numpy as np
 import jax.scipy.special as spsp
-from jax import vmap
+from jax import vmap, lax
 from jax.tree_util import register_pytree_node_class, tree_map
 
 from tensorflow_probability.substrates import jax as tfp
 
+import ssm.distributions
 import ssm.distributions.expfam as expfam
 from ssm.base import SSM
 from ssm.inference.em import em
@@ -202,11 +204,13 @@ class PoissonHMM(HMM):
 
         stats = vmap(expfam._poisson_suff_stats)(flat_dataset)
         stats = tree_map(lambda x: np.einsum('nk,n...->k...', flat_weights, x), stats)
-        counts = flat_weights.sum(axis=0)[:, None]  # (num_states, 1) to broadcast across multiple emission dims
+        # counts: (num_states, 1) to broadcast across multiple emission dims
+        counts = flat_weights.sum(axis=0)[:, None]
 
         # Add the prior
         if self._emission_distribution_prior is not None:
-            prior_stats, prior_counts = expfam._gamma_pseudo_obs_and_counts(self._emission_distribution_prior)
+            prior_stats, prior_counts = \
+                expfam._gamma_pseudo_obs_and_counts(self._emission_distribution_prior)
             stats = tree_map(np.add, stats, prior_stats)
             counts = counts + prior_counts
 
@@ -218,3 +222,4 @@ class PoissonHMM(HMM):
             tfp.distributions.Independent(
                 tfp.distributions.Poisson(conditional.mode()),
                 reinterpreted_batch_ndims=1)
+
