@@ -146,7 +146,7 @@ class LDS(SSM):
 
         model = self
         if method == "laplace_em":
-            elbos, lds, posteriors = laplace_em(rng, model, data, num_iters=num_iters, tol=tol, **kwargs)
+            elbos, lds, posteriors = laplace_em(rng, model, data, num_iters=num_iters, tol=tol, verbosity=verbosity, **kwargs)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
