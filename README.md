@@ -10,6 +10,6 @@ conda env create -n ssm_jax python=3.9
 conda activate ssm_jax
 
 # in repo root directory...
-pip install -e .
+pip install -r requirements.txt
 ```
 
