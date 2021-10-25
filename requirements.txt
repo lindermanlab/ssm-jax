@@ -1,0 +1,6 @@
+-e .
+
+# dev dependencies below
+pytest
+pytest-benchmark
+pytest-timeout

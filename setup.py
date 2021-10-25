@@ -17,7 +17,7 @@ setup(
         "scikit-learn",
         "tqdm",
         "seaborn",
-        "jax",
+        "jax==0.2.21",
         "jaxlib",
         "h5py",
         "jupyter",
