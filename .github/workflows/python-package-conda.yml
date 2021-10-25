@@ -1,6 +1,8 @@
-name: Python Package using Conda
+name: Run Flake8 Lint and Quick PyTests
 
-on: [push]
+# sets workflow to be manual-run only
+on:
+  workflow_dispatch:
 
 jobs:
   build-linux:
