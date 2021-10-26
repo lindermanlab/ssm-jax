@@ -105,13 +105,13 @@ class TestPoissonLDSLaplaceEM:
         lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
         assert not np.any(np.isnan(lp))
 
-    @pytest.mark.parametrize("latent_dim", range(2, 8, 5))
+    @pytest.mark.parametrize("latent_dim", range(2, 13, 5))
     def test_lds_laplace_em_fit_latent_dim(self, benchmark, latent_dim):
         setup = lambda: (lds_fit_setup(latent_dim=latent_dim, emissions="poisson"), {})
         lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
         assert not np.any(np.isnan(lp))
 
-    @pytest.mark.parametrize("emissions_dim", range(2, 8, 5))
+    @pytest.mark.parametrize("emissions_dim", range(2, 13, 5))
     def test_lds_laplace_em_fit_emissions_dim(self, benchmark, emissions_dim):
         setup = lambda: (lds_fit_setup(emissions_dim=emissions_dim, emissions="poisson"), {})
         lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
