@@ -20,7 +20,7 @@ from jax import lax
 from functools import partial
 
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
-def _compute_laplace_mean(lds, x0, data, method="BFGS", num_iters=50, learning_rate=1e-3):
+def _compute_laplace_mean(lds, x0, data, method="L-BFGS", num_iters=50, learning_rate=1e-3):
     """Find the mode of the log joint for the Laplace approximation.
 
     Here, we seek to find
@@ -35,7 +35,7 @@ def _compute_laplace_mean(lds, x0, data, method="BFGS", num_iters=50, learning_r
         x0 (array, (num_timesteps, latent_dim)): Initial guess of state mode.
         data (array, (num_timesteps, obs_dim)): Observation data.
         method (str, optional): Optimization method to use. Choices are
-            ["BFGS", "Adam"]. Defaults to "BFGS".
+            ["L-BFGS", "BFGS", "Adam"]. Defaults to "L-BFGS".
         learning_rate (float, optional): [description]. Defaults to 1e-3.
         num_iters (int, optional): Only used when optimization method is "Adam."
             Specifies the number of update iterations. Defaults to 50.
@@ -51,7 +51,7 @@ def _compute_laplace_mean(lds, x0, data, method="BFGS", num_iters=50, learning_r
     scale = x0.size
     dim = x0.shape[-1]
 
-    if method == "BFGS":
+    if method == "BFGS" or "L-BFGS":
         # scipy minimize expects x to be shape (n,) so we flatten / unflatten
         def _objective(x_flattened):
             x = x_flattened.reshape(-1, dim)
@@ -60,7 +60,7 @@ def _compute_laplace_mean(lds, x0, data, method="BFGS", num_iters=50, learning_r
         optimize_results = jax.scipy.optimize.minimize(
             _objective,
             x0.ravel(),
-            method="BFGS",
+            method="bfgs" if method == "BFGS" else "l-bfgs-experimental-do-not-rely-on-this",
             options=dict(maxiter=num_iters))
 
         # NOTE: optimize_results.status ==> 3 ("zoom failed") although it seems to be finding a max?
@@ -135,7 +135,7 @@ def _compute_laplace_precision_blocks(lds, states, data):
     return J_diag, J_lower_diag
 
 
-def _laplace_e_step(lds, data, initial_states, laplace_mode_fit_method="BFGS", num_laplace_mode_iters=10, ):
+def _laplace_e_step(lds, data, initial_states, laplace_mode_fit_method="L-BFGS", num_laplace_mode_iters=10):
     """
     Laplace approximation to the posterior distribution for nonconjugate LDS models.
     """
@@ -155,23 +155,23 @@ def _laplace_e_step(lds, data, initial_states, laplace_mode_fit_method="BFGS", n
 
 
 def _elbo(model, rng, data, posterior, num_samples=1):
-        """
-        For nonconjugate models like an LDS with GLM emissions, we can compute
-        an _evidence lower bound_ (ELBO) using the joint probability and an
-        approximate posterior :math:`q(x) \\approx p(x | y)`:
+    """
+    For nonconjugate models like an LDS with GLM emissions, we can compute
+    an _evidence lower bound_ (ELBO) using the joint probability and an
+    approximate posterior :math:`q(x) \\approx p(x | y)`:
 
-        .. math:
-            log p(y) \geq \mathbb{E}_q \left[\log p(y, x) - \log q(x) \\right]
+    .. math:
+        log p(y) \geq \mathbb{E}_q \left[\log p(y, x) - \log q(x) \\right]
 
-        While in some cases the expectation can be computed in closed form, in
-        general we will approximate it with ordinary Monte Carlo.
-        """
-        if num_samples == 1:
-            states = posterior._sample(seed=rng)
-        else:
-            # TODO: implement cls._sample_n for mvn_block_tridiag
-            raise NotImplementedError
-        return np.mean(model.log_probability(states, data) - posterior.log_prob(states))
+    While in some cases the expectation can be computed in closed form, in
+    general we will approximate it with ordinary Monte Carlo.
+    """
+    if num_samples == 1:
+        states = posterior._sample(seed=rng)
+    else:
+        # TODO: implement cls._sample_n for mvn_block_tridiag
+        raise NotImplementedError
+    return np.mean(model.log_probability(states, data) - posterior.log_prob(states))
 
 
 # def _elbo_alt(rng, model, data, posterior, num_samples=1):
@@ -185,7 +185,7 @@ def laplace_em(
     num_iters: int=100,
     num_elbo_samples: int=1,
     num_approx_m_iters: int=100,
-    laplace_mode_fit_method: str="BFGS",
+    laplace_mode_fit_method: str="L-BFGS",
     num_laplace_mode_iters: int=100,
     tol: float=1e-4,
     verbosity: Verbosity=Verbosity.DEBUG,
@@ -205,7 +205,7 @@ def laplace_em(
         num_iters (int, optional): Number of iteration to run the Laplace EM algorithm. Defaults to 100.
         num_elbo_samples (int, optional): Number of Monte Carlo samples used to compute the ELBO expectation. Defaults to 1.
         laplace_mode_fit_method (str, optional): Optimization method used to compute the mode for the Laplace approximation.
-            Must be one of ["BFGS", "Adam"]. Defaults to "BFGS".
+            Must be one of ["L-BFGS", "BFGS", "Adam"]. Defaults to "L-BFGS".
         num_laplace_mode_iters (int, optional): Only relevant for when `laplace_mode_fit_method` is "Adam." Specifies the
             number of iterations to run the Adam updates. High values of iterations makes jit compilation slow. Defaults to 100.
         tol (float, optional): Tolerance to determine convergence of ELBO. Defaults to 1e-4.
@@ -231,17 +231,20 @@ def laplace_em(
             elbo = _elbo(lds, elbo_rng, data, posterior)
             return elbo
 
+        # laplace e step
         xs = (data, states)
         posteriors = lax.map(_laplace_e_step_single, xs)
         states = posteriors.mean
 
+        # compute elbo
         elbo_rng = jr.split(elbo_rng, data.shape[0])
         xs = (elbo_rng, data, posteriors)
         elbos = lax.map(_elbo_single, xs)
         elbo = np.mean(elbos)
 
+        # m step (approx update for emissions)
         m_step_rng = jr.split(rng, data.shape[0])
-        lds.m_step(data, posteriors, rng=m_step_rng)
+        lds.fit_with_posterior(data, posteriors, rng=m_step_rng)  # m step
 
         return rng, lds, posteriors, states, elbo
 
