@@ -7,7 +7,7 @@ from jax import jit, value_and_grad, grad, hessian, vmap, jacfwd, jacrev
 import jax.random as jr
 from jax.flatten_util import ravel_pytree
 
-from ssm.distributions import EXPFAM_DISTRIBUTIONS
+from ssm.distributions.expfam import EXPFAM_DISTRIBUTIONS
 from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 
@@ -236,7 +236,7 @@ def laplace_em(
         elbos = vmap(_elbo_partial)(elbo_rng, data, posteriors)
         elbo = np.mean(elbos)
         m_step_rng = jr.split(rng, data.shape[0])
-        lds = lds.fit_with_posterior(data, posteriors, rng=m_step_rng)
+        lds.fit_with_posterior(data, posteriors, rng=m_step_rng)
         return rng, lds, posteriors, states, elbo
 
     # Run the Laplace EM algorithm to convergence

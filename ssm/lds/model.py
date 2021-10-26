@@ -9,10 +9,12 @@ from ssm.distributions.linreg import GaussianLinearRegression
 from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.inference.em import em
 from ssm.inference.laplace_em import _laplace_e_step, laplace_em
-from ssm.models.base import SSM
+from ssm.base import SSM
 from tensorflow_probability.substrates import jax as tfp
 
-from ssm.utils import Verbosity
+from jax import vmap
+
+from ssm.utils import Verbosity, format_dataset
 
 from .dynamics import GaussianLinearRegressionDynamics
 from .emissions import (BernoulliGLMEmissions,
@@ -124,30 +126,17 @@ class LDS(SSM):
 
     def fit_with_posterior(self, data, posterior, prior=None, rng=None):
         initial_distribution = self.initials.distribution  # TODO initial dist needs prior
-        transition_distribution = self.dynamics.exact_m_step(data, posterior, prior=prior)
-        emissions_distribution = self.emissions.approx_m_step(data, posterior, rng=rng)  # TODO this causes 2x jit?
-        return LDS(initial_distribution,
-                   transition_distribution,
-                   emissions_distribution)
+        self.dynamics.distribution = self.dynamics.exact_m_step(data, posterior, prior=prior)
+        self.emissions.distribution = self.emissions.approx_m_step(data, posterior, rng=rng)  # TODO this causes 2x jit?
 
-    def fit(self, data, method="laplace_em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
-
-        # ensure data has a batch dimension
-        single_batch_mode = True
-        if data.ndim == 2:
-            single_batch_mode = True
-            data = np.expand_dims(data, axis=0)
-        assert data.ndim == 3, "data must have a batch dimension (B, T, N)"
+    @format_dataset
+    def fit(self, dataset, method="laplace_em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
 
         model = self
         if method == "laplace_em":
-            elbos, lds, posteriors = laplace_em(rng, model, data, num_iters=num_iters, tol=tol)
+            elbos, lds, posteriors = laplace_em(rng, model, dataset, num_iters=num_iters, tol=tol)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
-
-        # squeeze first dimension
-        if single_batch_mode:
-            posteriors = tree_map(lambda x: x[0], posteriors)
 
         return elbos, lds, posteriors
 
@@ -209,21 +198,22 @@ class GaussianLDS(LDS):
         return J_diag, J_lower_diag, h
 
     # Methods for inference
-    def e_step(self, data):
-        return MultivariateNormalBlockTridiag(*self.natural_parameters(data))
+    @format_dataset
+    def e_step(self, dataset):
+        posterior = vmap(
+            lambda data: MultivariateNormalBlockTridiag(*self.natural_parameters(data)))(dataset)
+        return posterior
 
     def fit_with_posterior(self, data, posterior, prior=None):
         initial_distribution = self.initials.distribution  # TODO: initial needs prior
-        transition_distribution = self.dynamics.exact_m_step(data, posterior, prior=prior)
-        emissions_distribution = self.emissions.exact_m_step(data, posterior, prior=prior)
-        return GaussianLDS(initial_distribution,
-                           transition_distribution,
-                           emissions_distribution)
+        self.dynamics.distribution = self.dynamics.exact_m_step(data, posterior, prior=prior)
+        self.emissions.distribution = self.emissions.exact_m_step(data, posterior, prior=prior)
 
     def m_step(self, data, posterior, prior=None):
-        return self.fit_with_posterior(data, posterior, prior)
+        self.fit_with_posterior(data, posterior, prior)
 
-    def marginal_likelihood(self, data, posterior=None):
+    @format_dataset
+    def marginal_likelihood(self, dataset, posterior=None):
         """The exact marginal likelihood of the observed data.
 
             For a Gaussian LDS, we can compute the exact marginal likelihood of
@@ -245,35 +235,28 @@ class GaussianLDS(LDS):
             Returns:
                 - lp (float): The marginal log likelihood of the data.
             """
+        
         if posterior is None:
-            posterior = self.e_step(data)
-        states = posterior.mean
-        return self.log_probability(states, data) - posterior.log_prob(states)
+            posterior = self.e_step(dataset)
+        batch_states = posterior.mean
+        f = lambda post, states, data: self.log_probability(states, data) - post.log_prob(states)
+        lps = vmap(f)(posterior, batch_states, dataset)
+        return lps
 
-    def fit(self, data, method="em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
-
-            single_batch_mode = False
-            # ensure data has a batch dimension
-            if data.ndim == 2:
-                single_batch_mode = True
-                data = np.expand_dims(data, axis=0)
-            assert data.ndim == 3, "data must have a batch dimension (B, T, N)"
+    @format_dataset
+    def fit(self, dataset, method="em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
 
             model = self
             kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
 
             if method == "em":
-                elbos, lds, posteriors = em(model, data, **kwargs)
+                elbos, lds, posteriors = em(model, dataset, **kwargs)
             elif method == "laplace_em":
                 if rng is None:
                     raise ValueError("Laplace EM requires a PRNGKey. Please provide an rng to fit.")
-                elbos, lds, posteriors = laplace_em(rng, model, data, **kwargs)
+                elbos, lds, posteriors = laplace_em(rng, model, dataset, **kwargs)
             else:
                 raise ValueError(f"Method {method} is not recognized/supported.")
-
-            # squeeze first dimension
-            if single_batch_mode:
-                posteriors = tree_map(lambda x: x[0], posteriors)
 
             return elbos, lds, posteriors
 

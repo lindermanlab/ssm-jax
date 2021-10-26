@@ -5,8 +5,7 @@ import jax.numpy as np
 
 from ssm.distributions.linreg import GaussianLinearRegression
 from ssm.distributions.glm import PoissonGLM
-from ssm.models.lds import GaussianLDS, LDS
-from ssm.plots import plot_dynamics_2d
+from ssm.lds import GaussianLDS, LDS
 from ssm.utils import random_rotation
 
 
@@ -78,40 +77,40 @@ def test_lds_em_fit_num_timesteps(benchmark, num_timesteps):
     lp = benchmark.pedantic(lds_fit_em, setup=setup, rounds=1)
     assert not np.any(np.isnan(lp))
 
-@pytest.mark.parametrize("latent_dim", range(2, 13, 5))
-def test_lds_em_fit_latent_dim(benchmark, latent_dim):
-    setup = lambda: (lds_fit_setup(latent_dim=latent_dim), {})
-    lp = benchmark.pedantic(lds_fit_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+# @pytest.mark.parametrize("latent_dim", range(2, 13, 5))
+# def test_lds_em_fit_latent_dim(benchmark, latent_dim):
+#     setup = lambda: (lds_fit_setup(latent_dim=latent_dim), {})
+#     lp = benchmark.pedantic(lds_fit_em, setup=setup, rounds=1)
+#     assert not np.any(np.isnan(lp))
 
-@pytest.mark.parametrize("emissions_dim", range(2, 13, 5))
-def test_lds_em_fit_emissions_dim(benchmark, emissions_dim):
-    setup = lambda: (lds_fit_setup(emissions_dim=emissions_dim), {})
-    lp = benchmark.pedantic(lds_fit_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+# @pytest.mark.parametrize("emissions_dim", range(2, 13, 5))
+# def test_lds_em_fit_emissions_dim(benchmark, emissions_dim):
+#     setup = lambda: (lds_fit_setup(emissions_dim=emissions_dim), {})
+#     lp = benchmark.pedantic(lds_fit_em, setup=setup, rounds=1)
+#     assert not np.any(np.isnan(lp))
 
 
 #### PLDS EM TESTS
-@pytest.mark.parametrize("num_trials", range(1, 202, 50))
-def test_lds_laplace_em_fit_num_trials(benchmark, num_trials):
-    setup = lambda: (lds_fit_setup(num_trials=num_trials, emissions="poisson"), {})
-    lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+# @pytest.mark.parametrize("num_trials", range(1, 202, 50))
+# def test_lds_laplace_em_fit_num_trials(benchmark, num_trials):
+#     setup = lambda: (lds_fit_setup(num_trials=num_trials, emissions="poisson"), {})
+#     lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
+#     assert not np.any(np.isnan(lp))
     
-@pytest.mark.parametrize("num_timesteps", range(10, 1011, 250))
-def test_lds_laplace_em_fit_num_timesteps(benchmark, num_timesteps):
-    setup = lambda: (lds_fit_setup(num_timesteps=num_timesteps, emissions="poisson"), {})
-    lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+# @pytest.mark.parametrize("num_timesteps", range(10, 1011, 250))
+# def test_lds_laplace_em_fit_num_timesteps(benchmark, num_timesteps):
+#     setup = lambda: (lds_fit_setup(num_timesteps=num_timesteps, emissions="poisson"), {})
+#     lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
+#     assert not np.any(np.isnan(lp))
 
-@pytest.mark.parametrize("latent_dim", range(2, 8, 5))
-def test_lds_laplace_em_fit_latent_dim(benchmark, latent_dim):
-    setup = lambda: (lds_fit_setup(latent_dim=latent_dim, emissions="poisson"), {})
-    lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+# @pytest.mark.parametrize("latent_dim", range(2, 8, 5))
+# def test_lds_laplace_em_fit_latent_dim(benchmark, latent_dim):
+#     setup = lambda: (lds_fit_setup(latent_dim=latent_dim, emissions="poisson"), {})
+#     lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
+#     assert not np.any(np.isnan(lp))
 
-@pytest.mark.parametrize("emissions_dim", range(2, 8, 5))
-def test_lds_laplace_em_fit_emissions_dim(benchmark, emissions_dim):
-    setup = lambda: (lds_fit_setup(emissions_dim=emissions_dim, emissions="poisson"), {})
-    lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+# @pytest.mark.parametrize("emissions_dim", range(2, 8, 5))
+# def test_lds_laplace_em_fit_emissions_dim(benchmark, emissions_dim):
+#     setup = lambda: (lds_fit_setup(emissions_dim=emissions_dim, emissions="poisson"), {})
+#     lp = benchmark.pedantic(lds_fit_laplace_em, setup=setup, rounds=1)
+#     assert not np.any(np.isnan(lp))
