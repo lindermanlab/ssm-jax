@@ -11,7 +11,7 @@ jobs:
       max-parallel: 5
     
     # to avoid accidental excess runtime costs
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
     - uses: actions/checkout@v2
@@ -36,4 +36,4 @@ jobs:
     - name: Test with pytest
       run: |
         conda install pytest
-        pytest tests/timing_comparisons/test_time_hmm.py -v -rw
+        pytest tests/timing_comparisons -v -rw --ignore ssm_v0_benchmark_tests
