@@ -19,8 +19,8 @@ def em(model,
 
     @jit
     def update(model):
-        posteriors = model.e_step(dataset)
-        lp = model.marginal_likelihood(dataset, posterior=posteriors).sum()
+        posteriors = vmap(model.infer_posterior)(dataset)
+        lp = vmap(model.marginal_likelihood)(dataset).sum()
         model.m_step(dataset, posteriors)
         return model, posteriors, lp
 

@@ -5,6 +5,8 @@ HMM Model Classes
 Module defining model behavior for Hidden Markov Models (HMMs).
 """
 from typing import Any
+
+from ssm.distributions.discrete_chain import StationaryDiscreteChain
 Array = Any
 
 import jax.numpy as np
@@ -113,48 +115,36 @@ class HMM(SSM):
         dummy_posteriors = HMMPosterior(None, Ez, None)
         self._m_step_emission_distribution(dataset, dummy_posteriors)
 
-    def natural_parameters(self, data: Array):
-        """Obtain the natural parameters for the HMM given observation data.
+    def _log_initial_state_probabilities(self, data: Array):
+        lp = self._initial_distribution.logits_parameter()
+        lp -= spsp.logsumexp(lp, axis=-1, keepdims=True)
+        return lp
 
-        The natural parameters for an HMM are:
-            - log probability of the initial state distribution
-            - log probablity of the transitions (log transition matrix)
-            - log likelihoods of the emissions data
 
-        Args:
-            data (Array): Observed data array: ``(time, obs_dim)``.
-
-        Returns:
-            log_initial_state_distn (Array): log probability of the initial state distribution
-            log_transition_matrix (Array): log of transition matrix
-            log_likelihoods (Array): log probability of emissions
-        """
-        log_initial_state_distn = self._initial_distribution.logits_parameter()
+    def _log_transition_probabilities(self, data: Array):
         log_transition_matrix = self._transition_distribution.logits_parameter()
         log_transition_matrix -= spsp.logsumexp(log_transition_matrix, axis=1, keepdims=True)
-        log_likelihoods = vmap(lambda k:
-                               vmap(lambda x: self.emissions_distribution(k).log_prob(x))(data)
-                               )(np.arange(self.num_states)).T
+        return log_transition_matrix
 
-        return log_initial_state_distn, log_transition_matrix, log_likelihoods
+    def _log_likelihoods(self, data: Array):
+        return vmap(lambda k:
+            vmap(lambda x: self.emissions_distribution(k).log_prob(x))(data)
+            )(np.arange(self.num_states)).T
 
-    @format_dataset
-    def infer_posterior(self, dataset):
-        log_initial_state_distn, log_transition_matrix, log_likelihoods = self.natural_parameters(dataset)
-        marginal_likelihood, (Ez0, Ezzp1, Ez) = vmap(
-            lambda data: hmm_expected_states(*self.natural_parameters(data)))(dataset)
-        return HMMPosterior(marginal_likelihood, Ez, Ezzp1)
+    def infer_posterior(self, data):
+        return StationaryDiscreteChain(
+            self._log_initial_state_probabilities(data),
+            self._log_likelihoods(data),
+            self._log_transition_probabilities(data))
 
-    @format_dataset
-    def marginal_likelihood(self, dataset, posterior=None):
+    def marginal_likelihood(self, data, posterior=None):
         if posterior is None:
-            posterior = self.infer_posterior(dataset)
-        return posterior.marginal_likelihood
+            posterior = self.infer_posterior(data)
 
-    ### EM
-    def e_step(self, dataset):
-        return self.infer_posterior(dataset)
+        dummy_states = np.zeros(data.shape[0], dtype=int)
+        return self.log_probability(dummy_states, data) - posterior.log_prob(dummy_states)
 
+    ### EM: Operates on batches of data (aka datasets) and posteriors
     def _m_step_initial_distribution(self, posteriors):
         stats = np.sum(posteriors.expected_states[:, 0, :], axis=0)
         stats += self._initial_distribution_prior.concentration
@@ -284,26 +274,7 @@ class AutoregressiveHMM(HMM):
 
         return states, emissions
 
-    def natural_parameters(self, data: Array):
-        """Obtain the natural parameters for the HMM given observation data.
-
-        The natural parameters for an HMM are:
-            - log probability of the initial state distribution
-            - log probablity of the transitions (log transition matrix)
-            - log likelihoods of the emissions data
-
-        Args:
-            data (Array): Observed data array: ``(time, obs_dim)``.
-
-        Returns:
-            log_initial_state_distn (Array): log probability of the initial state distribution
-            log_transition_matrix (Array): log of transition matrix
-            log_likelihoods (Array): log probability of emissions
-        """
-        log_initial_state_distn = self._initial_distribution.logits_parameter()
-        log_transition_matrix = self._transition_distribution.logits_parameter()
-        log_transition_matrix -= spsp.logsumexp(log_transition_matrix, axis=1, keepdims=True)
-
+    def _log_likelihoods(self, data: Array):
         def _compute_ll(x, y):
             ll = self._emission_distribution.log_prob(y, covariates=x.ravel())
             new_x = np.row_stack([x[1:], y])
@@ -313,5 +284,4 @@ class AutoregressiveHMM(HMM):
 
         # Ignore likelihood of the first bit of data since we don't have a prefix
         log_likelihoods = log_likelihoods.at[:self.num_lags].set(0.0)
-
-        return log_initial_state_distn, log_transition_matrix, log_likelihoods
+        return log_likelihoods
