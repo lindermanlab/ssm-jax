@@ -33,7 +33,7 @@ def make_random_hmm(emissions_dim=2, latent_dim=3, rng=jr.PRNGKey(0), emissions=
         return AutoregressiveHMM(num_states, initial_dist, transition_dist, emission_dist)
 
 def hmm_fit_em_setup(num_trials=5, num_timesteps=200, latent_dim=2, emissions_dim=10, num_iters=100, emissions="gaussian"):
-    rng = jr.PRNGKey(1)
+    rng = jr.PRNGKey(0)
     true_rng, sample_rng, test_rng = jr.split(rng, 3)
     true_hmm = make_random_hmm(emissions_dim, latent_dim, true_rng, emissions=emissions)
     states, data = true_hmm.sample(sample_rng, num_timesteps, num_samples=num_trials)
@@ -43,56 +43,59 @@ def hmm_fit_em_setup(num_trials=5, num_timesteps=200, latent_dim=2, emissions_di
 
 def hmm_fit_em(hmm, data, num_iters):
     lp, fit_model, posteriors = hmm.fit(data, method="em", num_iters=num_iters, tol=-1)
-    last_lp = lp[-1].block_until_ready  # explicitly block until ready
+    last_lp = lp[-1].block_until_ready  # explicitly block until ready (else jax has async dispatch)
     return lp
 
 
 #### TEST GAUSSIAN HMM
-@pytest.mark.parametrize("num_trials", range(1, 202, 100))
-def test_hmm_em_fit_num_trials(benchmark, num_trials):
-    setup = lambda: (hmm_fit_em_setup(num_trials=num_trials), {})
-    lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
-    
-@pytest.mark.parametrize("num_timesteps", range(10, 20011, 10000))
-def test_hmm_em_fit_num_timesteps(benchmark, num_timesteps):
-    setup = lambda: (hmm_fit_em_setup(num_timesteps=num_timesteps), {})
-    lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+class TestGaussianHMM:
+    @pytest.mark.parametrize("num_trials", range(1, 202, 100))
+    def test_hmm_em_fit_num_trials(self, benchmark, num_trials):
+        setup = lambda: (hmm_fit_em_setup(num_trials=num_trials), {})
+        lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
+        assert not np.any(np.isnan(lp))
+        
+    @pytest.mark.parametrize("num_timesteps", range(10, 20011, 10000))
+    def test_hmm_em_fit_num_timesteps(self, benchmark, num_timesteps):
+        setup = lambda: (hmm_fit_em_setup(num_timesteps=num_timesteps), {})
+        lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
+        assert not np.any(np.isnan(lp))
 
-@pytest.mark.parametrize("latent_dim", range(2, 13, 2))
-def test_hmm_em_fit_latent_dim(benchmark, latent_dim):
-    setup = lambda: (hmm_fit_em_setup(latent_dim=latent_dim), {})
-    lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+    @pytest.mark.parametrize("latent_dim", range(2, 13, 2))
+    def test_hmm_em_fit_latent_dim(self, benchmark, latent_dim):
+        setup = lambda: (hmm_fit_em_setup(latent_dim=latent_dim), {})
+        lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
+        assert not np.any(np.isnan(lp))
 
-@pytest.mark.parametrize("emissions_dim", range(2, 13, 2))
-def test_hmm_em_fit_emissions_dim(benchmark, emissions_dim):
-    setup = lambda: (hmm_fit_em_setup(emissions_dim=emissions_dim), {})
-    lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+    @pytest.mark.parametrize("emissions_dim", range(2, 13, 2))
+    def test_hmm_em_fit_emissions_dim(self, benchmark, emissions_dim):
+        setup = lambda: (hmm_fit_em_setup(emissions_dim=emissions_dim), {})
+        lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
+        assert not np.any(np.isnan(lp))
+
 
 #### TEST GAUSSIAN ARHMM
-@pytest.mark.parametrize("num_trials", range(1, 202, 100))
-def test_arhmm_em_fit_num_trials(benchmark, num_trials):
-    setup = lambda: (hmm_fit_em_setup(num_trials=num_trials, emissions="autoregressive"), {})
-    lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
-    
-@pytest.mark.parametrize("num_timesteps", range(10, 20011, 10000))
-def test_arhmm_em_fit_num_timesteps(benchmark, num_timesteps):
-    setup = lambda: (hmm_fit_em_setup(num_timesteps=num_timesteps, emissions="autoregressive"), {})
-    lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+class TestGaussianARHMM:
+    @pytest.mark.parametrize("num_trials", range(1, 202, 100))
+    def test_arhmm_em_fit_num_trials(self, benchmark, num_trials):
+        setup = lambda: (hmm_fit_em_setup(num_trials=num_trials, emissions="autoregressive"), {})
+        lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
+        assert not np.any(np.isnan(lp))
+        
+    @pytest.mark.parametrize("num_timesteps", range(10, 20011, 10000))
+    def test_arhmm_em_fit_num_timesteps(self, benchmark, num_timesteps):
+        setup = lambda: (hmm_fit_em_setup(num_timesteps=num_timesteps, emissions="autoregressive"), {})
+        lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
+        assert not np.any(np.isnan(lp))
 
-@pytest.mark.parametrize("latent_dim", range(2, 13, 2))
-def test_arhmm_em_fit_latent_dim(benchmark, latent_dim):
-    setup = lambda: (hmm_fit_em_setup(latent_dim=latent_dim, emissions="autoregressive"), {})
-    lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+    @pytest.mark.parametrize("latent_dim", range(2, 13, 2))
+    def test_arhmm_em_fit_latent_dim(self, benchmark, latent_dim):
+        setup = lambda: (hmm_fit_em_setup(latent_dim=latent_dim, emissions="autoregressive"), {})
+        lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
+        assert not np.any(np.isnan(lp))
 
-@pytest.mark.parametrize("emissions_dim", range(2, 13, 2))
-def test_arhmm_em_fit_emissions_dim(benchmark, emissions_dim):
-    setup = lambda: (hmm_fit_em_setup(emissions_dim=emissions_dim, emissions="autoregressive"), {})
-    lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
-    assert not np.any(np.isnan(lp))
+    @pytest.mark.parametrize("emissions_dim", range(2, 13, 2))
+    def test_arhmm_em_fit_emissions_dim(self, benchmark, emissions_dim):
+        setup = lambda: (hmm_fit_em_setup(emissions_dim=emissions_dim, emissions="autoregressive"), {})
+        lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
+        assert not np.any(np.isnan(lp))
