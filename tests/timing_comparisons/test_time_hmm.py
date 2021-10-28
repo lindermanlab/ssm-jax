@@ -3,7 +3,7 @@ import jax.random as jr
 import jax.numpy as np
 import pytest
 
-from ssm.hmm import GaussianHMM, AutoregressiveHMM
+from ssm.hmm import GaussianHMM, GaussianAutoregressiveHMM
 from ssm.distributions.glm import GaussianLinearRegression
 
 def make_random_hmm(emissions_dim=2, latent_dim=3, rng=jr.PRNGKey(0), emissions="gaussian"):
@@ -30,7 +30,7 @@ def make_random_hmm(emissions_dim=2, latent_dim=3, rng=jr.PRNGKey(0), emissions=
             bias=0.01 * jr.normal(rng, (latent_dim, emissions_dim)),
             scale_tril=np.tile(np.eye(emissions_dim), (latent_dim, 1, 1))
         )
-        return AutoregressiveHMM(num_states, initial_dist, transition_dist, emission_dist)
+        return GaussianAutoregressiveHMM(num_states, initial_dist, transition_dist, emission_dist)
 
 def hmm_fit_em_setup(num_trials=5, num_timesteps=200, latent_dim=2, emissions_dim=10, num_iters=100, emissions="gaussian"):
     rng = jr.PRNGKey(0)

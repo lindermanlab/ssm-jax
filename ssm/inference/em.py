@@ -6,7 +6,9 @@ from jax import jit,  value_and_grad, vmap
 import jax.random as npr
 import jax.experimental.optimizers as optimizers
 
-from ssm.utils import Verbosity, format_dataset, ssm_pbar, sum_tuples
+from ssm.utils import Verbosity, format_dataset, ssm_pbar, sum_tuples 
+
+import warnings
 
 import warnings
 
@@ -21,8 +23,8 @@ def em(model,
 
     @jit
     def update(model):
-        posteriors = model.e_step(dataset)
-        lp = model.marginal_likelihood(dataset, posterior=posteriors).sum()
+        posteriors = vmap(model.infer_posterior)(dataset)
+        lp = vmap(model.marginal_likelihood)(dataset, posteriors).sum()
         model.m_step(dataset, posteriors)
         return model, posteriors, lp
 
