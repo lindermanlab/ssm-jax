@@ -8,6 +8,8 @@ import jax.experimental.optimizers as optimizers
 
 from ssm.utils import Verbosity, format_dataset, ssm_pbar, sum_tuples
 
+import warnings
+
 
 @format_dataset
 def em(model,
@@ -42,8 +44,8 @@ def em(model,
         # Check for convergence
         if itr > 1:
             if log_probs[-1] < log_probs[-2]:
-                print("Warning: LP is decreasing!")
-                break
+                warnings.warn(UserWarning("Warning: LP is decreasing!"))
+                # break
 
             if abs(log_probs[-1] - log_probs[-2]) < tol and verbosity > Verbosity.OFF:
                 pbar.set_description("[converged] LP: {:.3f}".format(lp))
