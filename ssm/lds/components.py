@@ -2,7 +2,8 @@
 Base Component Classes
 ======================
 
-Just a placeholder while we refactor LDS
+* DiscreteComponent
+* ContinuousComponent
 """
 
 import jax.numpy as np

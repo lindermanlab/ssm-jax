@@ -1,6 +1,9 @@
 """
 LDS Initial Distribution Classes
 ================================
+
+* GaussianInitialDistribution
+
 """
 import jax.numpy as np
 import tensorflow_probability.substrates.jax as tfp

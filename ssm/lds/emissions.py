@@ -1,6 +1,11 @@
 """
 LDS Emissions Classes
-====================
+=====================
+
+* GaussianLinearRegressionEmissions
+* PoissonGLMEmissions
+* BernoulliGLMEmissions
+
 """
 import jax
 import jax.numpy as np

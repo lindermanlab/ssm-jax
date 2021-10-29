@@ -1,6 +1,9 @@
 """
 LDS Dynamics Classes
 ====================
+
+* GaussianLinearRegressionDynamics
+
 """
 import jax.numpy as np
 import tensorflow_probability.substrates.jax as tfp
