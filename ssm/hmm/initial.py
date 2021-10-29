@@ -40,9 +40,9 @@ class StandardInitialCondition(InitialCondition):
             self._initial_distribution = tfd.Categorical(logits=np.log(initial_probs))
         else:
             self._initial_distribution = initial_distribution
+        num_states = self._initial_distribution.probs_parameter().shape[-1]
 
         if initial_distribution_prior is None:
-            num_states = self._initial_distribution.event_shape_tensor[-1]
             initial_distribution_prior = \
                 tfd.Dirichlet(1.1 * np.ones((num_states, num_states)))
         self._initial_distribution_prior = initial_distribution_prior
@@ -58,8 +58,8 @@ class StandardInitialCondition(InitialCondition):
     def tree_unflatten(cls, aux_data, children):
         return cls(**children)
 
-    def distribution(self, state):
-       return self._initial_distribution[state]
+    def distribution(self):
+       return self._initial_distribution
 
     def m_step(self, dataset, posteriors):
         stats = np.sum(posteriors.expected_states[:, 0, :], axis=0)

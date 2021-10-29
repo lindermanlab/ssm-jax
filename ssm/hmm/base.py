@@ -8,8 +8,6 @@ from typing import Any
 
 from jax._src.numpy.lax_numpy import isin
 
-from ssm.distributions.discrete_chain import StationaryDiscreteChain
-from ssm.lds import initial_distributions
 Array = Any
 
 import jax.numpy as np
@@ -25,75 +23,18 @@ from ssm.inference.em import em
 from ssm.hmm.posterior import hmm_expected_states, HMMPosterior
 from ssm.utils import Verbosity, format_dataset, one_hot
 
-import ssm.hmm.initial
-import ssm.hmm.transitions
-import ssm.hmm.emissions
+import ssm.hmm.initial as initial
+import ssm.hmm.transitions as transitions
+import ssm.hmm.emissions as emissions
+from ssm.distributions.discrete_chain import StationaryDiscreteChain
 
 class HMM(SSM):
 
     def __init__(self, num_states: int,
-                 initial_condition: (str or ssm.hmm.initial.InitialCondition)="standard",
-                 transitions: (str or ssm.hmm.transitions.Transitions)="standard",
-                 emissions: (str or ssm.hmm.emissions.Emissions)="gaussian",
-                 initial_condition_kwargs: dict={},
-                 transitions_kwargs: dict={},
-                 emissions_kwargs: dict={},
+                 initial_condition: initial.InitialCondition,
+                 transitions: transitions.Transitions,
+                 emissions: emissions.Emissions,
                  ):
-
-        # Set up the initial condition
-        if isinstance(initial_condition, str):
-            initial_condition_classes = dict(
-                standard=ssm.hmm.initial.StandardInitialCondition
-            )
-            try:
-                cls = initial_condition_classes[initial_condition.lower()]
-            except:
-                msg = "{} is not a valid initial_condition name. "\
-                      "Valid choices are:\n{}".format(
-                    initial_condition, [k for k in initial_condition_classes.keys()]
-                )
-                raise Exception(msg)
-            initial_condition = cls(**initial_condition_kwargs)
-        else:
-            assert isinstance(initial_condition, ssm.hmm.initial.InitialCondition)
-
-        # Set up the transitions
-        if isinstance(transitions, str):
-            transitions_classes = dict(
-                standard=ssm.hmm.transitions.StationaryTransitions,
-                stationary=ssm.hmm.transitions.StationaryTransitions
-            )
-            try:
-                cls = transitions_classes[transitions.lower()]
-            except:
-                msg = "{} is not a valid transitions name. "\
-                      "Valid choices are:\n{}".format(
-                    transitions, [k for k in transitions_classes.keys()]
-                )
-                raise Exception(msg)
-            transitions = cls(**transitions_kwargs)
-        else:
-            assert isinstance(transitions, ssm.hmm.transitions.Transitions)
-
-        # Set up the emissions
-        if isinstance(emissions, str):
-            emissions_classes = dict(
-                gaussian=ssm.hmm.emissions.GaussianEmissions,
-                poisson=ssm.hmm.emissions.PoissonEmissions,
-                ar=ssm.hmm.emissions.AutoregressiveEmissions
-            )
-            try:
-                cls = emissions_classes[emissions.lower()]
-            except:
-                msg = "{} is not a valid emissions name. "\
-                      "Valid choices are:\n{}".format(
-                    emissions, [k for k in emissions_classes.keys()]
-                )
-                raise Exception(msg)
-            emissions = cls(**emissions_kwargs)
-        else:
-            assert isinstance(emissions, ssm.hmm.emissions.Emissions)
-
         # Store these as private class variables
         self._num_states = num_states
         self._initial_condition = initial_condition
@@ -109,16 +50,7 @@ class HMM(SSM):
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        num_states = aux_data
-        initial_condition, transitions, emissions = children
-
-        # Avoid complex constructor logic in this roundabout way
-        obj = object.__new__(cls)
-        obj._num_states = num_states
-        obj._initial_condition = initial_condition
-        obj._transitions = transitions
-        obj._emissions = emissions
-        return obj
+        return cls(aux_data, *children)
 
     def initial_distribution(self):
         return self._initial_condition.distribution()

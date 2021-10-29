@@ -42,7 +42,7 @@ class StationaryTransitions(Transitions):
             self._transition_distribution = transition_distribution
 
         if transition_distribution_prior is None:
-            num_states = self._transition_distribution.event_shape_tensor[-1]
+            num_states = self._transition_distribution.probs_parameter().shape[-1]
             transition_distribution_prior = \
                 tfd.Dirichlet(1.1 * np.ones((num_states, num_states)))
         self._transition_distribution_prior = transition_distribution_prior
