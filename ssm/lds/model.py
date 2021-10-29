@@ -198,11 +198,8 @@ class GaussianLDS(LDS):
         return J_diag, J_lower_diag, h
 
     # Methods for inference
-    @format_dataset
-    def e_step(self, dataset):
-        posterior = vmap(
-            lambda data: MultivariateNormalBlockTridiag(*self.natural_parameters(data)))(dataset)
-        return posterior
+    def infer_posterior(self, data):
+        return MultivariateNormalBlockTridiag(*self.natural_parameters(data))
 
     def fit_with_posterior(self, data, posterior, prior=None):
         initial_distribution = self.initials.distribution  # TODO: initial needs prior
@@ -212,8 +209,7 @@ class GaussianLDS(LDS):
     def m_step(self, data, posterior, prior=None):
         self.fit_with_posterior(data, posterior, prior)
 
-    @format_dataset
-    def marginal_likelihood(self, dataset, posterior=None):
+    def marginal_likelihood(self, data, posterior=None):
         """The exact marginal likelihood of the observed data.
 
             For a Gaussian LDS, we can compute the exact marginal likelihood of
@@ -237,10 +233,9 @@ class GaussianLDS(LDS):
             """
         
         if posterior is None:
-            posterior = self.e_step(dataset)
-        batch_states = posterior.mean
-        f = lambda post, states, data: self.log_probability(states, data) - post.log_prob(states)
-        lps = vmap(f)(posterior, batch_states, dataset)
+            posterior = self.e_step(data)
+        states = posterior.mean
+        lps = self.log_probability(states, data) - posterior.log_prob(states)
         return lps
 
     @format_dataset
