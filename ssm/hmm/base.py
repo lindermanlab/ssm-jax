@@ -6,7 +6,10 @@ Module defining model behavior for Hidden Markov Models (HMMs).
 """
 from typing import Any
 
+from jax._src.numpy.lax_numpy import isin
+
 from ssm.distributions.discrete_chain import StationaryDiscreteChain
+from ssm.lds import initial_distributions
 Array = Any
 
 import jax.numpy as np
@@ -22,69 +25,113 @@ from ssm.inference.em import em
 from ssm.hmm.posterior import hmm_expected_states, HMMPosterior
 from ssm.utils import Verbosity, format_dataset, one_hot
 
+import ssm.hmm.initial
+import ssm.hmm.transitions
+import ssm.hmm.emissions
 
 class HMM(SSM):
 
     def __init__(self, num_states: int,
-                 initial_distribution: tfp.distributions.Categorical,
-                 transition_distribution: tfp.distributions.Categorical,
-                 emission_distribution: tfp.distributions.Distribution,
-                 initial_distribution_prior: tfp.distributions.Dirichlet=None,
-                 transition_distribution_prior: tfp.distributions.Dirichlet=None,
-                 emission_distribution_prior: tfp.distributions.Distribution=None,
+                 initial_condition: (str or ssm.hmm.initial.InitialCondition)="standard",
+                 transitions: (str or ssm.hmm.transitions.Transitions)="standard",
+                 emissions: (str or ssm.hmm.emissions.Emissions)="gaussian",
+                 initial_condition_kwargs: dict={},
+                 transitions_kwargs: dict={},
+                 emissions_kwargs: dict={},
                  ):
-        """Class for Hidden Markov Model (HMM).
 
-        Args:
-            num_states (int): Number of discrete latent states.
-            initial_distribution (tfp.distributions.Categorical): The distribution over the initial state.
-            transition_distribution (tfp.distributions.Categorical): The transition distribution.
-        """
-        self.num_states = num_states
-        self._initial_distribution = initial_distribution
-        self._transition_distribution = transition_distribution
-        self._emission_distribution = emission_distribution
+        # Set up the initial condition
+        if isinstance(initial_condition, str):
+            initial_condition_classes = dict(
+                standard=ssm.hmm.initial.StandardInitialCondition
+            )
+            try:
+                cls = initial_condition_classes[initial_condition.lower()]
+            except:
+                msg = "{} is not a valid initial_condition name. "\
+                      "Valid choices are:\n{}".format(
+                    initial_condition, [k for k in initial_condition_classes.keys()]
+                )
+                raise Exception(msg)
+            initial_condition = cls(**initial_condition_kwargs)
+        else:
+            assert isinstance(initial_condition, ssm.hmm.initial.InitialCondition)
 
-        # Initialize uniform priors unless otherwise specified
-        if initial_distribution_prior is None:
-            initial_distribution_prior = \
-                tfp.distributions.Dirichlet(1.1 * np.ones(num_states))
-        self._initial_distribution_prior = initial_distribution_prior
+        # Set up the transitions
+        if isinstance(transitions, str):
+            transitions_classes = dict(
+                standard=ssm.hmm.transitions.StationaryTransitions,
+                stationary=ssm.hmm.transitions.StationaryTransitions
+            )
+            try:
+                cls = transitions_classes[transitions.lower()]
+            except:
+                msg = "{} is not a valid transitions name. "\
+                      "Valid choices are:\n{}".format(
+                    transitions, [k for k in transitions_classes.keys()]
+                )
+                raise Exception(msg)
+            transitions = cls(**transitions_kwargs)
+        else:
+            assert isinstance(transitions, ssm.hmm.transitions.Transitions)
 
-        if transition_distribution_prior is None:
-            transition_distribution_prior = \
-                tfp.distributions.Dirichlet(1.1 * np.ones((num_states, num_states)))
-        self._transition_distribution_prior = transition_distribution_prior
+        # Set up the emissions
+        if isinstance(emissions, str):
+            emissions_classes = dict(
+                gaussian=ssm.hmm.emissions.GaussianEmissions,
+                poisson=ssm.hmm.emissions.PoissonEmissions,
+                ar=ssm.hmm.emissions.AutoregressiveEmissions
+            )
+            try:
+                cls = emissions_classes[emissions.lower()]
+            except:
+                msg = "{} is not a valid emissions name. "\
+                      "Valid choices are:\n{}".format(
+                    emissions, [k for k in emissions_classes.keys()]
+                )
+                raise Exception(msg)
+            emissions = cls(**emissions_kwargs)
+        else:
+            assert isinstance(emissions, ssm.hmm.emissions.Emissions)
 
-        # Subclasses can initialize in their constructors this as necessary
-        self._emission_distribution_prior = emission_distribution_prior
+        # Store these as private class variables
+        self._num_states = num_states
+        self._initial_condition = initial_condition
+        self._transitions = transitions
+        self._emissions = emissions
 
     def tree_flatten(self):
-        children = (self._initial_distribution,
-                    self._transition_distribution,
-                    self._emission_distribution,
-                    self._initial_distribution_prior,
-                    self._transition_distribution_prior,
-                    self._emission_distribution_prior)
+        children = (self._initial_condition,
+                    self._transitions,
+                    self._emissions)
         aux_data = self.num_states
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        return cls(aux_data, *children)
+        num_states = aux_data
+        initial_condition, transitions, emissions = children
+
+        # Avoid complex constructor logic in this roundabout way
+        obj = object.__new__(cls)
+        obj._num_states = num_states
+        obj._initial_condition = initial_condition
+        obj._transitions = transitions
+        obj._emissions = emissions
+        return obj
 
     def initial_distribution(self):
-        return self._initial_distribution
+        return self._initial_condition.distribution()
 
     def dynamics_distribution(self, state):
-        return self._transition_distribution[state]
+        return self._transitions.distribution(state)
 
     def emissions_distribution(self, state):
-        return self._emission_distribution[state]
+        return self._emissions.distribution(state)
 
     @property
     def transition_matrix(self):
-        return self._transition_distribution.probs_parameter()
+        return self._transitions.transition_matrix()
 
     ### Methods for posterior inference
     @format_dataset
@@ -113,29 +160,21 @@ class HMM(SSM):
 
         Ez = one_hot(assignments, self.num_states)
         dummy_posteriors = HMMPosterior(None, Ez, None)
-        self._m_step_emission_distribution(dataset, dummy_posteriors)
-
-    def _log_initial_state_probabilities(self, data: Array):
-        lp = self._initial_distribution.logits_parameter()
-        lp -= spsp.logsumexp(lp, axis=-1, keepdims=True)
-        return lp
-
-
-    def _log_transition_probabilities(self, data: Array):
-        log_transition_matrix = self._transition_distribution.logits_parameter()
-        log_transition_matrix -= spsp.logsumexp(log_transition_matrix, axis=1, keepdims=True)
-        return log_transition_matrix
-
-    def _log_likelihoods(self, data: Array):
-        return vmap(lambda k:
-            vmap(lambda x: self.emissions_distribution(k).log_prob(x))(data)
-            )(np.arange(self.num_states)).T
+        self._emissions.m_step(dataset, dummy_posteriors)
 
     def infer_posterior(self, data):
+        ks = np.arange(self.num_states)
+        initial_log_probs = self._initial_condition.distribution().log_prob(ks)
+        transition_log_probs = vmap(
+            lambda i: self._transitions.distribution(i).log_prob(ks)
+            )(np.arange(ks))
+        emission_log_probs = vmap(
+            lambda k: self._emissions.distribution(k).log_prob(data))(ks).T
+
         return StationaryDiscreteChain(
-            self._log_initial_state_probabilities(data),
-            self._log_likelihoods(data),
-            self._log_transition_probabilities(data))
+            initial_log_probs,
+            emission_log_probs,
+            transition_log_probs)
 
     def marginal_likelihood(self, data, posterior=None):
         if posterior is None:
@@ -145,26 +184,10 @@ class HMM(SSM):
         return self.log_probability(dummy_states, data) - posterior.log_prob(dummy_states)
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
-    def _m_step_initial_distribution(self, posteriors):
-        stats = np.sum(posteriors.expected_states[:, 0, :], axis=0)
-        stats += self._initial_distribution_prior.concentration
-        conditional = tfp.distributions.Dirichlet(concentration=stats)
-        self._initial_distribution = tfp.distributions.Categorical(probs=conditional.mode())
-
-    def _m_step_transition_distribution(self, posteriors):
-        stats = np.sum(posteriors.expected_transitions, axis=0)
-        stats += self._transition_distribution_prior.concentration
-        conditional =  tfp.distributions.Dirichlet(concentration=stats)
-        self._transition_distribution = tfp.distributions.Categorical(probs=conditional.mode())
-
-    def _m_step_emission_distribution(self, dataset, posteriors):
-        # TODO: We could do gradient ascent on the expected log likelihood
-        raise NotImplementedError
-
     def m_step(self, dataset, posteriors):
-        self._m_step_initial_distribution(posteriors)
-        self._m_step_transition_distribution(posteriors)
-        self._m_step_emission_distribution(dataset, posteriors)
+        self._initial_condition.m_step(dataset, posteriors)
+        self._transitions.m_step(dataset, posteriors)
+        self._emissions.m_step(dataset, posteriors)
 
     @format_dataset
     def fit(self, dataset,
