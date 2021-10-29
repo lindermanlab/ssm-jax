@@ -2,11 +2,14 @@ import jax.numpy as np
 import tensorflow_probability.substrates.jax as tfp
 tfd = tfp.distributions
 
+from jax.tree_util import register_pytree_node_class
+
 from ssm.hmm.base import HMM
 from ssm.hmm.initial import StandardInitialCondition
 from ssm.hmm.transitions import StationaryTransitions
 from ssm.hmm.emissions import GaussianEmissions
 
+@register_pytree_node_class
 class GaussianHMM(HMM):
     def __init__(self,
                  num_states,

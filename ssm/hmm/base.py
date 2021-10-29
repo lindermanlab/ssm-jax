@@ -45,7 +45,7 @@ class HMM(SSM):
         children = (self._initial_condition,
                     self._transitions,
                     self._emissions)
-        aux_data = self.num_states
+        aux_data = self._num_states
         return children, aux_data
 
     @classmethod
@@ -73,10 +73,10 @@ class HMM(SSM):
         determined by the specified method (random or kmeans).
         """
         # initialize assignments and perform one M-step
-        num_states = self.num_states
+        num_states = self._num_states
         if method.lower() == "random":
             # randomly assign datapoints to clusters
-            assignments = jr.choice(key, self.num_states, dataset.shape[:-1])
+            assignments = jr.choice(key, self._num_states, dataset.shape[:-1])
 
         elif method.lower() == "kmeans":
             # cluster the data with kmeans
@@ -90,16 +90,16 @@ class HMM(SSM):
             raise Exception("Observations.initialize: "
                 "Invalid initialize method: {}".format(method))
 
-        Ez = one_hot(assignments, self.num_states)
+        Ez = one_hot(assignments, self._num_states)
         dummy_posteriors = HMMPosterior(None, Ez, None)
         self._emissions.m_step(dataset, dummy_posteriors)
 
     def infer_posterior(self, data):
-        ks = np.arange(self.num_states)
+        ks = np.arange(self._num_states)
         initial_log_probs = self._initial_condition.distribution().log_prob(ks)
         transition_log_probs = vmap(
             lambda i: self._transitions.distribution(i).log_prob(ks)
-            )(np.arange(ks))
+            )(ks)
         emission_log_probs = vmap(
             lambda k: self._emissions.distribution(k).log_prob(data))(ks).T
 
