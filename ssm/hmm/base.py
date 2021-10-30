@@ -108,10 +108,9 @@ class HMM(SSM):
         emission_log_probs = vmap(
             lambda k: self._emissions.distribution(k).log_prob(data))(inds).T
 
-        posterior = StationaryHMMPosterior.infer(initial_log_probs,
-                                                 emission_log_probs,
-                                                 transition_log_probs)
-        return posterior
+        return StationaryHMMPosterior.infer(initial_log_probs,
+                                            emission_log_probs,
+                                            transition_log_probs)
 
     def marginal_likelihood(self, data, posterior=None):
         if posterior is None:
@@ -289,7 +288,6 @@ class AutoregressiveHMM(HMM):
         # Ignore likelihood of the first bit of data since we don't have a prefix
         emission_log_probs = emission_log_probs.at[:self.num_lags].set(0.0)
 
-        return StationaryHMMPosterior(
-            initial_log_probs,
-            emission_log_probs,
-            transition_log_probs)
+        return StationaryHMMPosterior.infer(initial_log_probs,
+                                            emission_log_probs,
+                                            transition_log_probs)
