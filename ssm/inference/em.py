@@ -1,16 +1,10 @@
 """
 General EM routines
 """
+import warnings
 import jax.numpy as np
-from jax import jit,  value_and_grad, vmap
-import jax.random as npr
-import jax.experimental.optimizers as optimizers
-
-from ssm.utils import Verbosity, format_dataset, ssm_pbar, sum_tuples 
-
-import warnings
-
-import warnings
+from jax import jit, vmap
+from ssm.utils import Verbosity, format_dataset, ssm_pbar
 
 
 @format_dataset

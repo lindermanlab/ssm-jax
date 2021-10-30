@@ -3,34 +3,26 @@ import jax.random as jr
 import jax.numpy as np
 import pytest
 
-from ssm.hmm import GaussianHMM, GaussianAutoregressiveHMM
+from ssm.hmm import GaussianHMM, GaussianARHMM
 from ssm.distributions.glm import GaussianLinearRegression
 
 def make_random_hmm(emissions_dim=2, latent_dim=3, rng=jr.PRNGKey(0), emissions="gaussian"):
     num_states = latent_dim
 
-    # # initial state
-    initial_state_logits = np.zeros(num_states)
-    initial_dist = tfp.distributions.Categorical(logits=initial_state_logits)
-
-    # # dynamics
-    transition_logits = np.zeros((num_states, num_states))
-    transition_dist = tfp.distributions.Categorical(logits=transition_logits)
-
     # emissions
     if emissions == "gaussian":
         emission_means = 3 * jr.normal(rng, shape=(latent_dim, emissions_dim))
-        emission_scale_trils = np.tile(np.eye(emissions_dim), (num_states, 1, 1))
-        emission_dist = tfp.distributions.MultivariateNormalTriL(loc=emission_means, scale_tril=emission_scale_trils)
-        return GaussianHMM(num_states, initial_dist, transition_dist, emission_dist)
+        emission_covariances = np.tile(np.eye(emissions_dim), (num_states, 1, 1))
+        return GaussianHMM(num_states, emission_means=emission_means, emission_covariances=emission_covariances)
 
     elif emissions == "autoregressive":
-        emission_dist = GaussianLinearRegression(
-            weights=np.tile(0.99 * np.eye(emissions_dim), (latent_dim, 1, 1)),
-            bias=0.01 * jr.normal(rng, (latent_dim, emissions_dim)),
-            scale_tril=np.tile(np.eye(emissions_dim), (latent_dim, 1, 1))
-        )
-        return GaussianAutoregressiveHMM(num_states, initial_dist, transition_dist, emission_dist)
+        emission_weights = np.tile(0.99 * np.eye(emissions_dim), (num_states, 1, 1))
+        emission_biases = 0.01 * jr.normal(rng, (num_states, emissions_dim))
+        emission_covariances = np.tile(np.eye(emissions_dim), (num_states, 1, 1))
+        return GaussianARHMM(num_states,
+                             emission_weights=emission_weights,
+                             emission_biases=emission_biases,
+                             emission_covariances=emission_covariances)
 
 def hmm_fit_em_setup(num_trials=5, num_timesteps=200, latent_dim=2, emissions_dim=10, num_iters=100, emissions="gaussian"):
     rng = jr.PRNGKey(0)
@@ -54,7 +46,7 @@ class TestGaussianHMM:
         setup = lambda: (hmm_fit_em_setup(num_trials=num_trials), {})
         lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
         assert not np.any(np.isnan(lp))
-        
+
     @pytest.mark.parametrize("num_timesteps", range(10, 20011, 10000))
     def test_hmm_em_fit_num_timesteps(self, benchmark, num_timesteps):
         setup = lambda: (hmm_fit_em_setup(num_timesteps=num_timesteps), {})
@@ -81,7 +73,7 @@ class TestGaussianARHMM:
         setup = lambda: (hmm_fit_em_setup(num_trials=num_trials, emissions="autoregressive"), {})
         lp = benchmark.pedantic(hmm_fit_em, setup=setup, rounds=1)
         assert not np.any(np.isnan(lp))
-        
+
     @pytest.mark.parametrize("num_timesteps", range(10, 20011, 10000))
     def test_arhmm_em_fit_num_timesteps(self, benchmark, num_timesteps):
         setup = lambda: (hmm_fit_em_setup(num_timesteps=num_timesteps, emissions="autoregressive"), {})

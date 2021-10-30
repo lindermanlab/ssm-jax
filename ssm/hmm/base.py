@@ -6,7 +6,8 @@ Module defining model behavior for Hidden Markov Models (HMMs).
 """
 from typing import Any
 
-from ssm.distributions.discrete_chain import StationaryDiscreteChain
+from jax._src.numpy.lax_numpy import isin
+
 Array = Any
 
 import jax.numpy as np
@@ -22,51 +23,38 @@ from ssm.inference.em import em
 from ssm.hmm.posterior import hmm_expected_states, HMMPosterior
 from ssm.utils import Verbosity, format_dataset, one_hot
 
+import ssm.hmm.initial as initial
+import ssm.hmm.transitions as transitions
+import ssm.hmm.emissions as emissions
+from ssm.distributions.discrete_chain import StationaryDiscreteChain
 
+@register_pytree_node_class
 class HMM(SSM):
 
     def __init__(self, num_states: int,
-                 initial_distribution: tfp.distributions.Categorical,
-                 transition_distribution: tfp.distributions.Categorical,
-                 emission_distribution: tfp.distributions.Distribution,
-                 initial_distribution_prior: tfp.distributions.Dirichlet=None,
-                 transition_distribution_prior: tfp.distributions.Dirichlet=None,
-                 emission_distribution_prior: tfp.distributions.Distribution=None,
+                 initial_condition: initial.InitialCondition,
+                 transitions: transitions.Transitions,
+                 emissions: emissions.Emissions,
                  ):
-        """Class for Hidden Markov Model (HMM).
+        # Store these as private class variables
+        self._num_states = num_states
+        self._initial_condition = initial_condition
+        self._transitions = transitions
+        self._emissions = emissions
 
-        Args:
-            num_states (int): Number of discrete latent states.
-            initial_distribution (tfp.distributions.Categorical): The distribution over the initial state.
-            transition_distribution (tfp.distributions.Categorical): The transition distribution.
-        """
-        self.num_states = num_states
-        self._initial_distribution = initial_distribution
-        self._transition_distribution = transition_distribution
-        self._emission_distribution = emission_distribution
+    @property
+    def transition_matrix(self):
+        return self._transitions.transition_matrix
 
-        # Initialize uniform priors unless otherwise specified
-        if initial_distribution_prior is None:
-            initial_distribution_prior = \
-                tfp.distributions.Dirichlet(1.1 * np.ones(num_states))
-        self._initial_distribution_prior = initial_distribution_prior
-
-        if transition_distribution_prior is None:
-            transition_distribution_prior = \
-                tfp.distributions.Dirichlet(1.1 * np.ones((num_states, num_states)))
-        self._transition_distribution_prior = transition_distribution_prior
-
-        # Subclasses can initialize in their constructors this as necessary
-        self._emission_distribution_prior = emission_distribution_prior
+    @property
+    def num_states(self):
+        return self._num_states
 
     def tree_flatten(self):
-        children = (self._initial_distribution,
-                    self._transition_distribution,
-                    self._emission_distribution,
-                    self._initial_distribution_prior,
-                    self._transition_distribution_prior,
-                    self._emission_distribution_prior)
-        aux_data = self.num_states
+        children = (self._initial_condition,
+                    self._transitions,
+                    self._emissions)
+        aux_data = self._num_states
         return children, aux_data
 
     @classmethod
@@ -74,17 +62,14 @@ class HMM(SSM):
         return cls(aux_data, *children)
 
     def initial_distribution(self):
-        return self._initial_distribution
+        return self._initial_condition.distribution()
 
     def dynamics_distribution(self, state):
-        return self._transition_distribution[state]
+        return self._transitions.distribution(state)
 
     def emissions_distribution(self, state):
-        return self._emission_distribution[state]
+        return self._emissions.distribution(state)
 
-    @property
-    def transition_matrix(self):
-        return self._transition_distribution.probs_parameter()
 
     ### Methods for posterior inference
     @format_dataset
@@ -94,10 +79,10 @@ class HMM(SSM):
         determined by the specified method (random or kmeans).
         """
         # initialize assignments and perform one M-step
-        num_states = self.num_states
+        num_states = self._num_states
         if method.lower() == "random":
             # randomly assign datapoints to clusters
-            assignments = jr.choice(key, self.num_states, dataset.shape[:-1])
+            assignments = jr.choice(key, self._num_states, dataset.shape[:-1])
 
         elif method.lower() == "kmeans":
             # cluster the data with kmeans
@@ -111,60 +96,37 @@ class HMM(SSM):
             raise Exception("Observations.initialize: "
                 "Invalid initialize method: {}".format(method))
 
-        Ez = one_hot(assignments, self.num_states)
+        Ez = one_hot(assignments, self._num_states)
         dummy_posteriors = HMMPosterior(None, Ez, None)
-        self._m_step_emission_distribution(dataset, dummy_posteriors)
-
-    def _log_initial_state_probabilities(self, data: Array):
-        lp = self._initial_distribution.logits_parameter()
-        lp -= spsp.logsumexp(lp, axis=-1, keepdims=True)
-        return lp
-
-
-    def _log_transition_probabilities(self, data: Array):
-        log_transition_matrix = self._transition_distribution.logits_parameter()
-        log_transition_matrix -= spsp.logsumexp(log_transition_matrix, axis=1, keepdims=True)
-        return log_transition_matrix
-
-    def _log_likelihoods(self, data: Array):
-        return vmap(lambda k:
-            vmap(lambda x: self.emissions_distribution(k).log_prob(x))(data)
-            )(np.arange(self.num_states)).T
+        self._emissions.m_step(dataset, dummy_posteriors)
 
     def infer_posterior(self, data):
+        ks = np.arange(self._num_states)
+        initial_log_probs = self._initial_condition.distribution().log_prob(ks)
+        transition_log_probs = vmap(
+            lambda i: self._transitions.distribution(i).log_prob(ks)
+            )(ks)
+        emission_log_probs = vmap(
+            lambda k: self._emissions.distribution(k).log_prob(data))(ks).T
+
         return StationaryDiscreteChain(
-            self._log_initial_state_probabilities(data),
-            self._log_likelihoods(data),
-            self._log_transition_probabilities(data))
+            initial_log_probs,
+            emission_log_probs,
+            transition_log_probs)
 
     def marginal_likelihood(self, data, posterior=None):
         if posterior is None:
             posterior = self.infer_posterior(data)
 
-        dummy_states = np.zeros(data.shape[0], dtype=int)
-        return self.log_probability(dummy_states, data) - posterior.log_prob(dummy_states)
+        # dummy_states = np.zeros(data.shape[0], dtype=int)
+        # return self.log_probability(dummy_states, data) - posterior.log_prob(dummy_states)
+        return posterior.log_normalizer
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
-    def _m_step_initial_distribution(self, posteriors):
-        stats = np.sum(posteriors.expected_states[:, 0, :], axis=0)
-        stats += self._initial_distribution_prior.concentration
-        conditional = tfp.distributions.Dirichlet(concentration=stats)
-        self._initial_distribution = tfp.distributions.Categorical(probs=conditional.mode())
-
-    def _m_step_transition_distribution(self, posteriors):
-        stats = np.sum(posteriors.expected_transitions, axis=0)
-        stats += self._transition_distribution_prior.concentration
-        conditional =  tfp.distributions.Dirichlet(concentration=stats)
-        self._transition_distribution = tfp.distributions.Categorical(probs=conditional.mode())
-
-    def _m_step_emission_distribution(self, dataset, posteriors):
-        # TODO: We could do gradient ascent on the expected log likelihood
-        raise NotImplementedError
-
     def m_step(self, dataset, posteriors):
-        self._m_step_initial_distribution(posteriors)
-        self._m_step_transition_distribution(posteriors)
-        self._m_step_emission_distribution(dataset, posteriors)
+        self._initial_condition.m_step(dataset, posteriors)
+        self._transitions.m_step(dataset, posteriors)
+        self._emissions.m_step(dataset, posteriors)
 
     @format_dataset
     def fit(self, dataset,
@@ -216,11 +178,12 @@ class AutoregressiveHMM(HMM):
     """
     @property
     def emission_dim(self):
-        return self._emission_distribution.data_dimension
+        return self._emissions._emission_distribution.data_dimension
 
     @property
     def num_lags(self):
-        return self._emission_distribution.covariate_dimension // self._emission_distribution.data_dimension
+        dist = self._emissions._emission_distribution
+        return dist.covariate_dimension // dist.data_dimension
 
     def log_probability(self, states, data, prev_emissions=None):
         """
@@ -309,14 +272,25 @@ class AutoregressiveHMM(HMM):
 
         return states, emissions
 
-    def _log_likelihoods(self, data: Array):
+    def infer_posterior(self, data):
+        ks = np.arange(self._num_states)
+        initial_log_probs = self._initial_condition.distribution().log_prob(ks)
+        transition_log_probs = vmap(
+            lambda i: self._transitions.distribution(i).log_prob(ks)
+            )(ks)
+
+        # Compute the emission log probs
         def _compute_ll(x, y):
-            ll = self._emission_distribution.log_prob(y, covariates=x.ravel())
+            ll = self._emissions._emission_distribution.log_prob(y, covariates=x.ravel())
             new_x = np.row_stack([x[1:], y])
             return new_x, ll
 
-        _, log_likelihoods = lax.scan(_compute_ll, np.zeros((self.num_lags, self.emission_dim)), data)
+        _, emission_log_probs = lax.scan(_compute_ll, np.zeros((self.num_lags, self.emission_dim)), data)
 
         # Ignore likelihood of the first bit of data since we don't have a prefix
-        log_likelihoods = log_likelihoods.at[:self.num_lags].set(0.0)
-        return log_likelihoods
+        emission_log_probs = emission_log_probs.at[:self.num_lags].set(0.0)
+
+        return StationaryDiscreteChain(
+            initial_log_probs,
+            emission_log_probs,
+            transition_log_probs)
