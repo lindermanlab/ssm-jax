@@ -48,15 +48,15 @@ class StationaryTransitions(Transitions):
         self._transition_distribution_prior = transition_distribution_prior
 
     def tree_flatten(self):
-        children = dict(
-            transition_distribution=self._transition_distribution,
-            transition_distribution_prior=self._transition_distribution_prior)
+        children = (self._transition_distribution, self._transition_distribution_prior)
         aux_data = None
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        return cls(**children)
+        distribution, prior = children
+        return cls(transition_distribution=distribution,
+                   transition_distribution_prior=prior)
 
     @property
     def transition_matrix(self):

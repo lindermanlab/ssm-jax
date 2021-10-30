@@ -49,15 +49,15 @@ class GaussianEmissions(Emissions):
         self._emission_distribution_prior = emission_distribution_prior
 
     def tree_flatten(self):
-        children = dict(
-            emission_distribution=self._emission_distribution,
-            emission_distribution_prior=self._emission_distribution_prior)
+        children = (self._emission_distribution, self._emission_distribution_prior)
         aux_data = None
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        return cls(**children)
+        distribution, prior = children
+        return cls(emission_distribution=distribution,
+                   emission_distribution_prior=prior)
 
     def distribution(self, state, covariates=None):
         return self._emission_distribution[state]
@@ -88,6 +88,7 @@ class GaussianEmissions(Emissions):
             tfp.distributions.MultivariateNormalTriL(mean, np.linalg.cholesky(covariance))
 
 
+@register_pytree_node_class
 class PoissonEmissions(Emissions):
     """
     TODO
@@ -136,7 +137,19 @@ class PoissonEmissions(Emissions):
                 tfp.distributions.Poisson(conditional.mode()),
                 reinterpreted_batch_ndims=1)
 
+    def tree_flatten(self):
+        children = (self._emission_distribution, self._emission_distribution_prior)
+        aux_data = None
+        return children, aux_data
 
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        distribution, prior = children
+        return cls(emission_distribution=distribution,
+                   emission_distribution_prior=prior)
+
+
+@register_pytree_node_class
 class AutoregressiveEmissions(Emissions):
 
     def __init__(self,
@@ -216,3 +229,14 @@ class AutoregressiveEmissions(Emissions):
         self._emission_distribution = \
             ssmd.GaussianLinearRegression(
                 weights, bias, np.linalg.cholesky(covariance_matrix))
+
+    def tree_flatten(self):
+        children = (self._emission_distribution, self._emission_distribution_prior)
+        aux_data = None
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        distribution, prior = children
+        return cls(emission_distribution=distribution,
+                   emission_distribution_prior=prior)

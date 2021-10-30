@@ -7,7 +7,9 @@ from jax.tree_util import register_pytree_node_class
 from ssm.hmm.base import HMM
 from ssm.hmm.initial import StandardInitialCondition
 from ssm.hmm.transitions import StationaryTransitions
-from ssm.hmm.emissions import GaussianEmissions
+from ssm.hmm.emissions import GaussianEmissions, PoissonEmissions
+
+import warnings
 
 @register_pytree_node_class
 class GaussianHMM(HMM):
@@ -27,7 +29,7 @@ class GaussianHMM(HMM):
             transition_matrix = np.ones((num_states, num_states)) / num_states
 
         if emission_means is None:
-            assert seed is not None, "You must either specify the means "
+            assert seed is not None, "You must either specify the means " \
             "or give a seed (PRNGKey) so that they can be initialized randomly"
 
             means_prior = tfd.MultivariateNormalDiag(
@@ -45,3 +47,66 @@ class GaussianHMM(HMM):
                                           initial_condition,
                                           transitions,
                                           emissions)
+
+    def tree_flatten(self):
+        children = (self._initial_condition,
+                    self._transitions,
+                    self._emissions)
+        aux_data = self._num_states
+        return children, aux_data
+
+    # directly GaussianHMM using parent (HMM) constructor
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        obj = object.__new__(cls)
+        super(cls, obj).__init__(aux_data, *children)
+        return obj
+
+
+@register_pytree_node_class
+class PoissonHMM(HMM):
+    def __init__(self,
+                 num_states,
+                 num_emission_dims,
+                 initial_state_probs=None,
+                 transition_matrix=None,
+                 emission_means=None,
+                 seed=None):
+
+        if initial_state_probs is None:
+            initial_state_probs = np.ones(num_states) / num_states
+
+        if transition_matrix is None:
+            transition_matrix = np.ones((num_states, num_states)) / num_states
+
+        if emission_means is None:
+            assert seed is not None, "You must either specify the means " \
+            "or give a seed (PRNGKey) so that they can be initialized randomly"
+
+            means_prior = tfp.distributions.Gamma(3.0, 1.0)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                emission_means = means_prior.sample(seed=seed, sample_shape=(num_states, num_emission_dims))
+
+        initial_condition = StandardInitialCondition(initial_probs=initial_state_probs)
+        transitions = StationaryTransitions(transition_matrix=transition_matrix)
+        emissions = PoissonEmissions(rates=emission_means)
+        super(PoissonHMM, self).__init__(num_states,
+                                         initial_condition,
+                                         transitions,
+                                         emissions)
+
+    def tree_flatten(self):
+        children = (self._initial_condition,
+                    self._transitions,
+                    self._emissions)
+        aux_data = self._num_states
+        return children, aux_data
+
+    # directly init PoissonHMM using parent (HMM) constructor
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        obj = object.__new__(cls)
+        super(cls, obj).__init__(aux_data, *children)
+        return obj
+

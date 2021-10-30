@@ -28,6 +28,7 @@ import ssm.hmm.transitions as transitions
 import ssm.hmm.emissions as emissions
 from ssm.distributions.discrete_chain import StationaryDiscreteChain
 
+@register_pytree_node_class
 class HMM(SSM):
 
     def __init__(self, num_states: int,
@@ -63,7 +64,7 @@ class HMM(SSM):
 
     @property
     def transition_matrix(self):
-        return self._transitions.transition_matrix()
+        return self._transitions.transition_matrix
 
     ### Methods for posterior inference
     @format_dataset

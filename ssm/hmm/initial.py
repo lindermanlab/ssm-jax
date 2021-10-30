@@ -48,15 +48,15 @@ class StandardInitialCondition(InitialCondition):
         self._initial_distribution_prior = initial_distribution_prior
 
     def tree_flatten(self):
-        children = dict(
-            initial_distribution=self._initial_distribution,
-            initial_distribution_prior=self._initial_distribution_prior)
+        children = (self._initial_distribution, self._initial_distribution_prior)
         aux_data = None
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        return cls(**children)
+        distribution, prior = children
+        return cls(initial_distribution=distribution, 
+                   initial_distribution_prior=prior)
 
     def distribution(self):
        return self._initial_distribution
