@@ -21,7 +21,6 @@ import ssm.hmm.initial as initial
 import ssm.hmm.transitions as transitions
 import ssm.hmm.emissions as emissions
 from ssm.hmm.posterior import StationaryHMMPosterior
-# from ssm.distributions.discrete_chain import StationaryDiscreteChain
 
 @register_pytree_node_class
 class HMM(SSM):
@@ -101,16 +100,9 @@ class HMM(SSM):
         self._emissions.m_step(dataset, dummy_posteriors)
 
     def infer_posterior(self, data):
-        inds = np.arange(self._num_states)
-        initial_log_probs = self._initial_condition.distribution().log_prob(inds)
-        transition_log_probs = \
-            vmap(lambda i: self._transitions.distribution(i).log_prob(inds))(inds)
-        emission_log_probs = vmap(
-            lambda k: self._emissions.distribution(k).log_prob(data))(inds).T
-
-        return StationaryHMMPosterior.infer(initial_log_probs,
-                                            emission_log_probs,
-                                            transition_log_probs)
+        return StationaryHMMPosterior.infer(self._initial_condition.log_probs(data),
+                                            self._emissions.log_probs(data),
+                                            self._transitions.log_probs(data))
 
     def marginal_likelihood(self, data, posterior=None):
         if posterior is None:
@@ -269,25 +261,3 @@ class AutoregressiveHMM(HMM):
             states, emissions = _sample(key)
 
         return states, emissions
-
-    def infer_posterior(self, data):
-        ks = np.arange(self._num_states)
-        initial_log_probs = self._initial_condition.distribution().log_prob(ks)
-        transition_log_probs = vmap(
-            lambda i: self._transitions.distribution(i).log_prob(ks)
-            )(ks)
-
-        # Compute the emission log probs
-        def _compute_ll(x, y):
-            ll = self._emissions._emission_distribution.log_prob(y, covariates=x.ravel())
-            new_x = np.row_stack([x[1:], y])
-            return new_x, ll
-
-        _, emission_log_probs = lax.scan(_compute_ll, np.zeros((self.num_lags, self.emission_dim)), data)
-
-        # Ignore likelihood of the first bit of data since we don't have a prefix
-        emission_log_probs = emission_log_probs.at[:self.num_lags].set(0.0)
-
-        return StationaryHMMPosterior.infer(initial_log_probs,
-                                            emission_log_probs,
-                                            transition_log_probs)

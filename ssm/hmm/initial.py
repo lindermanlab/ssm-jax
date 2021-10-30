@@ -1,4 +1,5 @@
 import jax.numpy as np
+import jax.scipy.special as spsp
 from jax.tree_util import register_pytree_node_class
 from tensorflow_probability.substrates import jax as tfp
 
@@ -13,11 +14,24 @@ class InitialCondition:
 
     where u_t are optional covariates at time t.
     """
+    def __init__(self, num_states: int) -> None:
+        self._num_states = num_states
+
+    @property
+    def num_states(self):
+        return self._num_states
+
     def distribution(self):
         """
         Return the distribution of z_1
         """
         raise NotImplementedError
+
+    def log_probs(self, data):
+        """
+        Return [log Pr(z_1 = k) for k in range(num_states)]
+        """
+        return self.distribution().log_prob(np.arange(self.num_states))
 
     def m_step(self, dataset, posteriors):
         # TODO: implement generic m-step
@@ -30,9 +44,11 @@ class StandardInitialCondition(InitialCondition):
     The standard model is a categorical distribution.
     """
     def __init__(self,
+                 num_states: int,
                  initial_probs=None,
                  initial_distribution: tfd.Categorical=None,
                  initial_distribution_prior: tfd.Dirichlet=None) -> None:
+        super(StandardInitialCondition, self).__init__(num_states)
 
         assert initial_probs is not None or initial_distribution is not None
 
@@ -48,17 +64,25 @@ class StandardInitialCondition(InitialCondition):
 
     def tree_flatten(self):
         children = (self._initial_distribution, self._initial_distribution_prior)
-        aux_data = None
+        aux_data = self.num_states
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
-        return cls(initial_distribution=distribution,
+        return cls(aux_data,
+                   initial_distribution=distribution,
                    initial_distribution_prior=prior)
 
     def distribution(self):
        return self._initial_distribution
+
+    def initial_log_probs(self, data):
+        """
+        Return [log Pr(z_1 = k) for k in range(num_states)]
+        """
+        lps = self._initial_distribution.logits_parameter()
+        return lps - spsp.logsumexp(lps)
 
     def m_step(self, dataset, posteriors):
         stats = np.sum(posteriors.expected_states[:, 0, :], axis=0)

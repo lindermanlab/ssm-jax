@@ -45,9 +45,9 @@ class GaussianHMM(HMM):
                 "so that they can be initialized."
             emission_covariances = np.tile(np.eye(num_emission_dims), (num_states, 1, 1))
 
-        initial_condition = StandardInitialCondition(initial_probs=initial_state_probs)
-        transitions = StationaryTransitions(transition_matrix=transition_matrix)
-        emissions = GaussianEmissions(means=emission_means, covariances=emission_covariances)
+        initial_condition = StandardInitialCondition(num_states, initial_probs=initial_state_probs)
+        transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
+        emissions = GaussianEmissions(num_states, means=emission_means, covariances=emission_covariances)
         super(GaussianHMM, self).__init__(num_states,
                                           initial_condition,
                                           transitions,
@@ -95,9 +95,9 @@ class PoissonHMM(HMM):
                 warnings.filterwarnings("ignore")
                 emission_rates = means_prior.sample(seed=seed, sample_shape=(num_states, num_emission_dims))
 
-        initial_condition = StandardInitialCondition(initial_probs=initial_state_probs)
-        transitions = StationaryTransitions(transition_matrix=transition_matrix)
-        emissions = PoissonEmissions(rates=emission_rates)
+        initial_condition = StandardInitialCondition(num_states, initial_probs=initial_state_probs)
+        transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
+        emissions = PoissonEmissions(num_states, rates=emission_rates)
         super(PoissonHMM, self).__init__(num_states,
                                          initial_condition,
                                          transitions,
@@ -160,9 +160,10 @@ class GaussianARHMM(AutoregressiveHMM):
                 "so that they can be initialized."
             emission_covariances = np.tile(np.eye(num_emission_dims), (num_states, 1, 1))
 
-        initial_condition = StandardInitialCondition(initial_probs=initial_state_probs)
-        transitions = StationaryTransitions(transition_matrix=transition_matrix)
-        emissions = AutoregressiveEmissions(weights=emission_weights,
+        initial_condition = StandardInitialCondition(num_states, initial_probs=initial_state_probs)
+        transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
+        emissions = AutoregressiveEmissions(num_states,
+                                            weights=emission_weights,
                                             biases=emission_biases,
                                             covariances=emission_covariances)
         super(GaussianARHMM, self).__init__(num_states,

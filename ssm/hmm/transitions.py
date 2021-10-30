@@ -1,6 +1,8 @@
 import jax.numpy as np
-from tensorflow_probability.substrates import jax as tfp
+import jax.scipy as spsp
+from jax import vmap
 from jax.tree_util import register_pytree_node_class
+from tensorflow_probability.substrates import jax as tfp
 
 tfd = tfp.distributions
 
@@ -13,11 +15,32 @@ class Transitions:
 
     where u_t are optional covariates at time t.
     """
+    def __init__(self, num_states: int) -> None:
+        self._num_states = num_states
+
+    @property
+    def num_states(self):
+        return self._num_states
+
     def distribution(self, state):
         """
         Return the conditional distribution of z_t given state z_{t-1}
         """
         raise NotImplementedError
+
+    def log_probs(self, data):
+        """
+        Returns:
+
+        log_P where
+                log_P[i, j] = \log \Pr(z_{t+1} = j | z_t = i)
+            if the transition probabilities are stationary or
+                log_P[t, i, j] = \log \Pr(z_{t+1} = j | z_t = i)
+            if they are nonstationary.
+        """
+        # TODO: incorporate data or covariates?
+        inds = np.arange(self.num_states)
+        return vmap(lambda i: self.distribution(i).log_prob(inds))(inds)
 
     def m_step(self, dataset, posteriors):
         # TODO: implement generic m-step
@@ -30,9 +53,11 @@ class StationaryTransitions(Transitions):
     Basic transition model with a fixed transition matrix.
     """
     def __init__(self,
+                 num_states: int,
                  transition_matrix=None,
                  transition_distribution: tfd.Categorical=None,
                  transition_distribution_prior: tfd.Dirichlet=None) -> None:
+        super(StationaryTransitions, self).__init__(num_states)
 
         assert transition_matrix is not None or transition_distribution is not None
 
@@ -49,13 +74,14 @@ class StationaryTransitions(Transitions):
 
     def tree_flatten(self):
         children = (self._transition_distribution, self._transition_distribution_prior)
-        aux_data = None
+        aux_data = self.num_states
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
-        return cls(transition_distribution=distribution,
+        return cls(aux_data,
+                   transition_distribution=distribution,
                    transition_distribution_prior=prior)
 
     @property
@@ -65,9 +91,13 @@ class StationaryTransitions(Transitions):
     def distribution(self, state):
        return self._transition_distribution[state]
 
+    def transition_log_probs(self, data):
+        log_P = self._transition_distribution.logits_parameter()
+        log_P -= spsp.logsumexp(log_P, axis=1, keepdims=True)
+        return log_P
+
     def m_step(self, dataset, posteriors):
         stats = np.sum(posteriors.expected_transitions, axis=0)
         stats += self._transition_distribution_prior.concentration
         conditional =  tfp.distributions.Dirichlet(concentration=stats)
         self._transition_distribution = tfp.distributions.Categorical(probs=conditional.mode())
-
