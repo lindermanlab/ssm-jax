@@ -1,9 +1,7 @@
 """
 
 """
-
 import jax.numpy as np
-import jax.random as jr
 import jax.scipy.special as spsp
 from jax import lax, value_and_grad, vmap
 
@@ -292,7 +290,7 @@ class StationaryHMMPosterior(_HMMPosterior):
         )
 
 
-class NonstationaryDiscreteChain(_HMMPosterior):
+class NonstationaryHMMPosterior(_HMMPosterior):
     """
     TODO
     """
