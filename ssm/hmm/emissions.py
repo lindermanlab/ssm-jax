@@ -17,12 +17,26 @@ class Emissions:
 
     where u_t are optional covariates.
     """
+    def __init__(self, num_states: int) -> None:
+        self._num_states = num_states
+
+    @property
+    def num_states(self):
+        return self._num_states
+
     def distribution(self, state, covariates=None):
         """
         Return the conditional distribution of emission x_t
         given state z_t and (optionally) covariates u_t.
         """
         raise NotImplementedError
+
+    def log_probs(self, data):
+        """
+        Compute log p(x_t | z_t=k) for all t and k.
+        """
+        inds = np.arange(self.num_states)
+        return vmap(lambda k: self.distribution(k).log_prob(data))(inds).T
 
     def m_step(self, dataset, posteriors):
         # TODO: implement generic m-step
@@ -32,10 +46,12 @@ class Emissions:
 @register_pytree_node_class
 class GaussianEmissions(Emissions):
     def __init__(self,
+                 num_states: int,
                  means=None,
                  covariances=None,
                  emission_distribution: tfd.MultivariateNormalLinearOperator=None,
                  emission_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
+        super(GaussianEmissions, self).__init__(num_states)
 
         assert (means is not None and covariances is not None) \
             or emission_distribution is not None
@@ -50,13 +66,14 @@ class GaussianEmissions(Emissions):
 
     def tree_flatten(self):
         children = (self._emission_distribution, self._emission_distribution_prior)
-        aux_data = None
+        aux_data = self.num_states
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
-        return cls(emission_distribution=distribution,
+        return cls(aux_data,
+                   emission_distribution=distribution,
                    emission_distribution_prior=prior)
 
     def distribution(self, state, covariates=None):
@@ -94,9 +111,11 @@ class PoissonEmissions(Emissions):
     TODO
     """
     def __init__(self,
+                 num_states: int,
                  rates=None,
                  emission_distribution: tfd.Distribution=None,
                  emission_distribution_prior: tfd.Gamma=None) -> None:
+        super(PoissonEmissions, self).__init__(num_states)
 
         assert rates is not None or emission_distribution is not None
 
@@ -139,13 +158,14 @@ class PoissonEmissions(Emissions):
 
     def tree_flatten(self):
         children = (self._emission_distribution, self._emission_distribution_prior)
-        aux_data = None
+        aux_data = self.num_states
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
-        return cls(emission_distribution=distribution,
+        return cls(aux_data,
+                   emission_distribution=distribution,
                    emission_distribution_prior=prior)
 
 
@@ -153,11 +173,13 @@ class PoissonEmissions(Emissions):
 class AutoregressiveEmissions(Emissions):
 
     def __init__(self,
+                 num_states,
                  weights=None,
                  biases=None,
                  covariances=None,
                  emission_distribution: ssmd.GaussianLinearRegression=None,
                  emission_distribution_prior: ssmd.MatrixNormalInverseWishart=None) -> None:
+        super(AutoregressiveEmissions, self).__init__(num_states)
 
         params_given = None not in (weights, biases, covariances)
         assert params_given or emission_distribution is not None
@@ -172,6 +194,22 @@ class AutoregressiveEmissions(Emissions):
 
     def distribution(self, state, covariates=None):
         return self._emission_distribution[state]
+
+    def log_probs(self, data):
+        # Compute the emission log probs
+        dim = self._emission_distribution.data_dimension
+        num_lags = self._emission_distribution.covariate_dimension // dim
+
+        # Scan over the data
+        def _compute_ll(x, y):
+            ll = self._emission_distribution.log_prob(y, covariates=x.ravel())
+            new_x = np.row_stack([x[1:], y])
+            return new_x, ll
+        _, log_probs = lax.scan(_compute_ll, np.zeros((num_lags, dim)), data)
+
+        # Ignore likelihood of the first bit of data since we don't have a prefix
+        log_probs = log_probs.at[:num_lags].set(0.0)
+        return log_probs
 
     def m_step(self, dataset, posteriors):
         """
@@ -233,11 +271,12 @@ class AutoregressiveEmissions(Emissions):
 
     def tree_flatten(self):
         children = (self._emission_distribution, self._emission_distribution_prior)
-        aux_data = None
+        aux_data = self.num_states
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
-        return cls(emission_distribution=distribution,
+        return cls(aux_data,
+                   emission_distribution=distribution,
                    emission_distribution_prior=prior)
