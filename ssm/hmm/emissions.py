@@ -177,9 +177,10 @@ class AutoregressiveEmissions(Emissions):
         """
         Can we compute the expected sufficient statistics with a convolution or scan?
         """
-        num_states = self.num_states
-        num_lags = self.num_lags
-        dim = dataset.shape[-1]
+        # weights are shape (num_states, dim, dim * lag)
+        num_states = self._emission_distribution.weights.shape[0]
+        dim = self._emission_distribution.weights.shape[1]
+        num_lags = self._emission_distribution.weights.shape[2] // dim
 
         # Collect statistics with a scan over data
         def _collect_stats(carry, args):

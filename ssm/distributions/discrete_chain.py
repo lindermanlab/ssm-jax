@@ -265,16 +265,19 @@ class StationaryDiscreteChain(_DiscreteChain):
         T, K = self.num_timesteps, self.num_states
         batch_shape = self.batch_shape
         flat_data = data.reshape(-1, T)
+        flat_initial_potentials = self._initial_potentials.reshape(-1, K)
         flat_unary_potentials = self._unary_potentials.reshape(-1, T, K)
         flat_pairwise_potentials = self._pairwise_potentials.reshape(-1, K, K)
 
-        def _log_prob_single(z, unary, pair):
-            lp = unary[np.arange(T), z].sum()
+        def _log_prob_single(z, initial, unary, pair):
+            lp = initial[z[0]]
+            lp += unary[np.arange(T), z].sum()
             lp += pair[z[:-1], z[1:]].sum()
             lp -= self.log_normalizer
             return lp
 
         lps = vmap(_log_prob_single)(flat_data,
+                                     flat_initial_potentials,
                                      flat_unary_potentials,
                                      flat_pairwise_potentials)
 
@@ -397,16 +400,19 @@ class NonstationaryDiscreteChain(_DiscreteChain):
         T, K = self.num_timesteps, self.num_states
         batch_shape = self.batch_shape
         flat_data = data.reshape(-1, T)
+        flat_initial_potentials = self._initial_potentials.reshape(-1, K)
         flat_unary_potentials = self._unary_potentials.reshape(-1, T, K)
         flat_pairwise_potentials = self._pairwise_potentials.reshape(-1, T-1, K, K)
 
-        def _log_prob_single(z, unary, pair):
-            lp = unary[np.arange(T), z].sum()
+        def _log_prob_single(z, initial, unary, pair):
+            lp = initial[z[0]]
+            lp += unary[np.arange(T), z].sum()
             lp += pair[np.arange(T-1), z[:-1], z[1:]].sum()
             lp -= self.log_normalizer
             return lp
 
         lps = vmap(_log_prob_single)(flat_data,
+                                     flat_initial_potentials,
                                      flat_unary_potentials,
                                      flat_pairwise_potentials)
 

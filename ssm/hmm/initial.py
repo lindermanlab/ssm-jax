@@ -43,8 +43,7 @@ class StandardInitialCondition(InitialCondition):
         num_states = self._initial_distribution.probs_parameter().shape[-1]
 
         if initial_distribution_prior is None:
-            initial_distribution_prior = \
-                tfd.Dirichlet(1.1 * np.ones((num_states, num_states)))
+            initial_distribution_prior = tfd.Dirichlet(1.1 * np.ones(num_states))
         self._initial_distribution_prior = initial_distribution_prior
 
     def tree_flatten(self):
@@ -55,7 +54,7 @@ class StandardInitialCondition(InitialCondition):
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
-        return cls(initial_distribution=distribution, 
+        return cls(initial_distribution=distribution,
                    initial_distribution_prior=prior)
 
     def distribution(self):
