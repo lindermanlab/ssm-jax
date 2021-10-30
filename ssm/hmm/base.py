@@ -5,28 +5,23 @@ HMM Model Classes
 Module defining model behavior for Hidden Markov Models (HMMs).
 """
 from typing import Any
-
-from jax._src.numpy.lax_numpy import isin
-
+from dataclasses import dataclass
 Array = Any
 
 import jax.numpy as np
 import jax.random as jr
-import jax.scipy.special as spsp
 from jax import vmap, lax
 from jax.tree_util import register_pytree_node_class
 
-from tensorflow_probability.substrates import jax as tfp
-
 from ssm.base import SSM
 from ssm.inference.em import em
-from ssm.hmm.posterior import hmm_expected_states, HMMPosterior
 from ssm.utils import Verbosity, format_dataset, one_hot
 
 import ssm.hmm.initial as initial
 import ssm.hmm.transitions as transitions
 import ssm.hmm.emissions as emissions
-from ssm.distributions.discrete_chain import StationaryDiscreteChain
+from ssm.hmm.posterior import StationaryHMMPosterior
+# from ssm.distributions.discrete_chain import StationaryDiscreteChain
 
 @register_pytree_node_class
 class HMM(SSM):
@@ -96,23 +91,27 @@ class HMM(SSM):
             raise Exception("Observations.initialize: "
                 "Invalid initialize method: {}".format(method))
 
-        Ez = one_hot(assignments, self._num_states)
-        dummy_posteriors = HMMPosterior(None, Ez, None)
+        # Make a dummy posterior that just exposes expected_states
+        @dataclass
+        class DummyPosterior:
+            expected_states: Array
+        dummy_posteriors = DummyPosterior(one_hot(assignments, self._num_states))
+
+        # Do one m-step with the dummy posteriors
         self._emissions.m_step(dataset, dummy_posteriors)
 
     def infer_posterior(self, data):
-        ks = np.arange(self._num_states)
-        initial_log_probs = self._initial_condition.distribution().log_prob(ks)
-        transition_log_probs = vmap(
-            lambda i: self._transitions.distribution(i).log_prob(ks)
-            )(ks)
+        inds = np.arange(self._num_states)
+        initial_log_probs = self._initial_condition.distribution().log_prob(inds)
+        transition_log_probs = \
+            vmap(lambda i: self._transitions.distribution(i).log_prob(inds))(inds)
         emission_log_probs = vmap(
-            lambda k: self._emissions.distribution(k).log_prob(data))(ks).T
+            lambda k: self._emissions.distribution(k).log_prob(data))(inds).T
 
-        return StationaryDiscreteChain(
-            initial_log_probs,
-            emission_log_probs,
-            transition_log_probs)
+        posterior = StationaryHMMPosterior.infer(initial_log_probs,
+                                                 emission_log_probs,
+                                                 transition_log_probs)
+        return posterior
 
     def marginal_likelihood(self, data, posterior=None):
         if posterior is None:
@@ -290,7 +289,7 @@ class AutoregressiveHMM(HMM):
         # Ignore likelihood of the first bit of data since we don't have a prefix
         emission_log_probs = emission_log_probs.at[:self.num_lags].set(0.0)
 
-        return StationaryDiscreteChain(
+        return StationaryHMMPosterior(
             initial_log_probs,
             emission_log_probs,
             transition_log_probs)
