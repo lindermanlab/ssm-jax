@@ -1,0 +1,1591 @@
+{
+    "machine_info": {
+        "node": "sh03-01n07.int",
+        "processor": "x86_64",
+        "machine": "x86_64",
+        "python_compiler": "GCC 7.5.0",
+        "python_implementation": "CPython",
+        "python_implementation_version": "3.9.7",
+        "python_version": "3.9.7",
+        "python_build": [
+            "default",
+            "Sep 16 2021 13:09:58"
+        ],
+        "release": "3.10.0-1160.42.2.el7.x86_64",
+        "system": "Linux",
+        "cpu": {
+            "python_version": "3.9.7.final.0 (64 bit)",
+            "cpuinfo_version": [
+                8,
+                0,
+                0
+            ],
+            "cpuinfo_version_string": "8.0.0",
+            "arch": "X86_64",
+            "bits": 64,
+            "count": 32,
+            "arch_string_raw": "x86_64",
+            "vendor_id_raw": "AuthenticAMD",
+            "brand_raw": "AMD EPYC 7502 32-Core Processor",
+            "hz_advertised_friendly": "2.4953 GHz",
+            "hz_actual_friendly": "2.4953 GHz",
+            "hz_advertised": [
+                2495274000,
+                0
+            ],
+            "hz_actual": [
+                2495274000,
+                0
+            ],
+            "model": 49,
+            "family": 23,
+            "flags": [
+                "3dnowprefetch",
+                "abm",
+                "adx",
+                "aes",
+                "aperfmperf",
+                "apic",
+                "arat",
+                "art",
+                "avic",
+                "avx",
+                "avx2",
+                "bmi1",
+                "bmi2",
+                "bpext",
+                "cat_l3",
+                "cdp_l3",
+                "clflush",
+                "clflushopt",
+                "clwb",
+                "clzero",
+                "cmov",
+                "cmp_legacy",
+                "constant_tsc",
+                "cpb",
+                "cqm",
+                "cqm_llc",
+                "cqm_mbm_local",
+                "cqm_mbm_total",
+                "cqm_occup_llc",
+                "cr8_legacy",
+                "cx16",
+                "cx8",
+                "de",
+                "decodeassists",
+                "eagerfpu",
+                "extapic",
+                "extd_apicid",
+                "f16c",
+                "flushbyasid",
+                "fma",
+                "fpu",
+                "fsgsbase",
+                "fxsr",
+                "fxsr_opt",
+                "ht",
+                "hw_pstate",
+                "ibpb",
+                "ibrs",
+                "ibs",
+                "irperf",
+                "lahf_lm",
+                "lbrv",
+                "lm",
+                "mca",
+                "mce",
+                "misalignsse",
+                "mmx",
+                "mmxext",
+                "monitor",
+                "movbe",
+                "msr",
+                "mtrr",
+                "nonstop_tsc",
+                "nopl",
+                "npt",
+                "nrip_save",
+                "nx",
+                "osvw",
+                "overflow_recov",
+                "pae",
+                "pat",
+                "pausefilter",
+                "pclmulqdq",
+                "pdpe1gb",
+                "perfctr_core",
+                "perfctr_l2",
+                "perfctr_nb",
+                "pfthreshold",
+                "pge",
+                "pni",
+                "popcnt",
+                "pse",
+                "pse36",
+                "rdrand",
+                "rdseed",
+                "rdt_a",
+                "rdtscp",
+                "rep_good",
+                "retpoline_amd",
+                "sep",
+                "sha_ni",
+                "skinit",
+                "smap",
+                "smca",
+                "sme",
+                "smep",
+                "ssbd",
+                "sse",
+                "sse2",
+                "sse4_1",
+                "sse4_2",
+                "sse4a",
+                "ssse3",
+                "stibp",
+                "succor",
+                "svm",
+                "svm_lock",
+                "syscall",
+                "tce",
+                "topoext",
+                "tsc",
+                "tsc_scale",
+                "umip",
+                "v_vmsave_vmload",
+                "vgif",
+                "vmcb_clean",
+                "vme",
+                "vmmcall",
+                "wdt",
+                "x2apic",
+                "xgetbv1",
+                "xsave",
+                "xsavec",
+                "xsaveerptr",
+                "xsaveopt"
+            ],
+            "l3_cache_size": 524288,
+            "l2_cache_size": 524288,
+            "l1_data_cache_size": 32768,
+            "l1_instruction_cache_size": 32768
+        }
+    },
+    "commit_info": {
+        "id": "e0c4d645e77ff2c96618198873bf9a50b92b7c55",
+        "time": "%cI",
+        "author_time": "%aI",
+        "dirty": false,
+        "project": "ssm-jax-refactor",
+        "branch": "main"
+    },
+    "benchmarks": [
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_num_trials[1]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_num_trials[1]",
+            "params": {
+                "num_trials": 1
+            },
+            "param": "1",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 7.2797091021202505,
+                "max": 7.2797091021202505,
+                "mean": 7.2797091021202505,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 7.2797091021202505,
+                "iqr": 0.0,
+                "q1": 7.2797091021202505,
+                "q3": 7.2797091021202505,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 7.2797091021202505,
+                "hd15iqr": 7.2797091021202505,
+                "ops": 0.13736812638691087,
+                "total": 7.2797091021202505,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_num_trials[101]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_num_trials[101]",
+            "params": {
+                "num_trials": 101
+            },
+            "param": "101",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 5.818690473213792,
+                "max": 5.818690473213792,
+                "mean": 5.818690473213792,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 5.818690473213792,
+                "iqr": 0.0,
+                "q1": 5.818690473213792,
+                "q3": 5.818690473213792,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 5.818690473213792,
+                "hd15iqr": 5.818690473213792,
+                "ops": 0.17185997512730347,
+                "total": 5.818690473213792,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_num_trials[201]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_num_trials[201]",
+            "params": {
+                "num_trials": 201
+            },
+            "param": "201",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 6.342895715031773,
+                "max": 6.342895715031773,
+                "mean": 6.342895715031773,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 6.342895715031773,
+                "iqr": 0.0,
+                "q1": 6.342895715031773,
+                "q3": 6.342895715031773,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 6.342895715031773,
+                "hd15iqr": 6.342895715031773,
+                "ops": 0.1576566989159447,
+                "total": 6.342895715031773,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_num_timesteps[10]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_num_timesteps[10]",
+            "params": {
+                "num_timesteps": 10
+            },
+            "param": "10",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 2.713417498860508,
+                "max": 2.713417498860508,
+                "mean": 2.713417498860508,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 2.713417498860508,
+                "iqr": 0.0,
+                "q1": 2.713417498860508,
+                "q3": 2.713417498860508,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 2.713417498860508,
+                "hd15iqr": 2.713417498860508,
+                "ops": 0.3685389367540923,
+                "total": 2.713417498860508,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_num_timesteps[10010]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_num_timesteps[10010]",
+            "params": {
+                "num_timesteps": 10010
+            },
+            "param": "10010",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 5.1442192629911005,
+                "max": 5.1442192629911005,
+                "mean": 5.1442192629911005,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 5.1442192629911005,
+                "iqr": 0.0,
+                "q1": 5.1442192629911005,
+                "q3": 5.1442192629911005,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 5.1442192629911005,
+                "hd15iqr": 5.1442192629911005,
+                "ops": 0.19439295816845706,
+                "total": 5.1442192629911005,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_num_timesteps[20010]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_num_timesteps[20010]",
+            "params": {
+                "num_timesteps": 20010
+            },
+            "param": "20010",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 6.441348836291581,
+                "max": 6.441348836291581,
+                "mean": 6.441348836291581,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 6.441348836291581,
+                "iqr": 0.0,
+                "q1": 6.441348836291581,
+                "q3": 6.441348836291581,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 6.441348836291581,
+                "hd15iqr": 6.441348836291581,
+                "ops": 0.15524698714744983,
+                "total": 6.441348836291581,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_latent_dim[2]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_latent_dim[2]",
+            "params": {
+                "latent_dim": 2
+            },
+            "param": "2",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 5.564849242568016,
+                "max": 5.564849242568016,
+                "mean": 5.564849242568016,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 5.564849242568016,
+                "iqr": 0.0,
+                "q1": 5.564849242568016,
+                "q3": 5.564849242568016,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 5.564849242568016,
+                "hd15iqr": 5.564849242568016,
+                "ops": 0.17969938742465,
+                "total": 5.564849242568016,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_latent_dim[4]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_latent_dim[4]",
+            "params": {
+                "latent_dim": 4
+            },
+            "param": "4",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 4.401943884789944,
+                "max": 4.401943884789944,
+                "mean": 4.401943884789944,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 4.401943884789944,
+                "iqr": 0.0,
+                "q1": 4.401943884789944,
+                "q3": 4.401943884789944,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 4.401943884789944,
+                "hd15iqr": 4.401943884789944,
+                "ops": 0.22717236434005997,
+                "total": 4.401943884789944,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_latent_dim[6]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_latent_dim[6]",
+            "params": {
+                "latent_dim": 6
+            },
+            "param": "6",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 4.74203866161406,
+                "max": 4.74203866161406,
+                "mean": 4.74203866161406,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 4.74203866161406,
+                "iqr": 0.0,
+                "q1": 4.74203866161406,
+                "q3": 4.74203866161406,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 4.74203866161406,
+                "hd15iqr": 4.74203866161406,
+                "ops": 0.21087976529900904,
+                "total": 4.74203866161406,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_latent_dim[8]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_latent_dim[8]",
+            "params": {
+                "latent_dim": 8
+            },
+            "param": "8",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 5.016634059138596,
+                "max": 5.016634059138596,
+                "mean": 5.016634059138596,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 5.016634059138596,
+                "iqr": 0.0,
+                "q1": 5.016634059138596,
+                "q3": 5.016634059138596,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 5.016634059138596,
+                "hd15iqr": 5.016634059138596,
+                "ops": 0.19933684383024533,
+                "total": 5.016634059138596,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_latent_dim[10]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_latent_dim[10]",
+            "params": {
+                "latent_dim": 10
+            },
+            "param": "10",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 7.5029182229191065,
+                "max": 7.5029182229191065,
+                "mean": 7.5029182229191065,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 7.5029182229191065,
+                "iqr": 0.0,
+                "q1": 7.5029182229191065,
+                "q3": 7.5029182229191065,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 7.5029182229191065,
+                "hd15iqr": 7.5029182229191065,
+                "ops": 0.13328147399305348,
+                "total": 7.5029182229191065,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_latent_dim[12]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_latent_dim[12]",
+            "params": {
+                "latent_dim": 12
+            },
+            "param": "12",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 6.806577098090202,
+                "max": 6.806577098090202,
+                "mean": 6.806577098090202,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 6.806577098090202,
+                "iqr": 0.0,
+                "q1": 6.806577098090202,
+                "q3": 6.806577098090202,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 6.806577098090202,
+                "hd15iqr": 6.806577098090202,
+                "ops": 0.14691672269173023,
+                "total": 6.806577098090202,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_emissions_dim[2]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_emissions_dim[2]",
+            "params": {
+                "emissions_dim": 2
+            },
+            "param": "2",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 4.061166377738118,
+                "max": 4.061166377738118,
+                "mean": 4.061166377738118,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 4.061166377738118,
+                "iqr": 0.0,
+                "q1": 4.061166377738118,
+                "q3": 4.061166377738118,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 4.061166377738118,
+                "hd15iqr": 4.061166377738118,
+                "ops": 0.24623467915071082,
+                "total": 4.061166377738118,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_emissions_dim[4]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_emissions_dim[4]",
+            "params": {
+                "emissions_dim": 4
+            },
+            "param": "4",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 4.456853768788278,
+                "max": 4.456853768788278,
+                "mean": 4.456853768788278,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 4.456853768788278,
+                "iqr": 0.0,
+                "q1": 4.456853768788278,
+                "q3": 4.456853768788278,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 4.456853768788278,
+                "hd15iqr": 4.456853768788278,
+                "ops": 0.22437352712873015,
+                "total": 4.456853768788278,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_emissions_dim[6]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_emissions_dim[6]",
+            "params": {
+                "emissions_dim": 6
+            },
+            "param": "6",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 4.7816202668473125,
+                "max": 4.7816202668473125,
+                "mean": 4.7816202668473125,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 4.7816202668473125,
+                "iqr": 0.0,
+                "q1": 4.7816202668473125,
+                "q3": 4.7816202668473125,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 4.7816202668473125,
+                "hd15iqr": 4.7816202668473125,
+                "ops": 0.20913413115076462,
+                "total": 4.7816202668473125,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_emissions_dim[8]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_emissions_dim[8]",
+            "params": {
+                "emissions_dim": 8
+            },
+            "param": "8",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 4.900049296673387,
+                "max": 4.900049296673387,
+                "mean": 4.900049296673387,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 4.900049296673387,
+                "iqr": 0.0,
+                "q1": 4.900049296673387,
+                "q3": 4.900049296673387,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 4.900049296673387,
+                "hd15iqr": 4.900049296673387,
+                "ops": 0.20407957950114783,
+                "total": 4.900049296673387,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_emissions_dim[10]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_emissions_dim[10]",
+            "params": {
+                "emissions_dim": 10
+            },
+            "param": "10",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 4.947912462987006,
+                "max": 4.947912462987006,
+                "mean": 4.947912462987006,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 4.947912462987006,
+                "iqr": 0.0,
+                "q1": 4.947912462987006,
+                "q3": 4.947912462987006,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 4.947912462987006,
+                "hd15iqr": 4.947912462987006,
+                "ops": 0.2021054348637991,
+                "total": 4.947912462987006,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_hmm_em_fit_emissions_dim[12]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianHMM::test_hmm_em_fit_emissions_dim[12]",
+            "params": {
+                "emissions_dim": 12
+            },
+            "param": "12",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 5.102464234922081,
+                "max": 5.102464234922081,
+                "mean": 5.102464234922081,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 5.102464234922081,
+                "iqr": 0.0,
+                "q1": 5.102464234922081,
+                "q3": 5.102464234922081,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 5.102464234922081,
+                "hd15iqr": 5.102464234922081,
+                "ops": 0.19598373530104143,
+                "total": 5.102464234922081,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_num_trials[1]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_num_trials[1]",
+            "params": {
+                "num_trials": 1
+            },
+            "param": "1",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 5.6606130031868815,
+                "max": 5.6606130031868815,
+                "mean": 5.6606130031868815,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 5.6606130031868815,
+                "iqr": 0.0,
+                "q1": 5.6606130031868815,
+                "q3": 5.6606130031868815,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 5.6606130031868815,
+                "hd15iqr": 5.6606130031868815,
+                "ops": 0.17665931224003614,
+                "total": 5.6606130031868815,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_num_trials[101]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_num_trials[101]",
+            "params": {
+                "num_trials": 101
+            },
+            "param": "101",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 10.160026375204325,
+                "max": 10.160026375204325,
+                "mean": 10.160026375204325,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 10.160026375204325,
+                "iqr": 0.0,
+                "q1": 10.160026375204325,
+                "q3": 10.160026375204325,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 10.160026375204325,
+                "hd15iqr": 10.160026375204325,
+                "ops": 0.09842494134075408,
+                "total": 10.160026375204325,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_num_trials[201]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_num_trials[201]",
+            "params": {
+                "num_trials": 201
+            },
+            "param": "201",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 14.027461722958833,
+                "max": 14.027461722958833,
+                "mean": 14.027461722958833,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 14.027461722958833,
+                "iqr": 0.0,
+                "q1": 14.027461722958833,
+                "q3": 14.027461722958833,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 14.027461722958833,
+                "hd15iqr": 14.027461722958833,
+                "ops": 0.07128873489373304,
+                "total": 14.027461722958833,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_num_timesteps[10]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_num_timesteps[10]",
+            "params": {
+                "num_timesteps": 10
+            },
+            "param": "10",
+            "extra_info": {
+                "has_error": true
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": NaN,
+                "max": NaN,
+                "mean": NaN,
+                "stddev": 0,
+                "rounds": 1,
+                "median": NaN,
+                "iqr": NaN,
+                "q1": NaN,
+                "q3": NaN,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": NaN,
+                "hd15iqr": NaN,
+                "ops": NaN,
+                "total": NaN,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_num_timesteps[10010]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_num_timesteps[10010]",
+            "params": {
+                "num_timesteps": 10010
+            },
+            "param": "10010",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 12.700592179782689,
+                "max": 12.700592179782689,
+                "mean": 12.700592179782689,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 12.700592179782689,
+                "iqr": 0.0,
+                "q1": 12.700592179782689,
+                "q3": 12.700592179782689,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 12.700592179782689,
+                "hd15iqr": 12.700592179782689,
+                "ops": 0.0787364861295082,
+                "total": 12.700592179782689,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_num_timesteps[20010]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_num_timesteps[20010]",
+            "params": {
+                "num_timesteps": 20010
+            },
+            "param": "20010",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 15.983646519016474,
+                "max": 15.983646519016474,
+                "mean": 15.983646519016474,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 15.983646519016474,
+                "iqr": 0.0,
+                "q1": 15.983646519016474,
+                "q3": 15.983646519016474,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 15.983646519016474,
+                "hd15iqr": 15.983646519016474,
+                "ops": 0.06256394614396998,
+                "total": 15.983646519016474,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_latent_dim[2]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_latent_dim[2]",
+            "params": {
+                "latent_dim": 2
+            },
+            "param": "2",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 7.61316535435617,
+                "max": 7.61316535435617,
+                "mean": 7.61316535435617,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 7.61316535435617,
+                "iqr": 0.0,
+                "q1": 7.61316535435617,
+                "q3": 7.61316535435617,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 7.61316535435617,
+                "hd15iqr": 7.61316535435617,
+                "ops": 0.13135140949326826,
+                "total": 7.61316535435617,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_latent_dim[4]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_latent_dim[4]",
+            "params": {
+                "latent_dim": 4
+            },
+            "param": "4",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 11.507418458815664,
+                "max": 11.507418458815664,
+                "mean": 11.507418458815664,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 11.507418458815664,
+                "iqr": 0.0,
+                "q1": 11.507418458815664,
+                "q3": 11.507418458815664,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 11.507418458815664,
+                "hd15iqr": 11.507418458815664,
+                "ops": 0.08690046369469728,
+                "total": 11.507418458815664,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_latent_dim[6]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_latent_dim[6]",
+            "params": {
+                "latent_dim": 6
+            },
+            "param": "6",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 10.649900914169848,
+                "max": 10.649900914169848,
+                "mean": 10.649900914169848,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 10.649900914169848,
+                "iqr": 0.0,
+                "q1": 10.649900914169848,
+                "q3": 10.649900914169848,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 10.649900914169848,
+                "hd15iqr": 10.649900914169848,
+                "ops": 0.09389758722257081,
+                "total": 10.649900914169848,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_latent_dim[8]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_latent_dim[8]",
+            "params": {
+                "latent_dim": 8
+            },
+            "param": "8",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 9.157385888975114,
+                "max": 9.157385888975114,
+                "mean": 9.157385888975114,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 9.157385888975114,
+                "iqr": 0.0,
+                "q1": 9.157385888975114,
+                "q3": 9.157385888975114,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 9.157385888975114,
+                "hd15iqr": 9.157385888975114,
+                "ops": 0.10920146995267872,
+                "total": 9.157385888975114,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_latent_dim[10]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_latent_dim[10]",
+            "params": {
+                "latent_dim": 10
+            },
+            "param": "10",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 19.963814818765968,
+                "max": 19.963814818765968,
+                "mean": 19.963814818765968,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 19.963814818765968,
+                "iqr": 0.0,
+                "q1": 19.963814818765968,
+                "q3": 19.963814818765968,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 19.963814818765968,
+                "hd15iqr": 19.963814818765968,
+                "ops": 0.050090626920662525,
+                "total": 19.963814818765968,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_latent_dim[12]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_latent_dim[12]",
+            "params": {
+                "latent_dim": 12
+            },
+            "param": "12",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 18.259637482929975,
+                "max": 18.259637482929975,
+                "mean": 18.259637482929975,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 18.259637482929975,
+                "iqr": 0.0,
+                "q1": 18.259637482929975,
+                "q3": 18.259637482929975,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 18.259637482929975,
+                "hd15iqr": 18.259637482929975,
+                "ops": 0.054765599861161,
+                "total": 18.259637482929975,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_emissions_dim[2]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_emissions_dim[2]",
+            "params": {
+                "emissions_dim": 2
+            },
+            "param": "2",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 5.501667606178671,
+                "max": 5.501667606178671,
+                "mean": 5.501667606178671,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 5.501667606178671,
+                "iqr": 0.0,
+                "q1": 5.501667606178671,
+                "q3": 5.501667606178671,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 5.501667606178671,
+                "hd15iqr": 5.501667606178671,
+                "ops": 0.18176307105084752,
+                "total": 5.501667606178671,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_emissions_dim[4]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_emissions_dim[4]",
+            "params": {
+                "emissions_dim": 4
+            },
+            "param": "4",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 6.567015254870057,
+                "max": 6.567015254870057,
+                "mean": 6.567015254870057,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 6.567015254870057,
+                "iqr": 0.0,
+                "q1": 6.567015254870057,
+                "q3": 6.567015254870057,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 6.567015254870057,
+                "hd15iqr": 6.567015254870057,
+                "ops": 0.15227618045479738,
+                "total": 6.567015254870057,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_emissions_dim[6]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_emissions_dim[6]",
+            "params": {
+                "emissions_dim": 6
+            },
+            "param": "6",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 7.394597650039941,
+                "max": 7.394597650039941,
+                "mean": 7.394597650039941,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 7.394597650039941,
+                "iqr": 0.0,
+                "q1": 7.394597650039941,
+                "q3": 7.394597650039941,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 7.394597650039941,
+                "hd15iqr": 7.394597650039941,
+                "ops": 0.13523386225004394,
+                "total": 7.394597650039941,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_emissions_dim[8]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_emissions_dim[8]",
+            "params": {
+                "emissions_dim": 8
+            },
+            "param": "8",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 7.795747792813927,
+                "max": 7.795747792813927,
+                "mean": 7.795747792813927,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 7.795747792813927,
+                "iqr": 0.0,
+                "q1": 7.795747792813927,
+                "q3": 7.795747792813927,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 7.795747792813927,
+                "hd15iqr": 7.795747792813927,
+                "ops": 0.12827505796452188,
+                "total": 7.795747792813927,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_emissions_dim[10]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_emissions_dim[10]",
+            "params": {
+                "emissions_dim": 10
+            },
+            "param": "10",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 7.098740600980818,
+                "max": 7.098740600980818,
+                "mean": 7.098740600980818,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 7.098740600980818,
+                "iqr": 0.0,
+                "q1": 7.098740600980818,
+                "q3": 7.098740600980818,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 7.098740600980818,
+                "hd15iqr": 7.098740600980818,
+                "ops": 0.14087005797364002,
+                "total": 7.098740600980818,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_arhmm_em_fit_emissions_dim[12]",
+            "fullname": "timing_comparisons/test_time_hmm.py::TestGaussianARHMM::test_arhmm_em_fit_emissions_dim[12]",
+            "params": {
+                "emissions_dim": 12
+            },
+            "param": "12",
+            "extra_info": {
+                "has_error": false
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 8.734809569083154,
+                "max": 8.734809569083154,
+                "mean": 8.734809569083154,
+                "stddev": 0,
+                "rounds": 1,
+                "median": 8.734809569083154,
+                "iqr": 0.0,
+                "q1": 8.734809569083154,
+                "q3": 8.734809569083154,
+                "iqr_outliers": 0,
+                "stddev_outliers": 0,
+                "outliers": "0;0",
+                "ld15iqr": 8.734809569083154,
+                "hd15iqr": 8.734809569083154,
+                "ops": 0.11448446495496577,
+                "total": 8.734809569083154,
+                "iterations": 1
+            }
+        }
+    ],
+    "datetime": "2021-10-28T18:42:42.087119",
+    "version": "3.4.1"
+}
