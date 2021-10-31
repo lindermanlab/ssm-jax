@@ -3,7 +3,8 @@ import jax.random as jr
 import jax.numpy as np
 import pytest
 
-from ssm.hmm import GaussianHMM, GaussianARHMM
+from ssm.hmm import GaussianHMM
+from ssm.arhmm import GaussianARHMM
 from ssm.distributions.glm import GaussianLinearRegression
 
 from config import NUM_ROUNDS
