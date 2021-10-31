@@ -36,7 +36,7 @@ class AutoregressiveEmissions(Emissions):
     def distribution(self, state, covariates=None):
         return self._emission_distribution[state]
 
-    def log_probs(self, data):
+    def log_probs_scan(self, data):
         # Compute the emission log probs
         dim = self._emission_distribution.data_dimension
         num_lags = self._emission_distribution.covariate_dimension // dim
@@ -50,6 +50,36 @@ class AutoregressiveEmissions(Emissions):
 
         # Ignore likelihood of the first bit of data since we don't have a prefix
         log_probs = log_probs.at[:num_lags].set(0.0)
+        return log_probs
+
+    def log_probs(self, data):
+        # Constants
+        num_timesteps, dim = data.shape
+        num_states = self.num_states
+        num_lags = self._emission_distribution.covariate_dimension // dim
+
+        # Parameters
+        weights = self._emission_distribution.weights
+        biases = self._emission_distribution.bias
+        scale_trils = self._emission_distribution.scale_tril
+
+        # Compute the predictive mean using a 2D convolution
+        mean = lax.conv(data.reshape(1, 1, num_timesteps, dim),
+                       weights.reshape(num_states * dim, 1, num_lags, dim),
+                       window_strides=(1, 1),
+                       padding='VALID')
+        mean = mean[0].reshape(num_states, dim, num_timesteps - num_lags + 1)
+        mean = mean.transpose([2, 0, 1])
+        # The means are shifted by one so that mean[t] is really the mean of data[t+1].
+        mean = mean[:-1]
+        mean += biases
+
+        # Compute the log probs
+        dist = tfd.MultivariateNormalTriL(mean, scale_trils)
+        log_probs = dist.log_prob(data[num_lags:, None, :])
+
+        # Ignore likelihood of the first bit of data since we don't have a prefix
+        log_probs = np.row_stack([np.zeros((num_lags, num_states)), log_probs])
         return log_probs
 
     def m_step(self, dataset, posteriors):
