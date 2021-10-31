@@ -8,6 +8,8 @@ import ssm
 from ssm import LDS
 from tqdm.auto import trange
 
+from ..config import NUM_ROUNDS
+
 def sample_lds(true_lds, num_trials, time_bins):
     all_states, all_data = [], []
     for i in range(num_trials):
