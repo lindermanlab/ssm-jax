@@ -3,7 +3,9 @@ import numpy as np
 
 from ssm import HMM
 
-from ..config import NUM_ROUNDS
+import sys
+sys.path.append("..")
+from config import NUM_ROUNDS
 
 def sample_hmm(true_hmm, num_trials, time_bins):
     all_states, all_data = [], []
