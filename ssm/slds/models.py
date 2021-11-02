@@ -5,8 +5,20 @@ from jax.tree_util import register_pytree_node_class
 import tensorflow_probability.substrates.jax as tfp
 tfd = tfp.distributions
 
-from ssm.models.base import SSM
+from ssm.base import SSM
+import ssm.hmm.initial
+import ssm.hmm.transitions
 
+
+# class SLDS(SSM):
+#     def __init__(self,
+#                  discrete_state_initial_distribution: ssm.hmm.initial.InitialCondition,
+#                  continuous_state_initial_distribution: ssm.lds.initial.InitialCondition,
+#                  discrete_state_transitions: ssm.hmm.transitions.Transitions,
+#                  continuous_state_dynamics: ssm.lds.dynamics.Dynamics,
+#                  emissions_distribution: ssm.lds.emissions.Emissions,
+#                  ) -> None:
+#         super().__init__()
 
 @register_pytree_node_class
 class GaussianSLDS(SSM):

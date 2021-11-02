@@ -71,8 +71,7 @@ class GaussianLinearRegression(tfp.distributions.Distribution):
         return tfp.distributions.MultivariateNormalTriL(mean, self.scale_tril)
 
     def _sample_n(self, n, covariates=None, seed=None):
-        d = self.predict(covariates)
-        return d.sample(sample_shape=n, seed=seed)
+        return self.predict(covariates).sample(sample_shape=n, seed=seed)
 
     def _log_prob(self, data, covariates=None, **kwargs):
         return self.predict(covariates).log_prob(data)

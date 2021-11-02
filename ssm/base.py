@@ -4,10 +4,11 @@ Base state-space model class.
 
 import jax.random as jr
 from jax import lax, vmap
+from jax.tree_util import tree_map
 
 
 class SSM(object):
-    """ 
+    """
     A generic state-space model base class.
 
     In ``SSM-JAX``, a state-space model is represented as a class with methods defining
@@ -17,7 +18,7 @@ class SSM(object):
     def initial_distribution(self):
         """
         The distribution over the initial state of the SSM.
-        
+
         .. math::
             p(x_1)
 
@@ -30,7 +31,7 @@ class SSM(object):
     def dynamics_distribution(self, state: float):
         """
         The dynamics (or state-transition) distribution conditioned on the current state.
-        
+
         .. math::
             p(x_{t+1} | x_t)
 
@@ -46,7 +47,7 @@ class SSM(object):
     def emissions_distribution(self, state: float):
         """
         The emissions (or observation) distribution conditioned on the current state.
-        
+
         .. math::
             p(y_t | x_t)
 
@@ -62,7 +63,7 @@ class SSM(object):
     def log_probability(self, states, data):
         """
         Computes the log joint probability of a set of states and data (observations).
-        
+
         .. math::
             \log p(x, y) = \log p(x_1) + \sum_{t=1}^{T-1} \log p(x_{t+1} | x_t) + \sum_{t=1}^{T} \log p(y_t | x_t)
 
@@ -75,8 +76,11 @@ class SSM(object):
                 The joint log probability of the provided states and data.
         """
         lp = 0
-        lp += self.initial_distribution().log_prob(states[0])
-        lp += self.emissions_distribution(states[0]).log_prob(data[0])
+
+        # Get the first timestep probability
+        initial_state, initial_data = tree_map(lambda x: x[0], (states, data))
+        lp += self.initial_distribution().log_prob(initial_state)
+        lp += self.emissions_distribution(initial_state).log_prob(initial_data)
 
         def _step(carry, args):
             prev_state, lp = carry
@@ -85,13 +89,13 @@ class SSM(object):
             lp += self.emissions_distribution(state).log_prob(emission)
             return (state, lp), None
 
-        (_, lp), _ = lax.scan(_step, (states[0], lp), (states[1:], data[1:]))
+        (_, lp), _ = lax.scan(_step, (initial_state, lp), tree_map(lambda x: x[1:], (states, data)))
         return lp
 
     def sample(self, key, num_steps: int, covariates=None, initial_state=None, num_samples=1):
         """
         Sample from the joint distribution defined by the state space model.
-        
+
         .. math::
             x, y \sim p(x, y)
 
@@ -102,10 +106,10 @@ class SSM(object):
                 Default is None.
             initial_state: Optional state on which to condition the sampled trajectory.
                 Default is None which samples the intial state from the initial distribution.
-                
+
         Returns:
             states: A ``(timesteps,)`` array of the state value across time (:math:`x`).
-            emissions: A ``(timesteps, obs_dim)`` array of the observations across time (:math:`y`). 
+            emissions: A ``(timesteps, obs_dim)`` array of the observations across time (:math:`y`).
 
         """
 
@@ -123,7 +127,7 @@ class SSM(object):
             keys = jr.split(key, num_steps)
             _, (states, emissions) = lax.scan(_step, initial_state, keys)
             return states, emissions
-        
+
         if num_samples > 1:
             batch_keys = jr.split(key, num_samples)
             states, emissions = vmap(_sample)(batch_keys, covariates, initial_state)

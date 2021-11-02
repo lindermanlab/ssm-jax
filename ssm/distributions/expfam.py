@@ -155,10 +155,10 @@ def _mniw_from_stats(stats, counts):
 
     T = lambda X: np.swapaxes(X, -1, -2)
     nu0 = counts - out_dim - in_dim - 1
-    V0 = np.linalg.inv(big_ExxT + 1e-8 * np.eye(in_dim))
+    V0 = np.linalg.inv(big_ExxT + 1e-4 * np.eye(in_dim))
     # M0 = big_EyxT @ V0
-    M0 = T(np.linalg.solve(big_ExxT, T(big_EyxT)))
-    Psi0 = EyyT - M0 @ big_ExxT @ T(M0)
+    M0 = T(np.linalg.solve(big_ExxT + 1e-4 * np.eye(in_dim), T(big_EyxT)))
+    Psi0 = EyyT - M0 @ big_ExxT @ T(M0) + 1e-4 * np.eye(out_dim)
 
     # def _null_stats(operand):
     #     V0 = 1e16 * np.eye(in_dim)
