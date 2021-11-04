@@ -1,28 +1,125 @@
-"""
-LDS Emissions Classes
-=====================
-
-* GaussianLinearRegressionEmissions
-* PoissonGLMEmissions
-* BernoulliGLMEmissions
-
-"""
 import jax
 import jax.numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import lax, tree_util, vmap
 from jax.flatten_util import ravel_pytree
-from jax.tree_util import register_pytree_node_class
+from jax.tree_util import tree_map, register_pytree_node_class
 from ssm.distributions.expfam import EXPFAM_DISTRIBUTIONS
 from ssm.lds.components import ContinuousComponent
 from ssm.utils import Verbosity, ssm_pbar, sum_tuples
 
+from ssm.distributions import GaussianLinearRegression, glm
+
+tfd = tfp.distributions
+
 
 @register_pytree_node_class
-class GaussianLinearRegressionEmissions(ContinuousComponent):
-    def exact_m_step(self,data, posterior, prior=None):
+class Emissions:
+    """
+    Base class of emission distribution of an LDS
+
+    ..math:
+        p_t(y_t \mid x_t, u_t)
+
+    where u_t are optional covariates.
+    """
+    def __init__(self,
+                 weights=None,
+                 bias=None,
+                 scale_tril=None,
+                 emission_distribution: tfd.Distribution=None,
+                 emission_distribution_prior: tfd.Distribution=None) -> None:
+        assert (weights is not None and \
+                bias is not None and \
+                scale_tril is not None) \
+            or emission_distribution is not None
+
+        if weights is not None:
+            self._emission_distribution = GaussianLinearRegression(weights, bias, scale_tril)
+        else:
+            self._emission_distribution = emission_distribution
+
+        if emission_distribution_prior is None:
+            pass  # TODO: implement default prior
+        self._emission_distribution_prior = emission_distribution_prior
+    
+    def tree_flatten(self):
+        children = (self._emission_distribution, self._emission_distribution_prior)
+        aux_data = None
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        distribution, prior = children
+        return cls(aux_data,
+                   emission_distribution=distribution,
+                   emission_distribution_prior=prior)
+        
+    @property
+    def weights(self):
+        return self._emission_distribution.weights
+    
+    @property
+    def bias(self):
+        return self._emission_distribution.bias
+    
+    @property
+    def scale_tril(self):
+        return self._emission_distribution.scale_tril
+
+    def distribution(self, state, covariates=None):
+        """
+        Return the conditional distribution of emission y_t
+        given state x_t and (optionally) covariates u_t.
+        
+        Note: covariates aren't supported yet.
+        """
+        if covariates is not None:
+            # TODO: handle extra covariates
+            raise NotImplementedError
+        return self._emission_distribution.predict(covariates=state)
+
+    def m_step(self, dataset, posteriors, rng=None):
+        if rng is None:
+            raise ValueError("PRNGKey needed for generic m-step")
+        
+        x_sample = posteriors._sample(seed=rng)
+
+        # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
+        flat_emission_distribution, unravel = ravel_pytree(self._emission_distribution)
+        def _objective(flat_emission_distribution):
+            # TODO: Consider proximal gradient descent to counter sampling noise
+            emission_distribution = unravel(flat_emission_distribution)
+            return -1 * np.mean(emission_distribution.predict(x_sample).log_prob(dataset))
+
+        optimize_results = jax.scipy.optimize.minimize(
+            _objective,
+            flat_emission_distribution,
+            method="BFGS"  # TODO: consider L-BFGS?
+        )
+        
+        self._emission_distribution = unravel(optimize_results.x)
+
+
+@register_pytree_node_class
+class GaussianEmissions(Emissions):
+    def __init__(self,
+                 weights=None,
+                 bias=None,
+                 scale_tril=None,
+                 emission_distribution: GaussianLinearRegression=None,
+                 emission_distribution_prior: tfd.Distribution=None) -> None:
+        super(GaussianEmissions, self).__init__(
+            weights, bias, scale_tril, 
+            emission_distribution, 
+            emission_distribution_prior
+        )
+
+    def m_step(self, dataset, posteriors, rng=None):
+        """If we have the right posterior, we can perform an exact update here.
+        """
         # Use exponential family stuff for the emissions
-        expfam = EXPFAM_DISTRIBUTIONS["GaussianGLM"]
+        expfam = EXPFAM_DISTRIBUTIONS["GaussianLinearRegression"]
 
         def compute_stats_and_counts(data, posterior):
             # Extract expected sufficient statistics from posterior
@@ -39,73 +136,89 @@ class GaussianLinearRegressionEmissions(ContinuousComponent):
             counts = len(data)
             return stats, counts
 
-        stats, counts = vmap(compute_stats_and_counts)(data, posterior)
+        stats, counts = vmap(compute_stats_and_counts)(dataset, posteriors)
         stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
         counts = counts.sum(axis=0)
 
-        if prior is not None:
+        if self._emission_distribution_prior is not None:
             prior_stats, prior_counts = \
-                expfam.prior_pseudo_obs_and_counts(prior.emissions_prior)
+                expfam.prior_pseudo_obs_and_counts(self._emission_distribution_prior.emissions_prior)
             stats = sum_tuples(stats, prior_stats)
             counts += prior_counts
 
         param_posterior = expfam.posterior_from_stats(stats, counts)
-        return expfam.from_params(param_posterior.mode())
+        self._emission_distribution = expfam.from_params(param_posterior.mode())
+
 
 @register_pytree_node_class
-class GeneralizedLinearModelEmissions(ContinuousComponent):
-    def exact_m_step(self, data, posterior, prior=None):
-        assert "exact m step generally not possible for GLM models"
-        return NotImplementedError
+class PoissonEmissions(Emissions):
+    def __init__(self,
+                 weights=None,
+                 bias=None,
+                 emission_distribution: glm.PoissonGLM=None,
+                 emission_distribution_prior: tfd.Distribution=None) -> None:
+        assert (weights is not None and \
+                bias is not None) \
+            or emission_distribution is not None
+
+        if weights is not None:
+            self._emission_distribution = glm.PoissonGLM(weights, bias)
+        else:
+            self._emission_distribution = emission_distribution
+
+        if emission_distribution_prior is None:
+            pass  # TODO: implement default prior
+        self._emission_distribution_prior = emission_distribution_prior
     
-    def approx_m_step(self, data, posterior, rng):
-        """Update the parameters of the emissions distribution via an approximate M step using samples from posterior.
+    def tree_flatten(self):
+        children = (self._emission_distribution, self._emission_distribution_prior)
+        aux_data = None
+        return children, aux_data
 
-        Uses BFGS to optimize the expected log probability of the emission via Monte Carlo estimate.
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        distribution, prior = children
+        return cls(aux_data,
+                   emission_distribution=distribution,
+                   emission_distribution_prior=prior)
+        
+    @property
+    def weights(self):
+        return self._emission_distribution.weights
+    
+    @property
+    def bias(self):
+        return self._emission_distribution.bias
 
-        For nonconjugate models like the GLM-LDS, we do not have a closed form expression for the objective nor solution
-        to the M step parameter update for the emissions model. This is because the objective is technically an
-        expectation under a Gaussian posterior on the latent states.
-
-        We can approximate an update to our emissions distribution using a Monte Carlo estimate of this expectation,
-        wherein we sample latent-state trajectories from our (potentially approximate) posterior and use these samples
-        to compute the objective (the log probability of the data under the emissions distribution).
-
-        Args:
-            rng (jax.random.PRNGKey): JAX random seed.
-            lds (LDS): The LDS model object.
-            data (array, (num_timesteps, obs_dim)): Array of observed data.
-            posterior (MultivariateNormalBlockTridiagonal):
-                The LDS posterior object.
-            prior (LDSPrior, optional): The prior distributions. Not yet supported. Defaults to None.
-
-        Returns:
-            emissions_distribution (tfp.distributions.Distribution):
-                A new emissions distribution object with the updated parameters.
+    def distribution(self, state, covariates=None):
         """
-        x_sample = posterior._sample(seed=rng)
+        Return the conditional distribution of emission y_t
+        given state x_t and (optionally) covariates u_t.
+        
+        Note: covariates aren't supported yet.
+        """
+        if covariates is not None:
+            # TODO: handle extra covariates
+            raise NotImplementedError
+        return self._emission_distribution.predict(covariates=state)
+
+    def m_step(self, dataset, posteriors, rng=None):
+        if rng is None:
+            raise ValueError("PRNGKey needed for generic m-step")
+        
+        x_sample = posteriors._sample(seed=rng)
 
         # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
-        flat_emissions_distribution, unravel = ravel_pytree(self.distribution)
-        def _objective(flat_emissions_distribution):
+        flat_emission_distribution, unravel = ravel_pytree(self._emission_distribution)
+        def _objective(flat_emission_distribution):
             # TODO: Consider proximal gradient descent to counter sampling noise
-            emissions_distribution = unravel(flat_emissions_distribution)
-            return -1 * np.mean(emissions_distribution.predict(x_sample).log_prob(data))
+            emission_distribution = unravel(flat_emission_distribution)
+            return -1 * np.mean(emission_distribution.predict(x_sample).log_prob(dataset))
 
         optimize_results = jax.scipy.optimize.minimize(
             _objective,
-            flat_emissions_distribution,
-            method="BFGS")
-
-        # NOTE: optimize_results.status ==> 3 ("zoom failed") although it seems to be finding a max?
-        return unravel(optimize_results.x)
-
-
-@register_pytree_node_class
-class PoissonGLMEmissions(GeneralizedLinearModelEmissions):
-    pass
-
-
-@register_pytree_node_class
-class BernoulliGLMEmissions(GeneralizedLinearModelEmissions):
-    pass
+            flat_emission_distribution,
+            method="BFGS"  # TODO: consider L-BFGS?
+        )
+        
+        self._emission_distribution = unravel(optimize_results.x)

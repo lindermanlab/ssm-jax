@@ -243,8 +243,8 @@ def laplace_em(
         elbo = np.mean(elbos)
 
         # m step (approx update for emissions)
-        m_step_rng = jr.split(rng, data.shape[0])
-        lds.fit_with_posterior(data, posteriors, rng=m_step_rng)  # m step
+        m_step_rng = jr.split(rng, data.shape[0])  # TODO: check rng stuff here
+        lds.m_step(data, posteriors, rng=m_step_rng)  # m step
 
         return rng, lds, posteriors, states, elbo
 

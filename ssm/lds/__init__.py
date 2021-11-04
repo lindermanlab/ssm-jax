@@ -1,1 +1,1 @@
-from .model import GaussianLDS, LDS
+from .models import GaussianLDS, PoissonLDS
