@@ -1,12 +1,7 @@
+"""Module defining base model behavior for Hidden Markov Models (HMMs).
 """
-HMM Model Classes
-=================
-
-Module defining model behavior for Hidden Markov Models (HMMs).
-"""
-from typing import Any
+from typing import Tuple
 from dataclasses import dataclass
-Array = Any
 
 import jax.numpy as np
 import jax.random as jr
@@ -22,14 +17,26 @@ import ssm.hmm.transitions as transitions
 import ssm.hmm.emissions as emissions
 from ssm.hmm.posterior import StationaryHMMPosterior
 
+
+
 @register_pytree_node_class
 class HMM(SSM):
-
     def __init__(self, num_states: int,
                  initial_condition: initial.InitialCondition,
                  transitions: transitions.Transitions,
                  emissions: emissions.Emissions,
                  ):
+        """The HMM base class.
+
+        Args:
+            num_states (int): number of discrete states
+            initial_condition (initial.InitialCondition): 
+                initial condition object defining :math:`p(z_1)`
+            transitions (transitions.Transitions):
+                transitions object defining :math:`p(z_t|z_{t-1})`
+            emissions (emissions.Emissions):
+                emissions ojbect defining :math:`p(x_t|z_t)`
+        """
         # Store these as private class variables
         self._num_states = num_states
         self._initial_condition = initial_condition
@@ -67,10 +74,19 @@ class HMM(SSM):
 
     ### Methods for posterior inference
     @format_dataset
-    def initialize(self, dataset, key, method="kmeans"):
-        """
-        Initialize the model parameters by performing an M-step with state assignments
+    def initialize(self, dataset: np.ndarray, key: jr.PRNGKey, method: str="kmeans") -> None:
+        r"""Initialize the model parameters by performing an M-step with state assignments
         determined by the specified method (random or kmeans).
+
+        Args:
+            dataset (np.ndarray): array of observed data
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
+            key (jr.PRNGKey): random seed
+            method (str, optional): state assignment method.
+                One of "random" or "kmeans". Defaults to "kmeans".
+
+        Raises:
+            ValueError: when initialize method is not recognized
         """
         # initialize assignments and perform one M-step
         num_states = self._num_states
@@ -87,13 +103,12 @@ class HMM(SSM):
             assignments = km.fit_predict(flat_dataset).reshape(dataset.shape[:-1])
 
         else:
-            raise Exception("Observations.initialize: "
-                "Invalid initialize method: {}".format(method))
+            raise ValueError(f"Invalid initialize method: {method}.")
 
         # Make a dummy posterior that just exposes expected_states
         @dataclass
         class DummyPosterior:
-            expected_states: Array
+            expected_states: np.ndarray
         dummy_posteriors = DummyPosterior(one_hot(assignments, self._num_states))
 
         # Do one m-step with the dummy posteriors
@@ -119,31 +134,38 @@ class HMM(SSM):
         self._emissions.m_step(dataset, posteriors)
 
     @format_dataset
-    def fit(self, dataset,
-            method="em",
-            num_iters=100,
-            tol=1e-4,
-            initialization_method="kmeans",
-            key=None,
-            verbosity=Verbosity.DEBUG):
-        """
-        Fit the parameters of the HMM using the specified method.
+    def fit(self, dataset: np.ndarray, 
+            method: str="em",
+            num_iters: int=100,
+            tol: float=1e-4,
+            initialization_method: str="kmeans",
+            key: jr.PRNGKey=None,
+            verbosity: Verbosity=Verbosity.DEBUG):
+        r"""Fit the HMM to a dataset using the specified method and initialization.
 
         Args:
+            dataset (np.ndarray): observed data
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
+            method (str, optional): model fit method. 
+                Must be one of ["em"]. Defaults to "em".
+            num_iters (int, optional): number of fit iterations.
+                Defaults to 100.
+            tol (float, optional): tolerance in log probability to determine convergence. 
+                Defaults to 1e-4.
+            initialization_method (str, optional): method to initialize latent states. 
+                Defaults to "kmeans".
+            key (jr.PRNGKey, optional): Random seed.
+                Defaults to None.
+            verbosity (Verbosity, optional): print verbosity.
+                Defaults to Verbosity.DEBUG.
 
-        dataset: see `help(HMM)` for details.
+        Raises:
+            ValueError: if fit method is not reocgnized
 
-        method: specification of how to fit the data.  Must be one
-        of the following strings:
-        - em
-
-        initialization_method: optional method name ("kmeans" or "random")
-        indicating how to initialize the model before fitting.
-
-        key: jax.PRNGKey for random initialization and/or fitting
-
-        verbosity: specify how verbose the print-outs should be.  See
-        `ssm.util.Verbosity`.
+        Returns:
+            log_probs (np.ndarray): log probabilities at each fit iteration
+            model (HMM): the fitted model
+            posteriors (StationaryHMMPosterior): the fitted posteriors
         """
         model = self
         kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
