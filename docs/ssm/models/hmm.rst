@@ -1,6 +1,6 @@
 Hidden Markov Model (HMM)
 =========================
 
-.. automodule:: ssm.models.hmm
+.. automodule:: ssm.hmm.models
     :members:
 

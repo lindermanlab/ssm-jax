@@ -9,4 +9,5 @@ API Documentation for models as defined by the SSM-JAX package.
 
    base
    hmm
+   arhmm
    lds

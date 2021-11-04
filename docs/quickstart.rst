@@ -1,7 +1,18 @@
 Quickstart
 ==========
 
-Check out these example (prototype) notebooks to see ``SSM-JAX`` in action.
+Check out these example notebooks to see ``SSM-JAX`` in action.
 
-- `HMM Prototype <https://github.com/lindermanlab/ssm-jax-refactor/blob/main/notebooks/hmm-prototype.ipynb>`_
-- `LDS Prototype <https://github.com/lindermanlab/ssm-jax-refactor/blob/main/notebooks/lds-prototype.ipynb>`_
+`All Notebooks on GitHub <https://github.com/lindermanlab/ssm-jax-refactor/tree/main/notebooks>`_
+
++---------+---------------------------------------------------------------------------------------------------------------------+
+| Model   | Example(s)                                                                                                          |
++---------+---------------------------------------------------------------------------------------------------------------------+
+| HMM     | - `Gaussian HMM <https://github.com/lindermanlab/ssm-jax-refactor/blob/main/notebooks/gaussian-hmm-example.ipynb>`_ |
+|         | - `Poisson HMM <https://github.com/lindermanlab/ssm-jax-refactor/blob/main/notebooks/poisson-hmm-example.ipynb>`_   |
++---------+---------------------------------------------------------------------------------------------------------------------+
+| ARHMM   | - `Gaussian ARHMM <https://github.com/lindermanlab/ssm-jax-refactor/blob/main/notebooks/arhmm-example.ipynb>`_      |
++---------+---------------------------------------------------------------------------------------------------------------------+
+| LDS     | - `Gaussian LDS <https://github.com/lindermanlab/ssm-jax-refactor/blob/main/notebooks/gaussian-lds-example.ipynb>`_ |
+|         | - `Poisson LDS <https://github.com/lindermanlab/ssm-jax-refactor/blob/main/notebooks/poisson-lds-example.ipynb>`_   |
++---------+---------------------------------------------------------------------------------------------------------------------+

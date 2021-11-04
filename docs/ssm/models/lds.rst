@@ -1,5 +1,5 @@
 Linear Dynamical System (LDS)
 =============================
 
-.. automodule:: ssm.models.lds
+.. automodule:: ssm.lds.models
     :members:

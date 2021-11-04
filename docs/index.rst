@@ -12,11 +12,11 @@ Welcome to ssm-jax's documentation!
    quickstart
    ssm/index
 
+.. 
+   Indices and tables
+   ==================
 
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   * :ref:`genindex`
+   * :ref:`modindex`
+   * :ref:`search`
 

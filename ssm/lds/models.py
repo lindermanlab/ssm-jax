@@ -1,11 +1,3 @@
-"""
-LDS Model Classes
-=================
-
-* LDS
-* GaussianLDS
-
-"""
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
