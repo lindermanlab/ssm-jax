@@ -5,41 +5,22 @@ import jax.numpy as np
 
 from ssm.distributions.linreg import GaussianLinearRegression
 from ssm.distributions.glm import PoissonGLM
-from ssm.lds import GaussianLDS, LDS
+from ssm.lds import GaussianLDS, PoissonLDS
 from ssm.utils import random_rotation
 
 from config import NUM_ROUNDS
 
 def create_random_lds(emission_dim=10, latent_dim=2, rng=jr.PRNGKey(0), emissions="gaussian"):
-    key1, key2 = jr.split(rng, 2)
-    
-    initial_distribution = tfp.distributions.MultivariateNormalTriL(
-        np.zeros(latent_dim), np.eye(latent_dim))
-
-    dynamics_distribution = GaussianLinearRegression(
-        random_rotation(key1, latent_dim, theta=np.pi/20),
-        np.zeros(latent_dim), 
-        0.1**2 * np.eye(latent_dim))
 
     if emissions == "gaussian":
-        emissions_distribution = GaussianLinearRegression(
-            jr.normal(key2, shape=(emission_dim, latent_dim)), 
-            np.zeros(emission_dim), 
-            1.0**2 * np.eye(emission_dim))
-
-        # Initialize our Gaussian LDS model
-        lds = GaussianLDS(initial_distribution, 
-                          dynamics_distribution,
-                          emissions_distribution)
+        lds = GaussianLDS(num_latent_dims=latent_dim,
+                          num_emission_dims=emission_dim,
+                          seed=rng)
 
     elif emissions == "poisson":
-        emissions_distribution = PoissonGLM(
-            jr.normal(key2, shape=(emission_dim, latent_dim)), 
-            np.zeros(emission_dim))
-
-        lds = LDS(initial_distribution, 
-                  dynamics_distribution, 
-                  emissions_distribution)
+        lds = PoissonLDS(num_latent_dims=latent_dim,
+                         num_emission_dims=emission_dim,
+                         seed=rng)
 
     return lds
 
