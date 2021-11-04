@@ -18,23 +18,23 @@ class AutoregressiveEmissions(Emissions):
                  weights=None,
                  biases=None,
                  covariances=None,
-                 emission_distribution: ssmd.GaussianLinearRegression=None,
-                 emission_distribution_prior: ssmd.MatrixNormalInverseWishart=None) -> None:
+                 emissions_distribution: ssmd.GaussianLinearRegression=None,
+                 emissions_distribution_prior: ssmd.MatrixNormalInverseWishart=None) -> None:
         super(AutoregressiveEmissions, self).__init__(num_states)
 
         params_given = None not in (weights, biases, covariances)
-        assert params_given or emission_distribution is not None
+        assert params_given or emissions_distribution is not None
 
         if params_given:
-            self._emission_distribution = \
+            self._distribution = \
                 ssmd.GaussianLinearRegression(weights, biases, np.linalg.cholesky(covariances))
         else:
-            self._emission_distribution = emission_distribution
+            self._distribution = emissions_distribution
 
-        # if emission_distribution_prior is None:
-        #     out_dim = self._emission_distribution.data_dimension
-        #     in_dim = self._emission_distribution.covariate_dimensin + 1
-        #     self._emission_distribution_prior = \
+        # if emissions_distribution_prior is None:
+        #     out_dim = self._distribution.data_dimension
+        #     in_dim = self._distribution.covariate_dimensin + 1
+        #     self._distribution_prior = \
         #         ssmd.MatrixNormalInverseWishart(
         #             loc=np.zeros((out_dim, in_dim)),
         #             column_covariance=1e8 * np.eye(in_dim),
@@ -42,20 +42,20 @@ class AutoregressiveEmissions(Emissions):
         #             scale=
         #         )
         # else:
-        #     self._emission_distribution_prior = emission_distribution_prior
-        self._emission_distribution_prior = emission_distribution_prior
+        #     self._distribution_prior = emissions_distribution_prior
+        self._distribution_prior = emissions_distribution_prior
 
     def distribution(self, state, covariates=None):
-        return self._emission_distribution[state]
+        return self._distribution[state]
 
     def log_probs_scan(self, data):
         # Compute the emission log probs
-        dim = self._emission_distribution.data_dimension
-        num_lags = self._emission_distribution.covariate_dimension // dim
+        dim = self._distribution.data_dimension
+        num_lags = self._distribution.covariate_dimension // dim
 
         # Scan over the data
         def _compute_ll(x, y):
-            ll = self._emission_distribution.log_prob(y, covariates=x.ravel())
+            ll = self._distribution.log_prob(y, covariates=x.ravel())
             new_x = np.row_stack([x[1:], y])
             return new_x, ll
         _, log_probs = lax.scan(_compute_ll, np.zeros((num_lags, dim)), data)
@@ -68,12 +68,12 @@ class AutoregressiveEmissions(Emissions):
         # Constants
         num_timesteps, dim = data.shape
         num_states = self.num_states
-        num_lags = self._emission_distribution.covariate_dimension // dim
+        num_lags = self._distribution.covariate_dimension // dim
 
         # Parameters
-        weights = self._emission_distribution.weights
-        biases = self._emission_distribution.bias
-        scale_trils = self._emission_distribution.scale_tril
+        weights = self._distribution.weights
+        biases = self._distribution.bias
+        scale_trils = self._distribution.scale_tril
 
         # Compute the predictive mean using a 2D convolution
         # TODO: Do we have to flip the weights along the lags dimension?
@@ -96,9 +96,9 @@ class AutoregressiveEmissions(Emissions):
         Can we compute the expected sufficient statistics with a convolution or scan?
         """
         # weights are shape (num_states, dim, dim * lag)
-        num_states = self._emission_distribution.weights.shape[0]
-        dim = self._emission_distribution.weights.shape[1]
-        num_lags = self._emission_distribution.weights.shape[2] // dim
+        num_states = self._distribution.weights.shape[0]
+        dim = self._distribution.weights.shape[1]
+        num_lags = self._distribution.weights.shape[2] // dim
 
         # Collect statistics with a scan over data
         def _collect_stats(carry, args):
@@ -133,9 +133,9 @@ class AutoregressiveEmissions(Emissions):
         counts = np.sum(counts, axis=0)
 
         # Add the prior stats and counts
-        if self._emission_distribution_prior is not None:
+        if self._distribution_prior is not None:
             prior_stats, prior_counts = \
-                expfam._mniw_pseudo_obs_and_counts(self._emission_distribution_prior)
+                expfam._mniw_pseudo_obs_and_counts(self._distribution_prior)
             stats = tree_map(np.add, stats, prior_stats)
             counts = counts + prior_counts
 
@@ -145,12 +145,12 @@ class AutoregressiveEmissions(Emissions):
         # Set the emissions to the posterior mode
         weights_and_bias, covariance_matrix = conditional.mode()
         weights, bias = weights_and_bias[..., :-1], weights_and_bias[..., -1]
-        self._emission_distribution = \
+        self._distribution = \
             ssmd.GaussianLinearRegression(
                 weights, bias, np.linalg.cholesky(covariance_matrix))
 
     def tree_flatten(self):
-        children = (self._emission_distribution, self._emission_distribution_prior)
+        children = (self._distribution, self._distribution_prior)
         aux_data = self.num_states
         return children, aux_data
 
@@ -158,5 +158,5 @@ class AutoregressiveEmissions(Emissions):
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
         return cls(aux_data,
-                   emission_distribution=distribution,
-                   emission_distribution_prior=prior)
+                   emissions_distribution=distribution,
+                   emissions_distribution_prior=prior)

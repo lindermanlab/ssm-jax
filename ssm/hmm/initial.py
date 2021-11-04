@@ -53,17 +53,17 @@ class StandardInitialCondition(InitialCondition):
         assert initial_probs is not None or initial_distribution is not None
 
         if initial_probs is not None:
-            self._initial_distribution = tfd.Categorical(logits=np.log(initial_probs))
+            self._distribution = tfd.Categorical(logits=np.log(initial_probs))
         else:
-            self._initial_distribution = initial_distribution
-        num_states = self._initial_distribution.probs_parameter().shape[-1]
+            self._distribution = initial_distribution
+        num_states = self._distribution.probs_parameter().shape[-1]
 
         if initial_distribution_prior is None:
             initial_distribution_prior = tfd.Dirichlet(1.1 * np.ones(num_states))
-        self._initial_distribution_prior = initial_distribution_prior
+        self._distribution_prior = initial_distribution_prior
 
     def tree_flatten(self):
-        children = (self._initial_distribution, self._initial_distribution_prior)
+        children = (self._distribution, self._distribution_prior)
         aux_data = self.num_states
         return children, aux_data
 
@@ -75,17 +75,17 @@ class StandardInitialCondition(InitialCondition):
                    initial_distribution_prior=prior)
 
     def distribution(self):
-       return self._initial_distribution
+       return self._distribution
 
     def initial_log_probs(self, data):
         """
         Return [log Pr(z_1 = k) for k in range(num_states)]
         """
-        lps = self._initial_distribution.logits_parameter()
+        lps = self._distribution.logits_parameter()
         return lps - spsp.logsumexp(lps)
 
     def m_step(self, dataset, posteriors):
         stats = np.sum(posteriors.expected_states[:, 0, :], axis=0)
-        stats += self._initial_distribution_prior.concentration
+        stats += self._distribution_prior.concentration
         conditional = tfp.distributions.Dirichlet(concentration=stats)
-        self._initial_distribution = tfp.distributions.Categorical(probs=conditional.mode())
+        self._distribution = tfp.distributions.Categorical(probs=conditional.mode())

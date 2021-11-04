@@ -67,15 +67,15 @@ class GaussianARHMM(AutoregressiveHMM):
 
     @property
     def emission_weights(self):
-        return self._emissions._emission_distribution.weights
+        return self._emissions._distribution.weights
 
     @property
     def emission_biases(self):
-        return self._emissions._emission_distribution.bias
+        return self._emissions._distribution.bias
 
     @property
     def emission_covariances(self):
-        return self._emissions._emission_distribution.scale
+        return self._emissions._distribution.scale
 
     def tree_flatten(self):
         children = (self._initial_condition,

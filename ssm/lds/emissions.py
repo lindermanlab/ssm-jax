@@ -27,24 +27,24 @@ class Emissions:
                  weights=None,
                  bias=None,
                  scale_tril=None,
-                 emission_distribution: tfd.Distribution=None,
-                 emission_distribution_prior: tfd.Distribution=None) -> None:
+                 emissions_distribution: tfd.Distribution=None,
+                 emissions_distribution_prior: tfd.Distribution=None) -> None:
         assert (weights is not None and \
                 bias is not None and \
                 scale_tril is not None) \
-            or emission_distribution is not None
+            or emissions_distribution is not None
 
         if weights is not None:
-            self._emission_distribution = GaussianLinearRegression(weights, bias, scale_tril)
+            self._distribution = GaussianLinearRegression(weights, bias, scale_tril)
         else:
-            self._emission_distribution = emission_distribution
+            self._distribution = emissions_distribution
 
-        if emission_distribution_prior is None:
+        if emissions_distribution_prior is None:
             pass  # TODO: implement default prior
-        self._emission_distribution_prior = emission_distribution_prior
+        self._distribution_prior = emissions_distribution_prior
 
     def tree_flatten(self):
-        children = (self._emission_distribution, self._emission_distribution_prior)
+        children = (self._distribution, self._distribution_prior)
         aux_data = None
         return children, aux_data
 
@@ -52,20 +52,20 @@ class Emissions:
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
         return cls(aux_data,
-                   emission_distribution=distribution,
-                   emission_distribution_prior=prior)
+                   emissions_distribution=distribution,
+                   emissions_distribution_prior=prior)
 
     @property
     def weights(self):
-        return self._emission_distribution.weights
+        return self._distribution.weights
 
     @property
     def bias(self):
-        return self._emission_distribution.bias
+        return self._distribution.bias
 
     @property
     def scale_tril(self):
-        return self._emission_distribution.scale_tril
+        return self._distribution.scale_tril
 
     def distribution(self, state, covariates=None):
         """
@@ -77,7 +77,7 @@ class Emissions:
         if covariates is not None:
             # TODO: handle extra covariates
             raise NotImplementedError
-        return self._emission_distribution.predict(covariates=state)
+        return self._distribution.predict(covariates=state)
 
     def m_step(self, dataset, posteriors, rng=None):
         if rng is None:
@@ -86,19 +86,19 @@ class Emissions:
         x_sample = posteriors._sample(seed=rng)
 
         # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
-        flat_emission_distribution, unravel = ravel_pytree(self._emission_distribution)
-        def _objective(flat_emission_distribution):
+        flat_emissions_distribution, unravel = ravel_pytree(self._distribution)
+        def _objective(flat_emissions_distribution):
             # TODO: Consider proximal gradient descent to counter sampling noise
-            emission_distribution = unravel(flat_emission_distribution)
-            return -1 * np.mean(emission_distribution.predict(x_sample).log_prob(dataset))
+            emissions_distribution = unravel(flat_emissions_distribution)
+            return -1 * np.mean(emissions_distribution.predict(x_sample).log_prob(dataset))
 
         optimize_results = jax.scipy.optimize.minimize(
             _objective,
-            flat_emission_distribution,
+            flat_emissions_distribution,
             method="BFGS"  # TODO: consider L-BFGS?
         )
 
-        self._emission_distribution = unravel(optimize_results.x)
+        self._distribution = unravel(optimize_results.x)
 
 
 @register_pytree_node_class
@@ -107,12 +107,12 @@ class GaussianEmissions(Emissions):
                  weights=None,
                  bias=None,
                  scale_tril=None,
-                 emission_distribution: GaussianLinearRegression=None,
-                 emission_distribution_prior: tfd.Distribution=None) -> None:
+                 emissions_distribution: GaussianLinearRegression=None,
+                 emissions_distribution_prior: tfd.Distribution=None) -> None:
         super(GaussianEmissions, self).__init__(
             weights, bias, scale_tril,
-            emission_distribution,
-            emission_distribution_prior
+            emissions_distribution,
+            emissions_distribution_prior
         )
 
     def m_step(self, dataset, posteriors, rng=None):
@@ -140,14 +140,14 @@ class GaussianEmissions(Emissions):
         stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
         counts = counts.sum(axis=0)
 
-        if self._emission_distribution_prior is not None:
+        if self._distribution_prior is not None:
             prior_stats, prior_counts = \
-                expfam.prior_pseudo_obs_and_counts(self._emission_distribution_prior.emissions_prior)
+                expfam.prior_pseudo_obs_and_counts(self._distribution_prior.emissions_prior)
             stats = sum_tuples(stats, prior_stats)
             counts += prior_counts
 
         param_posterior = expfam.posterior_from_stats(stats, counts)
-        self._emission_distribution = expfam.from_params(param_posterior.mode())
+        self._distribution = expfam.from_params(param_posterior.mode())
 
 
 @register_pytree_node_class
@@ -155,23 +155,23 @@ class PoissonEmissions(Emissions):
     def __init__(self,
                  weights=None,
                  bias=None,
-                 emission_distribution: glm.PoissonGLM=None,
-                 emission_distribution_prior: tfd.Distribution=None) -> None:
+                 emissions_distribution: glm.PoissonGLM=None,
+                 emissions_distribution_prior: tfd.Distribution=None) -> None:
         assert (weights is not None and \
                 bias is not None) \
-            or emission_distribution is not None
+            or emissions_distribution is not None
 
         if weights is not None:
-            self._emission_distribution = glm.PoissonGLM(weights, bias)
+            self._distribution = glm.PoissonGLM(weights, bias)
         else:
-            self._emission_distribution = emission_distribution
+            self._distribution = emissions_distribution
 
-        if emission_distribution_prior is None:
+        if emissions_distribution_prior is None:
             pass  # TODO: implement default prior
-        self._emission_distribution_prior = emission_distribution_prior
+        self._distribution_prior = emissions_distribution_prior
 
     def tree_flatten(self):
-        children = (self._emission_distribution, self._emission_distribution_prior)
+        children = (self._distribution, self._distribution_prior)
         aux_data = None
         return children, aux_data
 
@@ -179,16 +179,16 @@ class PoissonEmissions(Emissions):
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
         return cls(aux_data,
-                   emission_distribution=distribution,
-                   emission_distribution_prior=prior)
+                   emissions_distribution=distribution,
+                   emissions_distribution_prior=prior)
 
     @property
     def weights(self):
-        return self._emission_distribution.weights
+        return self._distribution.weights
 
     @property
     def bias(self):
-        return self._emission_distribution.bias
+        return self._distribution.bias
 
     def distribution(self, state, covariates=None):
         """
@@ -200,7 +200,7 @@ class PoissonEmissions(Emissions):
         if covariates is not None:
             # TODO: handle extra covariates
             raise NotImplementedError
-        return self._emission_distribution.predict(covariates=state)
+        return self._distribution.predict(covariates=state)
 
     def m_step(self, dataset, posteriors, rng=None):
         if rng is None:
@@ -209,16 +209,16 @@ class PoissonEmissions(Emissions):
         x_sample = posteriors._sample(seed=rng)
 
         # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
-        flat_emission_distribution, unravel = ravel_pytree(self._emission_distribution)
-        def _objective(flat_emission_distribution):
+        flat_emissions_distribution, unravel = ravel_pytree(self._distribution)
+        def _objective(flat_emissions_distribution):
             # TODO: Consider proximal gradient descent to counter sampling noise
-            emission_distribution = unravel(flat_emission_distribution)
-            return -1 * np.mean(emission_distribution.predict(x_sample).log_prob(dataset))
+            emissions_distribution = unravel(flat_emissions_distribution)
+            return -1 * np.mean(emissions_distribution.predict(x_sample).log_prob(dataset))
 
         optimize_results = jax.scipy.optimize.minimize(
             _objective,
-            flat_emission_distribution,
+            flat_emissions_distribution,
             method="BFGS"  # TODO: consider L-BFGS?
         )
 
-        self._emission_distribution = unravel(optimize_results.x)
+        self._distribution = unravel(optimize_results.x)

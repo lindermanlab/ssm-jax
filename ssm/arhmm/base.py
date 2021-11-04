@@ -22,11 +22,11 @@ class AutoregressiveHMM(HMM):
     """
     @property
     def emission_dim(self):
-        return self._emissions._emission_distribution.data_dimension
+        return self._emissions._distribution.data_dimension
 
     @property
     def num_lags(self):
-        dist = self._emissions._emission_distribution
+        dist = self._emissions._distribution
         return dist.covariate_dimension // dist.data_dimension
 
     def log_probability(self, states, data, prev_emissions=None):

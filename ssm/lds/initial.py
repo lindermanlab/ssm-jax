@@ -54,16 +54,16 @@ class StandardInitialCondition(InitialCondition):
         assert (initial_mean is not None and initial_scale_tril is not None) or initial_distribution is not None
 
         if initial_mean is not None:
-            self._initial_distribution = tfd.MultivariateNormalTriL(loc=initial_mean, scale_tril=initial_scale_tril)
+            self._distribution = tfd.MultivariateNormalTriL(loc=initial_mean, scale_tril=initial_scale_tril)
         else:
-            self._initial_distribution = initial_distribution
+            self._distribution = initial_distribution
 
         if initial_distribution_prior is None:
             pass  # TODO: implement default prior
-        self._initial_distribution_prior = initial_distribution_prior
+        self._distribution_prior = initial_distribution_prior
 
     def tree_flatten(self):
-        children = (self._initial_distribution, self._initial_distribution_prior)
+        children = (self._distribution, self._distribution_prior)
         aux_data = None
         return children, aux_data
 
@@ -75,10 +75,10 @@ class StandardInitialCondition(InitialCondition):
 
     @property
     def mean(self):
-        return self._initial_distribution.loc
+        return self._distribution.loc
 
     def distribution(self):
-       return self._initial_distribution
+       return self._distribution
 
     def m_step(self, dataset, posteriors, prior=None):
 
@@ -95,11 +95,11 @@ class StandardInitialCondition(InitialCondition):
         stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
         counts = counts.sum(axis=0)
 
-        if self._initial_distribution_prior is not None:
+        if self._distribution_prior is not None:
             prior_stats, prior_counts = \
-                expfam.prior_pseudo_obs_and_counts(self._initial_distribution_prior)
+                expfam.prior_pseudo_obs_and_counts(self._distribution_prior)
             stats = sum_tuples(stats, prior_stats)
             counts += prior_counts
 
         param_posterior = expfam.posterior_from_stats(stats, counts)
-        self._initial_distribution = expfam.from_params(param_posterior.mode())
+        self._distribution = expfam.from_params(param_posterior.mode())

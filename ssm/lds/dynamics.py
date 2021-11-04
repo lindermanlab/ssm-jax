@@ -58,16 +58,16 @@ class StationaryDynamics(Dynamics):
             or dynamics_distribution is not None
 
         if weights is not None:
-            self._dynamics_distribution = GaussianLinearRegression(weights, bias, scale_tril)
+            self._distribution = GaussianLinearRegression(weights, bias, scale_tril)
         else:
-            self._dynamics_distribution = dynamics_distribution
+            self._distribution = dynamics_distribution
 
         if dynamics_distribution_prior is None:
             pass  # TODO: implement default prior
-        self._dynamics_distribution_prior = dynamics_distribution_prior
+        self._distribution_prior = dynamics_distribution_prior
 
     def tree_flatten(self):
-        children = (self._dynamics_distribution, self._dynamics_distribution_prior)
+        children = (self._distribution, self._distribution_prior)
         aux_data = None
         return children, aux_data
 
@@ -80,22 +80,22 @@ class StationaryDynamics(Dynamics):
 
     @property
     def weights(self):
-        return self._dynamics_distribution.weights
+        return self._distribution.weights
 
     @property
     def bias(self):
-        return self._dynamics_distribution.bias
+        return self._distribution.bias
 
     @property
     def scale_tril(self):
-        return self._dynamics_distribution.scale_tril
+        return self._distribution.scale_tril
 
     @property
     def scale(self):
-        return self._dynamics_distribution.scale
+        return self._distribution.scale
 
     def distribution(self, state):
-       return self._dynamics_distribution.predict(covariates=state)
+       return self._distribution.predict(covariates=state)
 
     def m_step(self, dataset, posteriors):
 
@@ -120,11 +120,11 @@ class StationaryDynamics(Dynamics):
         stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
         counts = counts.sum(axis=0)
 
-        if self._dynamics_distribution_prior  is not None:
+        if self._distribution_prior  is not None:
             prior_stats, prior_counts = \
-                expfam.prior_pseudo_obs_and_counts(self._dynamics_distribution_prior )
+                expfam.prior_pseudo_obs_and_counts(self._distribution_prior )
             stats = sum_tuples(stats, prior_stats)
             counts += prior_counts
 
         param_posterior = expfam.posterior_from_stats(stats, counts)
-        self._dynamics_distribution = expfam.from_params(param_posterior.mode())
+        self._distribution = expfam.from_params(param_posterior.mode())

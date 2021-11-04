@@ -35,7 +35,7 @@ class LDS(SSM):
 
     @property
     def initial_covariance(self):
-        return self._initial_condition._initial_distribution.covariance()
+        return self._initial_condition._distribution.covariance()
 
     @property
     def dynamics_matrix(self):
