@@ -1,21 +1,13 @@
 import jax.numpy as np
-from jax.tree_util import register_pytree_node_class, tree_map
-from ssm.distributions.glm import BernoulliGLM, GaussianGLM, PoissonGLM
-from ssm.distributions.linreg import GaussianLinearRegression
-from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
-from ssm.inference.em import em
+from jax.tree_util import register_pytree_node_class
 from ssm.inference.laplace_em import _laplace_e_step, laplace_em
 from ssm.base import SSM
-from tensorflow_probability.substrates import jax as tfp
-
-from jax import vmap
 
 from ssm.utils import Verbosity, format_dataset
 
 import ssm.lds.initial as initial
 import ssm.lds.dynamics as dynamics
 import ssm.lds.emissions as emissions
-from ssm.hmm.posterior import StationaryHMMPosterior
 
 
 @register_pytree_node_class
@@ -28,7 +20,7 @@ class LDS(SSM):
         self._initial_condition = initial_condition
         self._dynamics = dynamics
         self._emissions = emissions
-        
+
     @property
     def latent_dim(self):
         return self._emissions.weights.shape[-1]
@@ -86,7 +78,6 @@ class LDS(SSM):
     def emissions_distribution(self, state):
         return self._emissions.distribution(state)
 
-    
     ### Methods for posterior inference
     def approximate_posterior(self, data, initial_states=None):
         return _laplace_e_step(self, data, initial_states)
@@ -98,7 +89,6 @@ class LDS(SSM):
 
     @format_dataset
     def fit(self, dataset, method="laplace_em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
-        
         model = self
         if method == "laplace_em":
             elbos, lds, posteriors = laplace_em(rng, model, dataset, num_iters=num_iters, tol=tol)

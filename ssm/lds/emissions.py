@@ -1,12 +1,12 @@
 import jax
 import jax.numpy as np
-import tensorflow_probability.substrates.jax as tfp
-from jax import lax, tree_util, vmap
+from jax import tree_util, vmap
 from jax.flatten_util import ravel_pytree
-from jax.tree_util import tree_map, register_pytree_node_class
+from jax.tree_util import register_pytree_node_class
+import tensorflow_probability.substrates.jax as tfp
+
 from ssm.distributions.expfam import EXPFAM_DISTRIBUTIONS
-from ssm.lds.components import ContinuousComponent
-from ssm.utils import Verbosity, ssm_pbar, sum_tuples
+from ssm.utils import sum_tuples
 
 from ssm.distributions import GaussianLinearRegression, glm
 
@@ -42,7 +42,7 @@ class Emissions:
         if emission_distribution_prior is None:
             pass  # TODO: implement default prior
         self._emission_distribution_prior = emission_distribution_prior
-    
+
     def tree_flatten(self):
         children = (self._emission_distribution, self._emission_distribution_prior)
         aux_data = None
@@ -54,15 +54,15 @@ class Emissions:
         return cls(aux_data,
                    emission_distribution=distribution,
                    emission_distribution_prior=prior)
-        
+
     @property
     def weights(self):
         return self._emission_distribution.weights
-    
+
     @property
     def bias(self):
         return self._emission_distribution.bias
-    
+
     @property
     def scale_tril(self):
         return self._emission_distribution.scale_tril
@@ -71,7 +71,7 @@ class Emissions:
         """
         Return the conditional distribution of emission y_t
         given state x_t and (optionally) covariates u_t.
-        
+
         Note: covariates aren't supported yet.
         """
         if covariates is not None:
@@ -82,7 +82,7 @@ class Emissions:
     def m_step(self, dataset, posteriors, rng=None):
         if rng is None:
             raise ValueError("PRNGKey needed for generic m-step")
-        
+
         x_sample = posteriors._sample(seed=rng)
 
         # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
@@ -97,7 +97,7 @@ class Emissions:
             flat_emission_distribution,
             method="BFGS"  # TODO: consider L-BFGS?
         )
-        
+
         self._emission_distribution = unravel(optimize_results.x)
 
 
@@ -110,8 +110,8 @@ class GaussianEmissions(Emissions):
                  emission_distribution: GaussianLinearRegression=None,
                  emission_distribution_prior: tfd.Distribution=None) -> None:
         super(GaussianEmissions, self).__init__(
-            weights, bias, scale_tril, 
-            emission_distribution, 
+            weights, bias, scale_tril,
+            emission_distribution,
             emission_distribution_prior
         )
 
@@ -169,7 +169,7 @@ class PoissonEmissions(Emissions):
         if emission_distribution_prior is None:
             pass  # TODO: implement default prior
         self._emission_distribution_prior = emission_distribution_prior
-    
+
     def tree_flatten(self):
         children = (self._emission_distribution, self._emission_distribution_prior)
         aux_data = None
@@ -181,11 +181,11 @@ class PoissonEmissions(Emissions):
         return cls(aux_data,
                    emission_distribution=distribution,
                    emission_distribution_prior=prior)
-        
+
     @property
     def weights(self):
         return self._emission_distribution.weights
-    
+
     @property
     def bias(self):
         return self._emission_distribution.bias
@@ -194,7 +194,7 @@ class PoissonEmissions(Emissions):
         """
         Return the conditional distribution of emission y_t
         given state x_t and (optionally) covariates u_t.
-        
+
         Note: covariates aren't supported yet.
         """
         if covariates is not None:
@@ -205,7 +205,7 @@ class PoissonEmissions(Emissions):
     def m_step(self, dataset, posteriors, rng=None):
         if rng is None:
             raise ValueError("PRNGKey needed for generic m-step")
-        
+
         x_sample = posteriors._sample(seed=rng)
 
         # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
@@ -220,5 +220,5 @@ class PoissonEmissions(Emissions):
             flat_emission_distribution,
             method="BFGS"  # TODO: consider L-BFGS?
         )
-        
+
         self._emission_distribution = unravel(optimize_results.x)

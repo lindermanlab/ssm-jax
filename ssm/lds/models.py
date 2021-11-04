@@ -8,30 +8,16 @@ LDS Model Classes
 """
 import jax.numpy as np
 import jax.random as jr
-from jax.tree_util import register_pytree_node_class, tree_map
-from ssm.distributions.glm import BernoulliGLM, GaussianGLM, PoissonGLM
-from ssm.distributions.linreg import GaussianLinearRegression
+from jax.tree_util import register_pytree_node_class
+
 from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.inference.em import em
-from ssm.inference.laplace_em import _laplace_e_step, laplace_em
-from ssm.base import SSM
-from tensorflow_probability.substrates import jax as tfp
-
-from jax import vmap
-
-from ssm.utils import Verbosity, format_dataset, random_rotation
-
+from ssm.inference.laplace_em import laplace_em
 from ssm.lds.base import LDS
 from ssm.lds.initial import StandardInitialCondition
 from ssm.lds.dynamics import StationaryDynamics
 from ssm.lds.emissions import GaussianEmissions, PoissonEmissions
-
-# supported emissions classes for GLM-LDS
-_GLM_DISTRIBUTIONS = [
-    GaussianGLM,
-    PoissonGLM,
-    BernoulliGLM
-]
+from ssm.utils import Verbosity, format_dataset, random_rotation
 
 
 @register_pytree_node_class
@@ -48,34 +34,34 @@ class GaussianLDS(LDS):
                  emission_bias=None,
                  emission_scale_tril=None,
                  seed=None):
-        
+
         if initial_state_mean is None:
             initial_state_mean = np.zeros(num_latent_dims)
-            
+
         if initial_state_scale_tril is None:
             initial_state_scale_tril = np.eye(num_latent_dims)
 
         if dynamics_weights is None:
             seed, rng = jr.split(seed, 2)
             dynamics_weights = random_rotation(rng, num_latent_dims, theta=np.pi/20)
-            
+
         if dynamics_bias is None:
             dynamics_bias = np.zeros(num_latent_dims)
-            
+
         if dynamics_scale_tril is None:
             dynamics_scale_tril = 0.1**2 * np.eye(num_latent_dims)
-            
+
         if emission_weights is None:
             seed, rng = jr.split(seed, 2)
             emission_weights = jr.normal(rng, shape=(num_emission_dims, num_latent_dims))
-        
+
         if emission_bias is None:
             emission_bias = np.zeros(num_emission_dims)
-            
+
         if emission_scale_tril is None:
             emission_scale_tril = 1.0**2 * np.eye(num_emission_dims)
 
-        initial_condition = StandardInitialCondition(initial_mean=initial_state_mean, 
+        initial_condition = StandardInitialCondition(initial_mean=initial_state_mean,
                                                      initial_scale_tril=initial_state_scale_tril)
         transitions = StationaryDynamics(weights=dynamics_weights,
                                          bias=dynamics_bias,
@@ -86,7 +72,7 @@ class GaussianLDS(LDS):
         super(GaussianLDS, self).__init__(initial_condition,
                                           transitions,
                                           emissions)
-        
+
     def tree_flatten(self):
         children = (self._initial_condition,
                     self._dynamics,
@@ -163,7 +149,7 @@ class GaussianLDS(LDS):
             Returns:
                 - lp (float): The marginal log likelihood of the data.
             """
-        
+
         if posterior is None:
             posterior = self.e_step(data)
         states = posterior.mean
@@ -203,31 +189,31 @@ class PoissonLDS(LDS):
                  emission_bias=None,
                  emission_scale_tril=None,
                  seed=None):
-        
+
         if initial_state_mean is None:
             initial_state_mean = np.zeros(num_latent_dims)
-            
+
         if initial_state_scale_tril is None:
             initial_state_scale_tril = np.eye(num_latent_dims)
 
         if dynamics_weights is None:
             seed, rng = jr.split(seed, 2)
             dynamics_weights = random_rotation(rng, num_latent_dims, theta=np.pi/20)
-            
+
         if dynamics_bias is None:
             dynamics_bias = np.zeros(num_latent_dims)
-            
+
         if dynamics_scale_tril is None:
             dynamics_scale_tril = 0.1**2 * np.eye(num_latent_dims)
-            
+
         if emission_weights is None:
             seed, rng = jr.split(seed, 2)
             emission_weights = jr.normal(rng, shape=(num_emission_dims, num_latent_dims))
-        
+
         if emission_bias is None:
             emission_bias = np.zeros(num_emission_dims)
 
-        initial_condition = StandardInitialCondition(initial_mean=initial_state_mean, 
+        initial_condition = StandardInitialCondition(initial_mean=initial_state_mean,
                                                      initial_scale_tril=initial_state_scale_tril)
         transitions = StationaryDynamics(weights=dynamics_weights,
                                          bias=dynamics_bias,
@@ -237,7 +223,7 @@ class PoissonLDS(LDS):
         super(PoissonLDS, self).__init__(initial_condition,
                                           transitions,
                                           emissions)
-        
+
     def tree_flatten(self):
         children = (self._initial_condition,
                     self._dynamics,

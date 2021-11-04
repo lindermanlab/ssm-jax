@@ -149,7 +149,6 @@ class AutoregressiveEmissions(Emissions):
             ssmd.GaussianLinearRegression(
                 weights, bias, np.linalg.cholesky(covariance_matrix))
 
-
     def tree_flatten(self):
         children = (self._emission_distribution, self._emission_distribution_prior)
         aux_data = self.num_states
