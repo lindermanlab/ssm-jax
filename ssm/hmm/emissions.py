@@ -168,6 +168,10 @@ class PoissonEmissions(Emissions):
             self._distribution = emissions_distribution
 
         self._distribution_prior = emissions_distribution_prior
+        
+    @property
+    def emissions_dim(self):
+        return self._distribution.log_rates.shape[-1]
 
     def distribution(self, state, covariates=None):
         """Get the distribution at the provided state.

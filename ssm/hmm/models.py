@@ -14,6 +14,8 @@ import warnings
 
 @register_pytree_node_class
 class GaussianHMM(HMM):
+    """HMM with Gaussian emissions.
+    """
     def __init__(self,
                  num_states: int,
                  num_emission_dims: int=None,

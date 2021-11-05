@@ -147,3 +147,7 @@ class LDS(SSM):
             raise ValueError(f"Method {method} is not recognized/supported.")
 
         return elbos, lds, posteriors
+    
+    def __repr__(self):
+        return f"<ssm.lds.{type(self).__name__} latent_dim={self.latent_dim} "\
+            f"emissions_dim={self.emissions_dim}>"

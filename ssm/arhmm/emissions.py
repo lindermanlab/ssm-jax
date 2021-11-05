@@ -66,6 +66,10 @@ class AutoregressiveEmissions(Emissions):
         # else:
         #     self._distribution_prior = emissions_distribution_prior
         self._distribution_prior = emissions_distribution_prior
+        
+    @property
+    def emissions_dim(self):
+        return self._distribution.weights.shape[-1]
 
     def distribution(self, state: int, covariates: np.ndarray=None) -> ssmd.GaussianLinearRegression:
         """Returns the emissions distribution conditioned on a given state.

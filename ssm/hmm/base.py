@@ -21,6 +21,8 @@ from ssm.hmm.posterior import StationaryHMMPosterior
 
 @register_pytree_node_class
 class HMM(SSM):
+    """The Hidden Markov Model base class.
+    """
     def __init__(self, num_states: int,
                  initial_condition: initial.InitialCondition,
                  transitions: transitions.Transitions,
@@ -50,6 +52,10 @@ class HMM(SSM):
     @property
     def num_states(self):
         return self._num_states
+    
+    @property
+    def emissions_dim(self):
+        return self._emissions.emissions_dim
 
     def tree_flatten(self):
         children = (self._initial_condition,
@@ -123,9 +129,9 @@ class HMM(SSM):
         if posterior is None:
             posterior = self.infer_posterior(data)
 
-        # dummy_states = np.zeros(data.shape[0], dtype=int)
-        # return self.log_probability(dummy_states, data) - posterior.log_prob(dummy_states)
-        return posterior.log_normalizer
+        dummy_states = np.zeros(data.shape[0], dtype=int)
+        return self.log_probability(dummy_states, data) - posterior.log_prob(dummy_states)
+        # return posterior.log_normalizer
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
     def m_step(self, dataset, posteriors):
@@ -181,3 +187,7 @@ class HMM(SSM):
             raise ValueError(f"Method {method} is not recognized/supported.")
 
         return log_probs, model, posteriors
+    
+    def __repr__(self):
+        return f"<ssm.hmm.{type(self).__name__} num_states={self.num_states} " \
+               f"emissions_dim={self.emissions_dim}>"
