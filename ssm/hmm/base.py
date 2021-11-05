@@ -1,8 +1,8 @@
 """Module defining base model behavior for Hidden Markov Models (HMMs).
 """
-from typing import Tuple
 from dataclasses import dataclass
 
+import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
 
@@ -28,7 +28,7 @@ class HMM(SSM):
 
         Args:
             num_states (int): number of discrete states
-            initial_condition (initial.InitialCondition): 
+            initial_condition (initial.InitialCondition):
                 initial condition object defining :math:`p(z_1)`
             transitions (transitions.Transitions):
                 transitions object defining :math:`p(z_t|z_{t-1})`
@@ -78,7 +78,7 @@ class HMM(SSM):
 
         Args:
             dataset (np.ndarray): array of observed data
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
             key (jr.PRNGKey): random seed
             method (str, optional): state assignment method.
                 One of "random" or "kmeans". Defaults to "kmeans".
@@ -132,7 +132,7 @@ class HMM(SSM):
         self._emissions.m_step(dataset, posteriors)
 
     @format_dataset
-    def fit(self, dataset: np.ndarray, 
+    def fit(self, dataset: np.ndarray,
             method: str="em",
             num_iters: int=100,
             tol: float=1e-4,
@@ -143,14 +143,14 @@ class HMM(SSM):
 
         Args:
             dataset (np.ndarray): observed data
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
-            method (str, optional): model fit method. 
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
+            method (str, optional): model fit method.
                 Must be one of ["em"]. Defaults to "em".
             num_iters (int, optional): number of fit iterations.
                 Defaults to 100.
-            tol (float, optional): tolerance in log probability to determine convergence. 
+            tol (float, optional): tolerance in log probability to determine convergence.
                 Defaults to 1e-4.
-            initialization_method (str, optional): method to initialize latent states. 
+            initialization_method (str, optional): method to initialize latent states.
                 Defaults to "kmeans".
             key (jr.PRNGKey, optional): Random seed.
                 Defaults to None.

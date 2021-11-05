@@ -17,9 +17,6 @@ class NormalInverseWishart(ConjugatePrior, tfd.JointDistributionNamed):
             mean_precision: \kappa_0
             df:             \nu
             scale:          \Psi
-
-        Returns:
-            A tfp.JointDistribution object.
         """
         # Store hyperparameters.
         # Note: these should really be private.
@@ -50,22 +47,25 @@ class NormalInverseWishart(ConjugatePrior, tfd.JointDistributionNamed):
     def natural_parameters(self):
         """Compute pseudo-observations from standard NIW parameters."""
         dim = self.loc.shape[-1]
-        chi_1 = self.df + dim + 2
-        chi_2 = np.einsum('...,...i->...i', self.mean_precision, self.loc)
-        chi_3 = self.scale + \
-            self.mean_precision * np.einsum("...i,...j->...ij", self.loc, self.loc)
-        chi_4 = self.mean_precision
-        return chi_1, chi_2, chi_3, chi_4
+        s1 = self.df + dim + 2
+        s2 = np.einsum('...,...i->...i', self.mean_precision, self.loc)
+        s3 = self.scale + self.mean_precision * np.einsum("...i,...j->...ij", self.loc, self.loc)
+        s4 = self.mean_precision
+        return s1, s2, s3, s4
 
     @classmethod
     def from_natural_parameters(cls, natural_params):
         """Convert natural parameters into standard parameters and construct."""
-        chi_1, chi_2, chi_3, chi_4 = natural_params
-        dim = chi_2.shape[-1]
-        df = chi_1 - dim - 2
-        mean_precision = chi_4
-        loc = np.einsum('..., ...i->...i', 1 / mean_precision, chi_2)
-        scale = chi_3 - mean_precision * np.einsum('...i,...j->...ij', loc, loc)
+        s1, s2, s3, s4 = natural_params
+        dim = s2.shape[-1]
+        df = s1 - dim - 2
+        mean_precision = s4
+        # loc = lax.cond(mean_precision > 0,
+        #             lambda x: s_2 / mean_precision,
+        #             lambda x: np.zeros_like(s_2),
+        #             None)
+        loc = np.einsum("...i,...->...i", s2, 1 / mean_precision)
+        scale = s3 - np.einsum("...,...i,...j->...ij", mean_precision, loc, loc)
         return cls(loc, mean_precision, df, scale)
 
     def _mode(self):
@@ -81,7 +81,6 @@ class NormalInverseWishart(ConjugatePrior, tfd.JointDistributionNamed):
         .. math::
             \Sigma^* = \Psi_0 / (\nu_0 + d + 2)
         """
-        covariance = np.einsum(
-            "...,...ij->...ij", 1 / (self.df + self.dim + 2), self.scale
-        )
+        dim = self.loc.shape[-1]
+        covariance = np.einsum("...,...ij->...ij", 1 / (self.df + dim + 2), self.scale)
         return self.loc, covariance

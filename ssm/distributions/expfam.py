@@ -1,29 +1,21 @@
+from functools import partial
+
 import jax.numpy as np
-from jax import lax, vmap
+from jax import vmap
 from jax.tree_util import tree_map
 
-from tensorflow_probability.substrates import jax as tfp
-from collections import namedtuple
-
-from ssm.distributions.niw import NormalInverseWishart
 from ssm.distributions.mniw import MatrixNormalInverseWishart
 from ssm.distributions.linreg import GaussianLinearRegression
-from ssm.utils import sum_tuples
-
-# Register the prior and likelihood functions
-# TODO: bundle these into a class
-ExponentialFamily = namedtuple(
-    "ExponentialFamily",
-    [
-        "prior_pseudo_obs_and_counts",
-        "posterior_from_stats",
-        "from_params",
-        "suff_stats",
-    ],
-)
 
 
-EXPFAM_DISTRIBUTIONS = dict()
+__CONJUGATE_PRIORS = dict()
+
+def register_prior(distribution, prior):
+    __CONJUGATE_PRIORS[distribution] = prior
+
+
+def get_prior(distribution):
+    return __CONJUGATE_PRIORS[distribution]
 
 
 class ConjugatePrior:
@@ -46,8 +38,6 @@ class ConjugatePrior:
         of the conjugate distribution.
         """
         raise NotImplementedError
-
-
 
 
 class ExponentialFamilyDistribution:
@@ -75,13 +65,6 @@ class ExponentialFamilyDistribution:
         raise NotImplementedError
 
     @staticmethod
-    def log_normalizer(params, **kwargs):
-        """
-        Return the log normalizer of the distribution.
-        """
-        raise NotImplementedError
-
-    @staticmethod
     def sufficient_statistics(data, **kwargs):
         """
         Return the sufficient statistics for each datapoint in an array,
@@ -91,159 +74,31 @@ class ExponentialFamilyDistribution:
         raise NotImplementedError
 
     @classmethod
-    def fit_with_stats(cls,
-                       sufficient_statistics,
-                       num_datapoints,
-                       prior=None,
-                       **kwargs):
-        """Compute the maximum a posteriori (MAP) estimate of the distribution
-        parameters, given the sufficient statistics of the data and the number
-        of datapoints.
-        """
-        # Compute the posterior distribution given sufficient statistics
-        posterior_stats = sufficient_statistics
-        posterior_counts = num_datapoints
-
-        # Add prior stats if given
-        if prior is not None:
-            posterior_stats = sum_tuples(prior.pseudo_obs, posterior_stats)
-            posterior_counts += prior.pseudo_counts
-
-        # Construct the posterior
-        posterior_class = get_expfam(cls)
-        posterior = posterior_class.from_stats(posterior_stats, posterior_counts, **kwargs)
-
-        # Return an instance of this distribution using the posterior mode parameters
-        return cls.from_params(posterior.mode(), **kwargs)
+    def compute_conditional_from_stats(cls, stats):
+        return get_prior(cls).from_natural_parameters(stats)
 
     @classmethod
-    def fit(cls, dataset, weights=None, prior=None, **kwargs):
-        """Compute the maximum a posteriori (MAP) estimate of the distribution
-        parameters.  For uninformative priors, this reduces to the maximum
-        likelihood estimate.
-        """
-        # Compute the sufficient statistics and the number of datapoints
-        suff_stats = None
-        num_datapoints = 0
-        for data_dict, these_weights in zip(dataset, weights):
-            these_stats = cls.sufficient_statistics(**data_dict, **kwargs)
+    def compute_conditional(cls, data, weights=None, prior=None):
+        # Flatten the data and weights so we can vmap over them
+        flatten = lambda x: x.reshape(-1, x.shape[-1])
+        flat_data = flatten(data)
 
-            # weight the statistics if weights are given
-            if these_weights is not None:
-                these_stats = tuple(np.tensordot(these_weights, s, axes=(0, 0))
-                                    for s in these_stats)
-            else:
-                these_stats = tuple(s.sum(axis=0) for s in these_stats)
+        # Collect sufficient statistics for each data point
+        stats = vmap(cls.sufficient_statistics)(flat_data)
 
-            # add to our accumulated statistics
-            suff_stats = sum_tuples(suff_stats, these_stats)
+        # Sum the (weighted) sufficient statistics
+        if weights is not None:
+            flat_weights = flatten(weights)
+            stats = tree_map(lambda x: np.einsum('nk,n...->k...', flat_weights, x), stats)
+        else:
+            stats = tree_map(partial(np.sum, axis=0), stats)
 
-            # update the number of datapoints
-            num_datapoints += these_weights.sum()
+        # Add the natural parameters from the prior
+        if prior is not None:
+            stats = tree_map(np.add, stats, prior.natural_parameters)
 
-        return cls.fit_with_stats(suff_stats, num_datapoints, prior=prior, **kwargs)
-
-
-def compute_conditional_with_stats(distribution_name,
-                                   sufficient_statistics,
-                                   num_datapoints,
-                                   prior=None,
-                                   **kwargs):
-    """Compute the maximum a posteriori (MAP) estimate of the distribution
-    parameters, given the sufficient statistics of the data and the number
-    of datapoints.
-    """
-    expfam = EXPFAM_DISTRIBUTIONS[distribution_name]
-
-    # Compute the posterior distribution given sufficient statistics
-    stats = sufficient_statistics
-    counts = num_datapoints
-
-    # Add prior stats if given
-    if prior is not None:
-        prior_stats, prior_counts = expfam.prior_pseudo_obs_and_counts(prior)
-        stats = sum_tuples(prior_stats, stats)
-        counts += prior_counts
-
-    # Construct the conditional distribution
-    return expfam.posterior_from_stats(stats, counts)
-
-
-def compute_conditional(distribution_name,
-                        data,
-                        weights=None,
-                        prior=None,
-                        **kwargs):
-    """Compute the conditional distribution over parameters of a distribution
-    given data.
-
-    distribution_name: string key into `EXPFAM_DISTRIBUTIONS`
-    data: (..., D) array of data assumed iid from distribution
-    weights: (...,) array of weights for each data point
-    prior: conjugate prior object
-    """
-    expfam = EXPFAM_DISTRIBUTIONS[distribution_name]
-
-    # Compute the sufficient statistics and the number of datapoints
-    stats = vmap(expfam.suff_stats)(data.reshape(-1, data.shape[-1]))
-
-
-    # weight the statistics if weights are given
-    if weights is not None:
-        stats = tree_map(lambda x: np.einsum('n,n...->...', weights.ravel(), x), stats)
-        counts = np.sum(weights)
-    else:
-        stats = tree_map(lambda x: np.sum(x, axis=0), stats)
-        counts = len(data.reshape(-1, data.shape[-1]))
-
-    return compute_conditional_with_stats(distribution_name,
-                                          stats,
-                                          counts,
-                                          prior=prior,
-                                          **kwargs)
-
-
-### Normal inverse Wishart / Multivariate Normal
-def _niw_from_stats(stats, counts):
-    s_1, s_2, s_3 = stats
-    dim = s_2.shape[-1]
-
-    mean_precision = s_1
-    # loc = lax.cond(mean_precision > 0,
-    #             lambda x: s_2 / mean_precision,
-    #             lambda x: np.zeros_like(s_2),
-    #             None)
-    loc = np.einsum("...i,...->...i", s_2, 1 / mean_precision)
-    scale = s_3 - np.einsum("...,...i,...j->...ij", mean_precision, loc, loc)
-    df = counts - dim - 2
-    return NormalInverseWishart(loc, mean_precision, df, scale)
-
-
-def _niw_pseudo_obs_and_counts(niw):
-    pseudo_obs = (
-        niw.mean_precision,
-        niw.mean_precision * niw.loc,
-        niw.scale
-        + niw.mean_precision * np.einsum("...i,...j->...ij", niw.loc, niw.loc),
-    )
-
-    pseudo_counts = niw.df + niw.dim + 1
-    return pseudo_obs, pseudo_counts
-
-
-def _mvn_from_params(params):
-    loc, covariance = params
-    scale_tril = np.linalg.cholesky(covariance)
-    return tfp.distributions.MultivariateNormalTriL(loc, scale_tril)
-
-
-def _mvn_suff_stats(data):
-    return (np.ones(data.shape[:-1]), data, np.einsum("...i,...j->...ij", data, data))
-
-
-EXPFAM_DISTRIBUTIONS["MultivariateNormal"] = ExponentialFamily(
-    _niw_pseudo_obs_and_counts, _niw_from_stats, _mvn_from_params, _mvn_suff_stats
-)
+        # Compute the conditional distribution given the stats
+        return cls.compute_conditional_from_stats(stats)
 
 
 ### Matrix normal inverse Wishart / Linear Regression
@@ -316,72 +171,3 @@ def _gaussian_linreg_suff_stats(data, covariates):
             np.einsum('...i,...j->...ij', covariates, covariates),
             np.einsum('...i,...j->...ij', data, covariates),
             np.einsum('...i,...j->...ij', data, data))
-
-
-EXPFAM_DISTRIBUTIONS["GaussianLinearRegression"] = ExponentialFamily(
-    _mniw_pseudo_obs_and_counts,
-    _mniw_from_stats,
-    _gaussian_linreg_from_params,
-    _gaussian_linreg_suff_stats,
-)
-
-EXPFAM_DISTRIBUTIONS["GaussianGLM"] = ExponentialFamily(
-    _mniw_pseudo_obs_and_counts,
-    _mniw_from_stats,
-    _gaussian_linreg_from_params,
-    _gaussian_linreg_suff_stats,
-)
-
-
-### Gamma / Poisson
-def _gamma_from_stats(stats, counts):
-    (shape,) = stats
-    return tfp.distributions.Gamma(shape, rate=counts)
-
-
-def _gamma_pseudo_obs_and_counts(gamma):
-    return (gamma.concentration,), gamma.rate
-
-
-def _poisson_from_params(params):
-    return tfp.distributions.Independent(
-        tfp.distributions.Poisson(rate=params), reinterpreted_batch_ndims=1
-    )
-
-
-def _poisson_suff_stats(data):
-    return (data,)
-
-
-EXPFAM_DISTRIBUTIONS["IndependentPoisson"] = ExponentialFamily(
-    _gamma_pseudo_obs_and_counts,
-    _gamma_from_stats,
-    _poisson_from_params,
-    _poisson_suff_stats,
-)
-
-### Dirichlet / Categorical
-def _dirichlet_from_stats(stats, counts):
-    concentration = stats[0]
-    return tfp.distributions.Dirichlet(concentration)
-
-
-def _dirichlet_pseudo_obs_and_counts(dirichlet):
-    return (dirichlet.concentration,), 0
-
-
-def _categorical_from_params(params):
-    return tfp.distributions.Categorical(probs=params)
-
-
-def _categorical_suff_stats(data):
-    num_classes = int(data.max()) + 1
-    return (data[..., None] == np.arange(num_classes),)
-
-
-EXPFAM_DISTRIBUTIONS["Categorical"] = ExponentialFamily(
-    _dirichlet_pseudo_obs_and_counts,
-    _dirichlet_from_stats,
-    _categorical_from_params,
-    _categorical_suff_stats,
-)
