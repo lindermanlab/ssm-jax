@@ -9,6 +9,7 @@ Refactoring the SSM code base to use Jax.
 
 ```python
 from ssm.hmm import GaussianHMM
+import jax.random as jr
 
 # create a true HMM model
 hmm = GaussianHMM(num_states=5, num_emission_dims=10, seed=jr.PRNGKey(0))
