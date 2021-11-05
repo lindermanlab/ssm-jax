@@ -10,7 +10,7 @@ class Transitions:
     """
     Base class for HMM transitions models,
 
-    ..math:
+    .. math::
         p_t(z_t \mid z_{t-1}, u_t)
 
     where u_t are optional covariates at time t.
@@ -28,15 +28,25 @@ class Transitions:
         """
         raise NotImplementedError
 
-    def log_probs(self, data):
-        """
-        Returns:
+    def log_probs(self, data):    
+        r"""Returns the log probability of data where
 
-        log_P where
-                log_P[i, j] = \log \Pr(z_{t+1} = j | z_t = i)
-            if the transition probabilities are stationary or
-                log_P[t, i, j] = \log \Pr(z_{t+1} = j | z_t = i)
-            if they are nonstationary.
+        .. math::
+            \texttt{log_P}[i, j] = \log \Pr(z_{t+1} = j | z_t = i)
+            
+        if the transition probabilities are stationary or
+        
+        .. math::
+            \texttt{log_P}[t, i, j] = \log \Pr(z_{t+1} = j | z_t = i)
+            
+        if they are nonstationary.
+        
+        Args:
+            data (np.ndarray): observed data
+        
+        Returns:
+            log probs (np.ndarray): log probability as defined above
+
         """
         # TODO: incorporate data or covariates?
         inds = np.arange(self.num_states)

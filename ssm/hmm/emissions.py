@@ -47,10 +47,25 @@ class Emissions:
 class GaussianEmissions(Emissions):
     def __init__(self,
                  num_states: int,
-                 means=None,
-                 covariances=None,
+                 means: np.ndarray=None,
+                 covariances: np.ndarray=None,
                  emissions_distribution: tfd.MultivariateNormalLinearOperator=None,
                  emissions_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
+        """Gaussian Emissions for HMM.
+        
+        Can be initialized by specifying parameters or by passing in a pre-initialized 
+        ``emissions_distribution`` object.
+
+        Args:
+            num_states (int): number of discrete states
+            means (np.ndarray, optional): state-dependent emission means. Defaults to None.
+            covariances (np.ndarray, optional): state-dependent emission covariances. Defaults to None.
+            emissions_distribution (tfd.MultivariateNormalLinearOperator, optional): initialized emissions distribution.
+                Defaults to None.
+            emissions_distribution_prior (ssmd.NormalInverseWishart, optional): initialized emissions distribution prior.
+                Defaults to None.
+        """
+        
         super(GaussianEmissions, self).__init__(num_states)
 
         assert (means is not None and covariances is not None) \
@@ -76,11 +91,28 @@ class GaussianEmissions(Emissions):
                    emissions_distribution=distribution,
                    emissions_distribution_prior=prior)
 
-    def distribution(self, state, covariates=None):
+    def distribution(self, state: int, covariates: np.ndarray=None) -> tfd.MultivariateNormalLinearOperator:
+        """Get the distribution at the provided state.
+
+        Args:
+            state (int): discrete state
+            covariates (np.ndarray, optional): optional covariates.
+                Not yet supported. Defaults to None.
+
+        Returns:
+            emissions distribution (tfd.MultivariateNormalLinearOperator):
+                emissions distribution at given state
+        """
         return self._distribution[state]
 
     def m_step(self, dataset, posteriors):
-        """If we have the right posterior, we can perform an exact update here.
+        """Update the emissions distribution in-place using an M-step.
+
+        Operates over a batch of data (posterior must have the same batch dim).
+
+        Args:
+            dataset (np.ndarray): the observed dataset
+            posteriors ([type]): the HMM posteriors
         """
         flatten = lambda x: x.reshape(-1, x.shape[-1])
         flat_dataset = flatten(dataset)
@@ -107,14 +139,24 @@ class GaussianEmissions(Emissions):
 
 @register_pytree_node_class
 class PoissonEmissions(Emissions):
-    """
-    TODO
-    """
     def __init__(self,
                  num_states: int,
-                 rates=None,
+                 rates: np.ndarray=None,
                  emissions_distribution: tfd.Distribution=None,
                  emissions_distribution_prior: tfd.Gamma=None) -> None:
+        """Poisson Emissions for HMM.
+        
+        Can be initialized by specifying parameters or by passing in a pre-initialized 
+        ``emissions_distribution`` object.
+
+        Args:
+            num_states (int): number of discrete states
+            rates (np.ndarray, optional): state-dependent Poisson rates. Defaults to None.
+            emissions_distribution (tfd.Distribution, optional): pre-initialized emissions distribution. 
+                Defaults to None.
+            emissions_distribution_prior (tfd.Gamma, optional): pre-initialized emissions distribution prior.
+                Defaults to None.
+        """
         super(PoissonEmissions, self).__init__(num_states)
 
         assert rates is not None or emissions_distribution is not None
@@ -128,9 +170,28 @@ class PoissonEmissions(Emissions):
         self._distribution_prior = emissions_distribution_prior
 
     def distribution(self, state, covariates=None):
+        """Get the distribution at the provided state.
+
+        Args:
+            state (int): discrete state
+            covariates (np.ndarray, optional): optional covariates.
+                Not yet supported. Defaults to None.
+
+        Returns:
+            emissions distribution (tfd.MultivariateNormalLinearOperator):
+                emissions distribution at given state
+        """
         return self._distribution[state]
 
     def m_step(self, dataset, posteriors):
+        """Update the emissions distribution in-place using an M-step.
+
+        Operates over a batch of data (posterior must have the same batch dim).
+
+        Args:
+            dataset (np.ndarray): the observed dataset
+            posteriors ([type]): the HMM posteriors
+        """
         flatten = lambda x: x.reshape(-1, x.shape[-1])
         flat_dataset = flatten(dataset)
         flat_weights = flatten(posteriors.expected_states)
@@ -155,119 +216,6 @@ class PoissonEmissions(Emissions):
             tfp.distributions.Independent(
                 tfp.distributions.Poisson(conditional.mode()),
                 reinterpreted_batch_ndims=1)
-
-    def tree_flatten(self):
-        children = (self._distribution, self._distribution_prior)
-        aux_data = self.num_states
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        distribution, prior = children
-        return cls(aux_data,
-                   emissions_distribution=distribution,
-                   emissions_distribution_prior=prior)
-
-
-@register_pytree_node_class
-class AutoregressiveEmissions(Emissions):
-
-    def __init__(self,
-                 num_states,
-                 weights=None,
-                 biases=None,
-                 covariances=None,
-                 emissions_distribution: ssmd.GaussianLinearRegression=None,
-                 emissions_distribution_prior: ssmd.MatrixNormalInverseWishart=None) -> None:
-        super(AutoregressiveEmissions, self).__init__(num_states)
-
-        params_given = None not in (weights, biases, covariances)
-        assert params_given or emissions_distribution is not None
-
-        if params_given:
-            self._distribution = \
-                ssmd.GaussianLinearRegression(weights, biases, np.linalg.cholesky(covariances))
-        else:
-            self._distribution = emissions_distribution
-
-        self._distribution_prior = emissions_distribution_prior
-
-    def distribution(self, state, covariates=None):
-        return self._distribution[state]
-
-    def log_probs(self, data):
-        # Compute the emission log probs
-        dim = self._distribution.data_dimension
-        num_lags = self._distribution.covariate_dimension // dim
-
-        # Scan over the data
-        def _compute_ll(x, y):
-            ll = self._distribution.log_prob(y, covariates=x.ravel())
-            new_x = np.row_stack([x[1:], y])
-            return new_x, ll
-        _, log_probs = lax.scan(_compute_ll, np.zeros((num_lags, dim)), data)
-
-        # Ignore likelihood of the first bit of data since we don't have a prefix
-        log_probs = log_probs.at[:num_lags].set(0.0)
-        return log_probs
-
-    def m_step(self, dataset, posteriors):
-        """
-        Can we compute the expected sufficient statistics with a convolution or scan?
-        """
-        # weights are shape (num_states, dim, dim * lag)
-        num_states = self._distribution.weights.shape[0]
-        dim = self._distribution.weights.shape[1]
-        num_lags = self._distribution.weights.shape[2] // dim
-
-        # Collect statistics with a scan over data
-        def _collect_stats(carry, args):
-            x, stats, counts = carry
-            y, w = args
-
-            new_x = np.row_stack([x[1:], y])
-            new_stats = tree_map(np.add, stats,
-                                 tree_map(lambda s: np.einsum('k,...->k...', w, s),
-                                          expfam._gaussian_linreg_suff_stats(y, x.ravel())))
-            new_counts = counts + w
-            return (new_x, new_stats, new_counts), None
-
-        # Initialize the stats and counts to zero
-        init_stats = (np.zeros((num_states, num_lags * dim)),
-                      np.zeros((num_states, dim)),
-                      np.zeros((num_states, num_lags * dim, num_lags * dim)),
-                      np.zeros((num_states, dim, num_lags * dim)),
-                      np.zeros((num_states, dim, dim)))
-        init_counts = np.zeros(num_states)
-
-        # Scan over one time series
-        def scan_one(data, weights):
-            (_, stats, counts), _ = lax.scan(_collect_stats,
-                                             (data[:num_lags], init_stats, init_counts),
-                                             (data[num_lags:], weights[num_lags:]))
-            return stats, counts
-
-        # vmap over all time series in dataset
-        stats, counts = vmap(scan_one)(dataset, posteriors.expected_states)
-        stats = tree_map(partial(np.sum, axis=0), stats)
-        counts = np.sum(counts, axis=0)
-
-        # Add the prior stats and counts
-        if self._distribution_prior is not None:
-            prior_stats, prior_counts = \
-                expfam._mniw_pseudo_obs_and_counts(self._distribution_prior)
-            stats = tree_map(np.add, stats, prior_stats)
-            counts = counts + prior_counts
-
-        # Compute the conditional distribution over parameters
-        conditional = expfam._mniw_from_stats(stats, counts)
-
-        # Set the emissions to the posterior mode
-        weights_and_bias, covariance_matrix = conditional.mode()
-        weights, bias = weights_and_bias[..., :-1], weights_and_bias[..., -1]
-        self._distribution = \
-            ssmd.GaussianLinearRegression(
-                weights, bias, np.linalg.cholesky(covariance_matrix))
 
     def tree_flatten(self):
         children = (self._distribution, self._distribution_prior)
