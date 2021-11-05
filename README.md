@@ -11,10 +11,10 @@ Refactoring the SSM code base to use Jax.
 ├── docs                      # [documentation]
 ├── notebooks                 # [example jupyter notebooks]
 ├── ssm                       # [main code repository]
-│   ├── hmm                       # hmm models
-│   ├── arhmm                     # arhm models
-│   ├── lds                       # lds models
-│   ├── slds                      # slds models
+│   ├── hmm                       # hmm   models
+│   ├── arhmm                     # arhmm models
+│   ├── lds                       # lds   models
+│   ├── slds                      # slds  models
 │   ├── inference                 # inference code
 │   ├── distributions             # distributions (generally, extensions of tfp distributions)
 └── tests                     # [tests]
