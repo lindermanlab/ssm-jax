@@ -129,9 +129,9 @@ class HMM(SSM):
         if posterior is None:
             posterior = self.infer_posterior(data)
 
-        dummy_states = np.zeros(data.shape[0], dtype=int)
-        return self.log_probability(dummy_states, data) - posterior.log_prob(dummy_states)
-        # return posterior.log_normalizer
+        # dummy_states = np.zeros(data.shape[0], dtype=int)
+        # return self.log_probability(dummy_states, data) - posterior.log_prob(dummy_states)
+        return posterior.log_normalizer
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
     def m_step(self, dataset, posteriors):
