@@ -83,6 +83,10 @@ class GaussianEmissions(Emissions):
         children = (self._distribution, self.distribution_prior)
         aux_data = self.num_states
         return children, aux_data
+    
+    @property
+    def emissions_dim(self):
+        return self._distribution.loc.shape[-1]
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
