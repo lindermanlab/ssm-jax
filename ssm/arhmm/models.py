@@ -1,3 +1,7 @@
+"""
+Model classes for ARHMMs.
+"""
+
 import jax.numpy as np
 import jax.random as jr
 import tensorflow_probability.substrates.jax as tfp
@@ -14,15 +18,47 @@ from ssm.arhmm.emissions import AutoregressiveEmissions
 @register_pytree_node_class
 class GaussianARHMM(AutoregressiveHMM):
     def __init__(self,
-                 num_states,
-                 num_emission_dims=None,
-                 num_lags=None,
-                 initial_state_probs=None,
-                 transition_matrix=None,
-                 emission_weights=None,
-                 emission_biases=None,
-                 emission_covariances=None,
-                 seed=None):
+                 num_states: int,
+                 num_emission_dims: int=None,
+                 num_lags: int=None,
+                 initial_state_probs: np.ndarray=None,
+                 transition_matrix: np.ndarray=None,
+                 emission_weights: np.ndarray=None,
+                 emission_biases: np.ndarray=None,
+                 emission_covariances: np.ndarray=None,
+                 seed: jr.PRNGKey=None):
+        r"""Gaussian autoregressive hidden markov Model (ARHMM).
+        
+        Let $x_t$ denote the observation at time $t$.  Let $z_t$ denote the corresponding discrete latent state.
+        The autoregressive hidden Markov model (with ..math`\text{lag}=1`) has the following likelihood,
+        
+        .. math::
+            x_t \mid x_{t-1}, z_t \sim \mathcal{N}\left(A_{z_t} x_{t-1} + b_{z_t}, Q_{z_t} \right).
+            
+        The GaussianARHMM can be initialized by specifying each parameter explicitly,
+        or you can simply specify the ``num_states``, ``num_emission_dims``, ``num_lags``, and ``seed``
+        to create a GaussianARHMM with generic, randomly initialized parameters.
+
+        Args:
+            num_states (int): number of discrete latent states
+            num_emission_dims (int, optional): number of emission dims. 
+                Defaults to None.
+            num_lags (int, optional): number of previous timesteps on which to autoregress. 
+                Defaults to None.
+            initial_state_probs (np.ndarray, optional): initial state probabilities 
+                with shape :math:`(\text{num_states},)`. Defaults to None.
+            transition_matrix (np.ndarray, optional): transition matrix
+                with shape :math:`(\text{num_states}, \text{num_states})`. Defaults to None.
+            emission_weights (np.ndarray, optional): emission weights ..math`A_{z_t}` 
+                with shape :math:`(\text{num_states}, \text{num_emission_dims}, \text{num_emission_dims} * \text{num_lags})`.
+                Defaults to None.
+            emission_biases (np.ndarray, optional): emission biases ..math`b_{z_t}`
+                with shape :math:`(\text{num_states}, \text{num_emission_dims})`. Defaults to None.
+            emission_covariances (np.ndarray, optional): emission covariance ..math`Q_{z_t}`
+                with shape :math:`(\text{num_states}, \text{num_emission_dims}, \text{num_emission_dims})`.
+                Defaults to None.
+            seed (jr.PRNGKey, optional): random seed. Defaults to None.
+        """
 
         if initial_state_probs is None:
             initial_state_probs = np.ones(num_states) / num_states

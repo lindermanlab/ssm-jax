@@ -12,7 +12,7 @@ class Emissions:
     """
     Base class of emission distribution of an HMM
 
-    ..math:
+    ..  math::
         p_t(x_t \mid z_t, u_t)
 
     where u_t are optional covariates.

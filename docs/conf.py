@@ -36,7 +36,9 @@ extensions = [
 
 # Some extension configurations
 autodoc_typehints = "description"
+autoclass_content = 'both'
 napoleon_custom_sections = [('Returns', 'params_style')]
+autodoc_member_order = "bysource"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

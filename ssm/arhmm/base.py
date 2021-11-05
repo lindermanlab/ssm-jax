@@ -1,8 +1,5 @@
 """
-HMM Model Classes
-=================
-
-Module defining model behavior for Hidden Markov Models (HMMs).
+Base class for Autoregressive HMM.
 """
 from typing import Any
 Array = Any
@@ -17,9 +14,11 @@ from ssm.hmm.posterior import StationaryHMMPosterior
 
 @register_pytree_node_class
 class AutoregressiveHMM(HMM):
+    r"""Base class for HMM with autoregressive dependencies.
+    
+    Inherits from HMM base class.
     """
-    TODO
-    """
+    
     @property
     def emission_dim(self):
         return self._emissions._distribution.data_dimension
@@ -30,58 +29,78 @@ class AutoregressiveHMM(HMM):
         return dist.covariate_dimension // dist.data_dimension
 
     def log_probability(self, states, data, prev_emissions=None):
-        """
+        r"""
         Computes the log joint probability of a set of states and data (observations).
 
         .. math::
             \log p(x, y) = \log p(x_1) + \sum_{t=1}^{T-1} \log p(x_{t+1} | x_t) + \sum_{t=1}^{T} \log p(y_t | x_t)
 
         Args:
-            states: An array of latent states (:math:`x_{1:T}`).
-            data: An array of the observed data (:math:`y_{1:T}`).
+            states: latent states :math:`x_{1:T}`
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{latent_dim})` 
+            data: observed data :math:`y_{1:T}`
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
+            prev_emissions: previous emissions to condition on
+                of shape :math:`(\text{[batch]} , \text{num_lags} , \text{emissions_dim})`.
+                Default is None which will condition on zeros.
 
         Returns:
-            lp:
-                The joint log probability of the provided states and data.
+            lp: log joint probability :math:`\log p(x, y)`
+                of shape :math:`(\text{batch]},)`
         """
-        if prev_emissions is None:
-            prev_emissions = np.zeros((self.num_lags, self.emission_dim))
+        
+        def _log_probability_single(_states, _data, _prev_emissions):
+            if _prev_emissions is None:
+                _prev_emissions = np.zeros((self.num_lags, self.emission_dim))
 
-        lp = 0
-        lp += self.initial_distribution().log_prob(states[0])
-        lp += self.emissions_distribution(states[0]).log_prob(data[0], covariates=prev_emissions.ravel())
+            lp = 0
+            lp += self.initial_distribution().log_prob(_states[0])
+            lp += self.emissions_distribution(_states[0]).log_prob(_data[0], covariates=_prev_emissions.ravel())
 
-        def _step(carry, args):
-            prev_state, prev_emissions, lp = carry
-            state, emission = args
-            lp += self.dynamics_distribution(prev_state).log_prob(state)
-            lp += self.emissions_distribution(state).log_prob(emission, covariates=prev_emissions.ravel())
-            new_prev_emissions = np.row_stack([prev_emissions[1:], emission])
-            return (state, new_prev_emissions, lp), None
+            def _step(carry, args):
+                prev_state, _prev_emissions, lp = carry
+                state, emission = args
+                lp += self.dynamics_distribution(prev_state).log_prob(state)
+                lp += self.emissions_distribution(state).log_prob(emission, covariates=_prev_emissions.ravel())
+                new_prev_emissions = np.row_stack([_prev_emissions[1:], emission])
+                return (state, new_prev_emissions, lp), None
 
-        initial_carry = (states[0], np.row_stack([prev_emissions[1:], data[0]]), lp)
-        (_, _, lp), _ = lax.scan(_step, initial_carry, (states[1:], data[1:]))
+            initial_carry = (_states[0], np.row_stack([_prev_emissions[1:], _data[0]]), lp)
+            (_, _, lp), _ = lax.scan(_step, initial_carry, (_states[1:], _data[1:]))
+            return lp
+        
+        if data.ndim > 2:
+            lp = vmap(_log_probability_single)(states, data, prev_emissions)
+        else:
+            lp = _log_probability_single(states, data, prev_emissions)
+            
         return lp
 
 
-    def sample(self, key, num_steps: int, initial_state=None, num_samples=1, prev_emissions=None):
-        """
+    def sample(self, key, num_steps: int, initial_state=None, num_samples: int=1, prev_emissions=None):
+        r"""
         Sample from the joint distribution defined by the state space model.
 
         .. math::
             x, y \sim p(x, y)
 
         Args:
-            key (PRNGKey): A JAX pseudorandom number generator key.
+            key (jr.PRNGKey): A JAX pseudorandom number generator key.
             num_steps (int): Number of steps for which to sample.
+            covariates: Optional covariates that may be needed for sampling.
+                Default is None.
             initial_state: Optional state on which to condition the sampled trajectory.
                 Default is None which samples the intial state from the initial distribution.
-            prev_emissions: Optional initial emissions to start the autoregressive model.
+            num_samples (int): Number of indepedent samples (defines a batch dimension).
+            prev_emissions: previous emissions to condition on
+                of shape :math:`(\text{[batch]} , \text{num_lags} , \text{emissions_dim})`.
+                Default is None which will condition on zeros.
 
         Returns:
-            states: A ``(timesteps,)`` array of the state value across time (:math:`x`).
-            emissions: A ``(timesteps, obs_dim)`` array of the observations across time (:math:`y`).
-
+            states: an array of latent states across time :math:`x_{1:T}`
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{latent_dim})` 
+            emissions: an array of observations across time :math:`y_{1:T}`
+                of shape :math:`(\text{[batch]} , \text{num_lags} , \text{emissions_dim})`.
         """
 
         def _sample(key):
