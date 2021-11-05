@@ -255,7 +255,7 @@ def _mniw_from_stats(stats, counts):
     prior is on the concatenated weights and biases (W, b)
 
     Recall,
-    ..math::
+    .. math::
         n_1 = \nu_0 + n + p + 1
         s_1 = V_0^{-1}
         s_2 = M_0 V_0^{-1}

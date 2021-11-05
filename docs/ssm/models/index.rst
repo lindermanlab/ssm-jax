@@ -4,9 +4,10 @@ Models
 API Documentation for models as defined by the SSM-JAX package.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Contents:
 
    base
-   hmm
-   lds
+   hmm/index
+   arhmm/index
+   lds/index

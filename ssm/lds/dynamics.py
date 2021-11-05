@@ -1,10 +1,3 @@
-"""
-LDS Dynamics Classes
-====================
-
-* GaussianLinearRegressionDynamics
-
-"""
 import jax.numpy as np
 from jax import tree_util, vmap
 from jax.tree_util import register_pytree_node_class
@@ -20,7 +13,7 @@ class Dynamics:
     """
     Base class for HMM transitions models,
 
-    ..math:
+    .. math::
         p_t(z_t \mid z_{t-1}, u_t)
 
     where u_t are optional covariates at time t.

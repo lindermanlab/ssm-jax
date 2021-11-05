@@ -31,11 +31,14 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
     'sphinx.ext.mathjax',
+    # 'sphinx.ext.imgmath',
 ]
 
 # Some extension configurations
 autodoc_typehints = "description"
+autoclass_content = 'both'
 napoleon_custom_sections = [('Returns', 'params_style')]
+autodoc_member_order = "bysource"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -57,3 +60,4 @@ html_theme = 'sphinx_rtd_theme'
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+html_style = 'css/custom.css' 

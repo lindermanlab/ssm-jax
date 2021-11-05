@@ -1,6 +1,12 @@
 -e .
 
-# dev dependencies below
+### dev dependencies below
+
+# pytest
 pytest
 pytest-benchmark
 pytest-timeout
+
+# documentation
+sphinx
+sphinx-rtd-theme

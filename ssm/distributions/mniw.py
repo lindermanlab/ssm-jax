@@ -109,7 +109,7 @@ class MatrixNormalInverseWishart(tfp.distributions.Distribution):
     The matrix-normal inverse-Wishart (MNIW) is a joint distribution on a
     rectangular matrix `A \in \mathbb{R}^{n \times m}` and a positive definite
     matrix `\Sigma \in \mathbb{R}^{n \times n}`. The generative process is,
-    ..math::
+    .. math::
         A | \Sigma \sim \mathrm{N}(\vec(A) | \vec(M_0), \Sigma \kron V_0)
             \Sigma \sim \mathrm{IW}(\Sigma | \Psi_0, \nu_0)
 
@@ -122,12 +122,12 @@ class MatrixNormalInverseWishart(tfp.distributions.Distribution):
     In the special case where the covariates are always one, `x = 1`, and
     hence the matrices `A` and `M_0` are really just column vectors `a` and
     `\mu_0`, the MNIW reduces to a NIW distribution,
-    ..math::
+    .. math::
         a \sim \mathrm{NIW}{\mu_0, 1/V_0, \nu_0, \Psi_0}
     (`\kappa_0` is a precision in the NIW, whereas `V_0` is a covariance.)
 
     The MNIW pdf is proportional to,
-    ..math::
+    .. math::
         \log p(A , \Sigma) =
             -p/2 \log |\Sigma|
             -1/2 Tr(V_0^{-1} A^\top \Sigma^{-1} A)
@@ -139,11 +139,11 @@ class MatrixNormalInverseWishart(tfp.distributions.Distribution):
 
     It is conjugate prior for the weights
     `A` and covariance `Sigma` in a Bayesian multivariate linear regression,
-    ..math::
+    .. math::
         y | x ~ N(Ax, Sigma)
 
     Expanding the linear regression likelihood,
-    ..math::
+    .. math::
         \log p(y | x) =
             -1/2 \log |\Sigma|
             -1/2 Tr((y - Ax)^\top \Sigma^{-1} (y - Ax))
@@ -163,7 +163,7 @@ class MatrixNormalInverseWishart(tfp.distributions.Distribution):
         t(x)_3 = y y^\top,
     Collecting terms, the MNIW prior contributes the following pseudo-counts
     and pseudo-observations,
-    ..math::
+    .. math::
         n_1 = \nu_0 + n + p + 1
         s_1 = V_0^{-1}
         s_2 = M_0 V_0^{-1}
@@ -209,13 +209,13 @@ class MatrixNormalInverseWishart(tfp.distributions.Distribution):
         r"""Compute the prior log probability of LinearRegression weights
         and covariance matrix under this MNIW prior.  The IW pdf is provided
         in scipy.stats.  The matrix normal pdf is,
-        ..math::
+        .. math::
             \log p(A | M, \Sigma, V) =
                 -1/2 Tr \left[ V^{-1} (A - M)^\top \Sigma^{-1} (A - M) \right]
                 -np/2 \log (2\pi) -n/2 \log |V| -p/2 \log |\Sigma|
               = -1/2 Tr(B B^T) -np/2 \log (2\pi) -n/2 \log |V| -p/2 \log |\Sigma|
         where
-        ..math::
+        .. math::
             B = U^{-1/2} (A - M) (V^T)^{-1/2}
         """
         weights, covariance_matrix = data

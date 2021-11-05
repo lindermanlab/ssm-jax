@@ -1,5 +1,5 @@
 Base Model Prototype
 ====================
 
-.. automodule:: ssm.models.base
+.. automodule:: ssm.base
     :members:

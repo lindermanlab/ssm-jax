@@ -9,7 +9,7 @@ class InitialCondition:
     """
     Base class for initial state distributions of an HMM.
 
-    ..math:
+    .. math::
         p(z_1 \mid u_t)
 
     where u_t are optional covariates at time t.

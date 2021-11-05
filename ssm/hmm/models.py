@@ -15,13 +15,36 @@ import warnings
 @register_pytree_node_class
 class GaussianHMM(HMM):
     def __init__(self,
-                 num_states,
-                 num_emission_dims=None,
-                 initial_state_probs=None,
-                 transition_matrix=None,
-                 emission_means=None,
-                 emission_covariances=None,
-                 seed=None):
+                 num_states: int,
+                 num_emission_dims: int=None,
+                 initial_state_probs: np.ndarray=None,
+                 transition_matrix: np.ndarray=None,
+                 emission_means: np.ndarray=None,
+                 emission_covariances: np.ndarray=None,
+                 seed: jr.PRNGKey=None):
+        r"""HMM with Gaussian emissions.
+        
+        .. math::
+            p(x_t | z_t = k) \sim \mathcal{N}(\mu_k, \Sigma_k)
+        
+        The GaussianHMM can be initialized by specifying each parameter explicitly,
+        or you can simply specify the ``num_states``, ``num_emission_dims``, and ``seed``
+        to create a GaussianHMM with generic, randomly initialized parameters.
+
+        Args:
+            num_states (int): number of discrete latent states
+            num_emission_dims (int, optional): number of emission dims. Defaults to None.
+            initial_state_probs (np.ndarray, optional): initial state probabilities 
+                with shape :math:`(\text{num_states},)`. Defaults to None.
+            transition_matrix (np.ndarray, optional): transition matrix
+                with shape :math:`(\text{num_states}, \text{num_states})`. Defaults to None.
+            emission_means (np.ndarray, optional): specifies emission means
+                with shape :math:`(\text{num_states}, \text{emission_dims})`. Defaults to None.
+            emission_covariances (np.ndarray, optional): specifies emissions covariances
+                with shape :math:`(\text{num_states}, \text{emission_dims}, \text{emission_dims})`.
+                Defaults to None.
+            seed (jr.PRNGKey, optional): random seed. Defaults to None.
+        """
 
         if initial_state_probs is None:
             initial_state_probs = np.ones(num_states) / num_states
@@ -71,12 +94,32 @@ class GaussianHMM(HMM):
 @register_pytree_node_class
 class PoissonHMM(HMM):
     def __init__(self,
-                 num_states,
-                 num_emission_dims=None,
-                 initial_state_probs=None,
-                 transition_matrix=None,
-                 emission_rates=None,
-                 seed=None):
+                 num_states: int,
+                 num_emission_dims: np.ndarray=None,
+                 initial_state_probs: np.ndarray=None,
+                 transition_matrix: np.ndarray=None,
+                 emission_rates: np.ndarray=None,
+                 seed: jr.PRNGKey=None):
+        r"""HMM with Poisson emissions.
+        
+        .. math::
+            p(x_t | z_t = k) \sim \text{Po}(\lambda=\lambda_k)
+        
+        The PoissonHMM can be initialized by specifying each parameter explicitly,
+        or you can simply specify the ``num_states``, ``num_emission_dims``, and ``seed``
+        to create a GaussianHMM with generic, randomly initialized parameters.
+
+        Args:
+            num_states (int): number of discrete latent states
+            num_emission_dims (int, optional): number of emission dims. Defaults to None.
+            initial_state_probs (np.ndarray, optional): initial state probabilities 
+                with shape :math:`(\text{num_states},)`. Defaults to None.
+            transition_matrix (np.ndarray, optional): transition matrix
+                with shape :math:`(\text{num_states}, \text{num_states})`. Defaults to None.
+            emission_rates (np.ndarray, optional): specifies Poisson emission rates
+                with shape :math:`(\text{num_states}, \text{emission_dims})`. Defaults to None.
+            seed (jr.PRNGKey, optional): random seed. Defaults to None.
+        """
 
         if initial_state_probs is None:
             initial_state_probs = np.ones(num_states) / num_states

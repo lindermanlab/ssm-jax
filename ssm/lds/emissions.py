@@ -18,7 +18,7 @@ class Emissions:
     """
     Base class of emission distribution of an LDS
 
-    ..math:
+    .. math::
         p_t(y_t \mid x_t, u_t)
 
     where u_t are optional covariates.

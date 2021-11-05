@@ -5,6 +5,7 @@ from jax.tree_util import tree_map, register_pytree_node_class
 from tensorflow_probability.substrates import jax as tfp
 
 from ssm.hmm.emissions import Emissions
+from ssm.hmm.posterior import StationaryHMMPosterior
 import ssm.distributions.expfam as expfam
 import ssm.distributions as ssmd
 tfd = tfp.distributions
@@ -12,14 +13,35 @@ tfd = tfp.distributions
 
 @register_pytree_node_class
 class AutoregressiveEmissions(Emissions):
-
     def __init__(self,
-                 num_states,
-                 weights=None,
-                 biases=None,
-                 covariances=None,
+                 num_states: int,
+                 weights: np.ndarray=None,
+                 biases: np.ndarray=None,
+                 covariances: np.ndarray=None,
                  emissions_distribution: ssmd.GaussianLinearRegression=None,
                  emissions_distribution_prior: ssmd.MatrixNormalInverseWishart=None) -> None:
+        """Gaussian linear regression emissions class for Autoregressive HMM.
+        
+        Can be instantiated by specifying the parameters or you can pass in 
+        the initialized distribution object directly to ``emissions_distribution``.
+        
+        Optionally takes an emissions prior distribution.
+
+        Args:
+            num_states (int): number of discrete states
+            weights (np.ndarray, optional): state-based weight matrix for Gaussian linear regression 
+                of shape :math:`(\text{num_states}, \text{num_emission_dims}, \text{num_emission_dims} * \text{num_lags})`.
+                Defaults to None.
+            biases (np.ndarray, optional): state-based bias vector for Gaussian linear regression
+                of shape :math:`(\text{num_states}, \text{num_emission_dims})`. 
+                Defaults to None.
+            covariances (np.ndarray, optional): state-based covariances for Gaussian linear regression
+                of shape :math:`(\text{num_states}, \text{num_emission_dims}, \text{num_emission_dims})`.
+                Defaults to None.
+            emissions_distribution (ssmd.GaussianLinearRegression, optional): initialized emissions distribution. Defaults to None.
+            emissions_distribution_prior (ssmd.MatrixNormalInverseWishart, optional): emissions prior distribution. Defaults to None.
+        """
+        
         super(AutoregressiveEmissions, self).__init__(num_states)
 
         params_given = None not in (weights, biases, covariances)
@@ -45,7 +67,17 @@ class AutoregressiveEmissions(Emissions):
         #     self._distribution_prior = emissions_distribution_prior
         self._distribution_prior = emissions_distribution_prior
 
-    def distribution(self, state, covariates=None):
+    def distribution(self, state: int, covariates: np.ndarray=None) -> ssmd.GaussianLinearRegression:
+        """Returns the emissions distribution conditioned on a given state.
+
+        Args:
+            state (int): latent state
+            covariates (np.ndarray, optional): optional covariates.
+                Not yet supported. Defaults to None.
+
+        Returns:
+            emissions_distribution (ssmd.GaussianLinearRegression): the emissions distribution
+        """
         return self._distribution[state]
 
     def log_probs_scan(self, data):
@@ -91,10 +123,20 @@ class AutoregressiveEmissions(Emissions):
         log_probs = np.row_stack([np.zeros((num_lags, num_states)), log_probs])
         return log_probs
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, dataset: np.ndarray, posteriors: StationaryHMMPosterior) -> None:
+        r"""Update the distribution (in-place) with an M step.
+        
+        Operates over a batch of data.
+
+        Args:
+            dataset (np.ndarray): observed data 
+                of shape :math:`(\text{batch_dim}, \text{num_timesteps}, \text{emissions_dim})`.
+            posteriors (StationaryHMMPosterior): HMM posterior object
+                with batch_dim to match dataset.
         """
-        Can we compute the expected sufficient statistics with a convolution or scan?
-        """
+        
+        # Can we compute the expected sufficient statistics with a convolution or scan?
+        
         # weights are shape (num_states, dim, dim * lag)
         num_states = self._distribution.weights.shape[0]
         dim = self._distribution.weights.shape[1]

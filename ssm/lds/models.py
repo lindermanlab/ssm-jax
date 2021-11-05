@@ -1,11 +1,3 @@
-"""
-LDS Model Classes
-=================
-
-* LDS
-* GaussianLDS
-
-"""
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
@@ -23,17 +15,39 @@ from ssm.utils import Verbosity, format_dataset, random_rotation
 @register_pytree_node_class
 class GaussianLDS(LDS):
     def __init__(self,
-                 num_latent_dims,
-                 num_emission_dims=None,
-                 initial_state_mean=None,
-                 initial_state_scale_tril=None,
-                 dynamics_weights=None,
-                 dynamics_bias=None,
-                 dynamics_scale_tril=None,
-                 emission_weights=None,
-                 emission_bias=None,
-                 emission_scale_tril=None,
-                 seed=None):
+                 num_latent_dims: int,
+                 num_emission_dims: int=None,
+                 initial_state_mean: np.ndarray=None,
+                 initial_state_scale_tril: np.ndarray=None,
+                 dynamics_weights: np.ndarray=None,
+                 dynamics_bias: np.ndarray=None,
+                 dynamics_scale_tril: np.ndarray=None,
+                 emission_weights: np.ndarray=None,
+                 emission_bias: np.ndarray=None,
+                 emission_scale_tril: np.ndarray=None,
+                 seed: jr.PRNGKey=None):
+        """LDS with Gaussian emissions.
+        
+        .. math::
+            p(y_t | x_t) \sim \mathcal{N}(\mu_{x_t}, \Sigma_{x_t})
+            
+        The GaussianLDS can be initialized by specifying each parameter explicitly,
+        or you can simply specify the ``num_latent_dims``, ``num_emission_dims``, and ``seed``
+        to create a GaussianLDS with generic, randomly initialized parameters.
+
+        Args:
+            num_latent_dims (int): number of latent dims
+            num_emission_dims (int, optional): number of emissions dims. Defaults to None.
+            initial_state_mean (np.ndarray, optional): [description]. Defaults to None.
+            initial_state_scale_tril (np.ndarray, optional): [description]. Defaults to None.
+            dynamics_weights (np.ndarray, optional): [description]. Defaults to None.
+            dynamics_bias (np.ndarray, optional): [description]. Defaults to None.
+            dynamics_scale_tril (np.ndarray, optional): [description]. Defaults to None.
+            emission_weights (np.ndarray, optional): [description]. Defaults to None.
+            emission_bias (np.ndarray, optional): [description]. Defaults to None.
+            emission_scale_tril (np.ndarray, optional): [description]. Defaults to None.
+            seed (jr.PRNGKey, optional): [description]. Defaults to None.
+        """
 
         if initial_state_mean is None:
             initial_state_mean = np.zeros(num_latent_dims)
@@ -92,8 +106,6 @@ class GaussianLDS(LDS):
         return R_sqrt @ R_sqrt.T
 
     def natural_parameters(self, data):
-        """ TODO
-        """
         seq_len = data.shape[0]
 
         # Shorthand names for parameters
@@ -158,20 +170,46 @@ class GaussianLDS(LDS):
 
     @format_dataset
     def fit(self, dataset, method="em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
+        r"""Fit the GaussianLDS to a dataset using the specified method.
+        
+        Note: because the observations are Gaussian, we can perform exact EM for a GaussianEM
+        (i.e. the model is conjugate).
 
-            model = self
-            kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
+        Args:
+            dataset (np.ndarray): observed data
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
+            method (str, optional): model fit method. 
+                Must be one of ["em", "laplace_em"]. Defaults to "em".
+            rng (jr.PRNGKey, optional): Random seed.
+                Defaults to None.
+            num_iters (int, optional): number of fit iterations.
+                Defaults to 100.
+            tol (float, optional): tolerance in log probability to determine convergence. 
+                Defaults to 1e-4.
+            verbosity (Verbosity, optional): print verbosity.
+                Defaults to Verbosity.DEBUG.
 
-            if method == "em":
-                elbos, lds, posteriors = em(model, dataset, **kwargs)
-            elif method == "laplace_em":
-                if rng is None:
-                    raise ValueError("Laplace EM requires a PRNGKey. Please provide an rng to fit.")
-                elbos, lds, posteriors = laplace_em(rng, model, dataset, **kwargs)
-            else:
-                raise ValueError(f"Method {method} is not recognized/supported.")
+        Raises:
+            ValueError: if fit method is not reocgnized
 
-            return elbos, lds, posteriors
+        Returns:
+            elbos (np.ndarray): elbos at each fit iteration
+            model (LDS): the fitted model
+            posteriors (LDSPosterior): the fitted posteriors
+        """
+        model = self
+        kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
+
+        if method == "em":
+            elbos, lds, posteriors = em(model, dataset, **kwargs)
+        elif method == "laplace_em":
+            if rng is None:
+                raise ValueError("Laplace EM requires a PRNGKey. Please provide an rng to fit.")
+            elbos, lds, posteriors = laplace_em(rng, model, dataset, **kwargs)
+        else:
+            raise ValueError(f"Method {method} is not recognized/supported.")
+
+        return elbos, lds, posteriors
 
 
 
@@ -187,8 +225,30 @@ class PoissonLDS(LDS):
                  dynamics_scale_tril=None,
                  emission_weights=None,
                  emission_bias=None,
-                 emission_scale_tril=None,
+                 emission_scale_tril=None,  # TODO: remove
                  seed=None):
+        r"""LDS with Poisson emissions.
+        
+        .. math::
+            p(y_t | x_t) \sim \text{Po}(\lambda = \lambda_{x_t})
+            
+        The PoissonLDS can be initialized by specifying each parameter explicitly,
+        or you can simply specify the ``num_latent_dims``, ``num_emission_dims``, and ``seed``
+        to create a GaussianLDS with generic, randomly initialized parameters.
+
+        Args:
+            num_latent_dims (int): number of latent dims
+            num_emission_dims (int, optional): number of emissions dims. Defaults to None.
+            initial_state_mean (np.ndarray, optional): [description]. Defaults to None.
+            initial_state_scale_tril (np.ndarray, optional): [description]. Defaults to None.
+            dynamics_weights (np.ndarray, optional): [description]. Defaults to None.
+            dynamics_bias (np.ndarray, optional): [description]. Defaults to None.
+            dynamics_scale_tril (np.ndarray, optional): [description]. Defaults to None.
+            emission_weights (np.ndarray, optional): [description]. Defaults to None.
+            emission_bias (np.ndarray, optional): [description]. Defaults to None.
+            emission_scale_tril (np.ndarray, optional): [description]. Defaults to None.
+            seed (jr.PRNGKey, optional): [description]. Defaults to None.
+        """
 
         if initial_state_mean is None:
             initial_state_mean = np.zeros(num_latent_dims)
