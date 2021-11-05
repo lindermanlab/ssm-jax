@@ -1,6 +1,25 @@
 # SSM: Bayesian learning and inference for state space models
 
+[![Tests](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/python-package-conda.yml/badge.svg)](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/python-package-conda.yml)
+
+
 Refactoring the SSM code base to use Jax.
+
+# Project Structure
+```bash
+.
+├── docs                      # [documentation]
+├── notebooks                 # [example jupyter notebooks]
+├── ssm                       # [main code repository]
+│   ├── hmm                       # hmm   models
+│   ├── arhmm                     # arhmm models
+│   ├── lds                       # lds   models
+│   ├── slds                      # slds  models
+│   ├── inference                 # inference code
+│   ├── distributions             # distributions (generally, extensions of tfp distributions)
+└── tests                     # [tests]
+    └── timing_comparisons        # benchmarking code (including comparisons to SSM_v0)
+ ```
 
 # Installation for Development
 
@@ -13,3 +32,6 @@ conda activate ssm_jax
 pip install -r requirements.txt
 ```
 
+# Documentation
+
+[Click here for documentation](https://web.stanford.edu/~schlager/ssm_jax/)
