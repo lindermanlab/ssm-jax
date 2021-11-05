@@ -2,6 +2,22 @@
 
 Refactoring the SSM code base to use Jax.
 
+# Project Structure
+```bash
+.
+├── docs                      # [documentation]
+├── notebooks                 # [example jupyter notebooks]
+├── ssm                       # [main code repository]
+│   ├── hmm                       # hmm models
+│   ├── arhmm                     # arhm models
+│   ├── lds                       # lds models
+│   ├── slds                      # slds models
+│   ├── inference                 # inference code
+│   ├── distributions             # distributions (generally, extensions of tfp distributions)
+└── tests                     # [tests]
+    └── timing_comparisons        # benchmarking code (including comparisons to SSM_v0)
+ ```
+
 # Installation for Development
 
 ```bash
