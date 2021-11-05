@@ -13,3 +13,6 @@ conda activate ssm_jax
 pip install -r requirements.txt
 ```
 
+# Documentation
+
+[Click here for documentation](https://web.stanford.edu/~schlager/ssm_jax/)
