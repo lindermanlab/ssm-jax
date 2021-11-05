@@ -1,4 +1,4 @@
-name: Run Flake8 Lint and Quick PyTests
+name: Tests
 
 # sets workflow to be manual-run only
 on:
