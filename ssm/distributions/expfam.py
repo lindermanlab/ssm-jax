@@ -26,6 +26,124 @@ ExponentialFamily = namedtuple(
 EXPFAM_DISTRIBUTIONS = dict()
 
 
+class ConjugatePrior:
+    r"""Interface for a conjugate prior distribution.
+
+    TODO: give more detail
+    """
+    @classmethod
+    def from_natural_parameters(cls, natural_params):
+        """
+        Construct an instance of the prior distribution given
+        its natural parameters
+        """
+        raise NotImplementedError
+
+    @property
+    def natural_parameters(self):
+        """Return the natural parameters of the distribution.
+        These become pseudo-observations of the sufficient statistics
+        of the conjugate distribution.
+        """
+        raise NotImplementedError
+
+
+
+
+class ExponentialFamilyDistribution:
+    r"""An interface for exponential family distributions
+    with the necessary functionality for MAP estimation.
+
+    ..math:
+        p(x) = h(x) \exp\{t(x)^\top \eta - A(\eta)}
+
+    where
+
+    :math:`h(x)` is the base measure
+    :math:`t(x)` are sufficient statistics
+    :math:`\eta` are natural parameters
+    :math:`A(\eta)` is the log normalizer
+
+    """
+    @classmethod
+    def from_params(cls, params, **kwargs):
+        """Create an instance parameters of the distribution
+        with given parameters (e.g. the mode of a posterior distribution
+        on those parameters). This function might have to do some conversion,
+        e.g. from variances to scales.
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def log_normalizer(params, **kwargs):
+        """
+        Return the log normalizer of the distribution.
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def sufficient_statistics(data, **kwargs):
+        """
+        Return the sufficient statistics for each datapoint in an array,
+        This function should assume the leading dimensions give the batch
+        size.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def fit_with_stats(cls,
+                       sufficient_statistics,
+                       num_datapoints,
+                       prior=None,
+                       **kwargs):
+        """Compute the maximum a posteriori (MAP) estimate of the distribution
+        parameters, given the sufficient statistics of the data and the number
+        of datapoints.
+        """
+        # Compute the posterior distribution given sufficient statistics
+        posterior_stats = sufficient_statistics
+        posterior_counts = num_datapoints
+
+        # Add prior stats if given
+        if prior is not None:
+            posterior_stats = sum_tuples(prior.pseudo_obs, posterior_stats)
+            posterior_counts += prior.pseudo_counts
+
+        # Construct the posterior
+        posterior_class = get_expfam(cls)
+        posterior = posterior_class.from_stats(posterior_stats, posterior_counts, **kwargs)
+
+        # Return an instance of this distribution using the posterior mode parameters
+        return cls.from_params(posterior.mode(), **kwargs)
+
+    @classmethod
+    def fit(cls, dataset, weights=None, prior=None, **kwargs):
+        """Compute the maximum a posteriori (MAP) estimate of the distribution
+        parameters.  For uninformative priors, this reduces to the maximum
+        likelihood estimate.
+        """
+        # Compute the sufficient statistics and the number of datapoints
+        suff_stats = None
+        num_datapoints = 0
+        for data_dict, these_weights in zip(dataset, weights):
+            these_stats = cls.sufficient_statistics(**data_dict, **kwargs)
+
+            # weight the statistics if weights are given
+            if these_weights is not None:
+                these_stats = tuple(np.tensordot(these_weights, s, axes=(0, 0))
+                                    for s in these_stats)
+            else:
+                these_stats = tuple(s.sum(axis=0) for s in these_stats)
+
+            # add to our accumulated statistics
+            suff_stats = sum_tuples(suff_stats, these_stats)
+
+            # update the number of datapoints
+            num_datapoints += these_weights.sum()
+
+        return cls.fit_with_stats(suff_stats, num_datapoints, prior=prior, **kwargs)
+
+
 def compute_conditional_with_stats(distribution_name,
                                    sufficient_statistics,
                                    num_datapoints,

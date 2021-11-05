@@ -4,16 +4,12 @@ HMM Model Classes
 
 Module defining model behavior for Hidden Markov Models (HMMs).
 """
-from typing import Any
-Array = Any
-
 import jax.numpy as np
 import jax.random as jr
 from jax import vmap, lax
 from jax.tree_util import register_pytree_node_class
 
 from ssm.hmm.base import HMM
-from ssm.hmm.posterior import StationaryHMMPosterior
 
 @register_pytree_node_class
 class AutoregressiveHMM(HMM):
