@@ -1,8 +1,9 @@
 # SSM: Bayesian learning and inference for state space models
 
-Refactoring the SSM code base to use Jax.
-
 [![Tests](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/python-package-conda.yml/badge.svg)](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/python-package-conda.yml)
+
+
+Refactoring the SSM code base to use Jax.
 
 # Project Structure
 ```bash
