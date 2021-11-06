@@ -1,4 +1,3 @@
-import math
 import jax.numpy as np
 import jax.scipy as spsp
 from jax import vmap
@@ -112,6 +111,7 @@ class StationaryTransitions(Transitions):
         stats += self._prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
         self._distribution = ssmd.Categorical.from_params(conditional.mode())
+
 
 @register_pytree_node_class
 class StationaryStickyTransitions(Transitions):
