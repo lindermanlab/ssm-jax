@@ -1,3 +1,4 @@
+import math
 import jax.numpy as np
 import jax.scipy as spsp
 from jax import vmap
@@ -176,7 +177,7 @@ class StationaryStickyTransitions(Transitions):
         return self._distribution.probs_parameter()
 
     def distribution(self, state):
-       return self._distribution[state]
+        return self._distribution[state]
 
     def m_step(self, dataset, posteriors):
 
