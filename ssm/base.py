@@ -5,7 +5,7 @@ In SSM-JAX, a state-space model is represented as a class with methods defining
 the ``initial_distribution``, ``dynamics_distribution``, and ``emissions_distribution``
 respectively.
 """
-
+import jax.numpy as np
 import jax.random as jr
 from jax import lax, vmap
 from jax.tree_util import tree_map
@@ -73,15 +73,15 @@ class SSM(object):
 
         Args:
             states: latent states :math:`x_{1:T}`
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{latent_dim})` 
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{latent_dim})`
             data: observed data :math:`y_{1:T}`
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
 
         Returns:
             lp: log joint probability :math:`\log p(x, y)`
                 of shape :math:`(\text{batch]},)`
         """
-        
+
         def _log_probability_single(_states, _data):
             lp = 0
             # Get the first timestep probability
@@ -98,13 +98,31 @@ class SSM(object):
 
             (_, lp), _ = lax.scan(_step, (initial_state, lp), (_states[1:], _data[1:]))
             return lp
-        
+
         if data.ndim > 2:
             lp = vmap(_log_probability_single)(states, data)
         else:
             lp = _log_probability_single(states, data)
-            
+
         return lp
+
+    @format_dataset
+    def elbo(self, rng, dataset, posteriors, num_samples=1):
+        """
+        Compute an _evidence lower bound_ (ELBO) using the joint probability and an
+        approximate posterior :math:`q(x) \\approx p(x | y)`:
+
+        .. math:
+            log p(y) \geq \mathbb{E}_q \left[\log p(y, x) - \log q(x) \\right]
+
+        While in some cases the expectation can be computed in closed form, in
+        general we will approximate it with ordinary Monte Carlo.
+        """
+        state_samples = posteriors.sample(seed=rng, sample_shape=(num_samples,))
+        _elbo_single = lambda sample: \
+            np.sum(self.log_probability(sample, dataset) - posteriors.log_prob(sample))
+        elbos = vmap(_elbo_single)(state_samples)
+        return np.mean(elbos)
 
     def sample(self, key: jr.PRNGKey, num_steps: int, covariates=None, initial_state=None, num_samples: int=1):
         r"""
@@ -124,9 +142,9 @@ class SSM(object):
 
         Returns:
             states: an array of latent states across time :math:`x_{1:T}`
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{latent_dim})` 
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{latent_dim})`
             emissions: an array of observations across time :math:`y_{1:T}`
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
         """
 
         def _sample(key, covariates=None, initial_state=None):

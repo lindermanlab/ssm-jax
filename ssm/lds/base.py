@@ -1,7 +1,7 @@
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
-from ssm.inference.laplace_em import _laplace_e_step, laplace_em
+from ssm.inference.laplace_em import laplace_approximation, laplace_em
 from ssm.base import SSM
 
 from ssm.utils import Verbosity, format_dataset
@@ -23,7 +23,7 @@ class LDS(SSM):
 
         Args:
             num_states (int): number of discrete states
-            initial_condition (initial.InitialCondition): 
+            initial_condition (initial.InitialCondition):
                 initial condition object defining :math:`p(z_1)`
             transitions (transitions.Transitions):
                 transitions object defining :math:`p(z_t|z_{t-1})`
@@ -90,16 +90,16 @@ class LDS(SSM):
 
     def emissions_distribution(self, state):
         return self._emissions.distribution(state)
-    
+
     ### Methods for posterior inference
     def initialize(self, dataset, key, method):
         """Initialize the LDS parameters.
         NOTE: Not yet implemented.
         """
         raise NotImplementedError
-    
+
     def approximate_posterior(self, data, initial_states=None):
-        return _laplace_e_step(self, data, initial_states)
+        return laplace_approximation(self, data, initial_states)
 
     def m_step(self, dataset, posteriors, rng=None):
         # self._initial_condition.m_step(dataset, posteriors)  # TODO initial dist needs prior
@@ -107,27 +107,27 @@ class LDS(SSM):
         self._emissions.m_step(dataset, posteriors, rng=rng)
 
     @format_dataset
-    def fit(self, dataset:np.ndarray, 
-            method: str="laplace_em", 
-            rng: jr.PRNGKey=None, 
-            num_iters: int=100, 
-            tol: float=1e-4, 
+    def fit(self, dataset:np.ndarray,
+            method: str="laplace_em",
+            rng: jr.PRNGKey=None,
+            num_iters: int=100,
+            tol: float=1e-4,
             verbosity=Verbosity.DEBUG):
         r"""Fit the LDS to a dataset using the specified method.
-        
+
         Generally speaking, we cannot perform exact EM for an LDS with arbitrary emissions.
         However, for an LDS with generalized linear model (GLM) emissions, we can perform Laplace EM.
 
         Args:
             dataset (np.ndarray): observed data
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
-            method (str, optional): model fit method. 
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
+            method (str, optional): model fit method.
                 Must be one of ["laplace_em"]. Defaults to "laplace_em".
             rng (jr.PRNGKey, optional): Random seed.
                 Defaults to None.
             num_iters (int, optional): number of fit iterations.
                 Defaults to 100.
-            tol (float, optional): tolerance in log probability to determine convergence. 
+            tol (float, optional): tolerance in log probability to determine convergence.
                 Defaults to 1e-4.
             verbosity (Verbosity, optional): print verbosity.
                 Defaults to Verbosity.DEBUG.
@@ -147,7 +147,7 @@ class LDS(SSM):
             raise ValueError(f"Method {method} is not recognized/supported.")
 
         return elbos, lds, posteriors
-    
+
     def __repr__(self):
         return f"<ssm.lds.{type(self).__name__} latent_dim={self.latent_dim} "\
             f"emissions_dim={self.emissions_dim}>"

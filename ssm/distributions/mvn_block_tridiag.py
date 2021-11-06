@@ -240,9 +240,9 @@ class MultivariateNormalBlockTridiag(tfd.Distribution):
         return self._expected_states_next_states
 
     def _log_prob(self, data, **kwargs):
-        lp = -0.5 * np.einsum('...ti,tij,...tj->...', data, self._precision_diag_blocks, data)
-        lp += -np.einsum('...ti,tij,...tj->...', data[1:], self._precision_lower_diag_blocks, data[:-1])
-        lp += np.einsum('...ti,ti->...', data, self._linear_potential)
+        lp = -0.5 * np.einsum('...ti,...tij,...tj->...', data, self._precision_diag_blocks, data)
+        lp += -np.einsum('...ti,...tij,...tj->...', data[...,1:,:], self._precision_lower_diag_blocks, data[...,:-1,:])
+        lp += np.einsum('...ti,...ti->...', data, self._linear_potential)
         lp -= self.log_normalizer
         return lp
 
@@ -301,15 +301,14 @@ class MultivariateNormalBlockTridiag(tfd.Distribution):
             # Transpose to be (num_samples, num_timesteps, dim)
             return np.transpose(x, (1, 0, 2))
 
-
-        # batch mode
+        # TODO: Handle arbitrary batch shapes
         if filtered_Js.ndim == 4:
+            # batch mode
             samples = vmap(sample_single)(seed, filtered_Js, filtered_hs, J_lower_diag)
             # Transpose to be (num_samples, num_batches, num_timesteps, dim)
             samples = np.transpose(samples, (1, 0, 2, 3))
-
-        # non-batch mode
         else:
+            # non-batch mode
             samples = sample_single(seed, filtered_Js, filtered_hs, J_lower_diag)
         return samples
 
