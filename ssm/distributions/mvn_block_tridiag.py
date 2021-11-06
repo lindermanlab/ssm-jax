@@ -1,18 +1,14 @@
-"""
-https://github.com/tensorflow/probability/issues/1271
-"""
-
 import jax.numpy as np
 import jax.random as jr
 from jax import lax, value_and_grad, vmap
 from jax.scipy.linalg import solve_triangular
-from jax.tree_util import register_pytree_node_class
 
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
+tfd = tfp.distributions
 
 
-def _forward_pass(J_diag, J_lower_diag, h):
+def block_tridiag_mvn_log_normalizer(J_diag, J_lower_diag, h):
     """ TODO
     """
     # extract dimensions
@@ -54,13 +50,15 @@ def _forward_pass(J_diag, J_lower_diag, h):
     (_, _, log_Z), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, 0), np.arange(num_timesteps))
     return log_Z, (filtered_Js, filtered_hs)
 
-@register_pytree_node_class
-class MultivariateNormalBlockTridiag:
+
+# @register_pytree_node_class
+class MultivariateNormalBlockTridiag(tfd.Distribution):
     """
-    Multivariate normal distribution whose _precision_ matrix is
+    The Gaussian linear dynamical system's posterior distribution over latent states
+    is a multivariate normal distribution whose _precision_ matrix is
     block tridiagonal.
 
-        x ~ N(\mu, \Sigma)
+        x | y ~ N(\mu, \Sigma)
 
     where
 
@@ -70,8 +68,6 @@ class MultivariateNormalBlockTridiag:
                            [0,         0,         \ddots,  \ddots,  ],
 
     is block tridiagonal, and J_{t, t+1} = J_{t+1, t}^T.
-
-    This will serve as a posterior distribution over latent states of an LDS.
 
     The pdf is
 
@@ -90,83 +86,159 @@ class MultivariateNormalBlockTridiag:
         E[x_{t+1} x_t^T] = -\grad_{J_{t+1,t}} \log Z(J, h)
 
     These are the expectations we need for EM.
-
     """
     def __init__(self,
-                 precision_diag_blocks=None,
-                 precision_lower_diag_blocks=None,
-                 linear_potential=None,
-                 mean=None,
+                 precision_diag_blocks,
+                 precision_lower_diag_blocks,
+                 linear_potential,
+                 log_normalizer,
+                 filtered_precisions,
+                 filtered_linear_potentials,
+                 expected_states,
+                 expected_states_squared,
+                 expected_states_next_states,
                  validate_args=False,
                  allow_nan_stats=True,
                  name="MultivariateNormalBlockTridiag",
              ) -> None:
-        assert precision_diag_blocks is not None
-        assert precision_diag_blocks.ndim == 3
-        # TODO: extend to have batches?
-        self._num_timesteps, self._dim = precision_diag_blocks.shape[:2]
-        assert precision_diag_blocks.shape[2] == self._dim
+
         self._precision_diag_blocks = precision_diag_blocks
-
-        assert precision_lower_diag_blocks is not None
-        assert precision_lower_diag_blocks.shape == (self._num_timesteps - 1, self._dim, self._dim)
         self._precision_lower_diag_blocks = precision_lower_diag_blocks
-
-        assert mean is not None or linear_potential is not None
-        if mean is not None and linear_potential is None:
-            linear_potential = np.einsum('tij,tj->ti', precision_diag_blocks, mean)
-            linear_potential = linear_potential.at[:-1].add(
-                np.einsum('tji,tj->ti', precision_lower_diag_blocks, mean[1:]))
-            linear_potential = linear_potential.at[1:].add(
-                np.einsum('tij,tj->ti', precision_lower_diag_blocks, mean[:-1]))
-        else:
-            assert linear_potential.shape == (self._num_timesteps, self._dim)
         self._linear_potential = linear_potential
+        self._log_normalizer = log_normalizer
+        self._filtered_precisions = filtered_precisions
+        self._filtered_linear_potentials = filtered_linear_potentials
+        self._expected_states = expected_states
+        self._expected_states_squared = expected_states_squared
+        self._expected_states_next_states = expected_states_next_states
 
-        # Keep track of whether or not we've run message passing
-        self.ran_message_passing = False
-
-    @classmethod
-    def restore(cls, children, aux_data):
-        obj = object.__new__(cls)
-        obj._precision_diag_blocks = children[0]
-        obj._precision_lower_diag_blocks = children[1]
-        obj._linear_potential = children[2]
-        obj._num_timesteps = aux_data[0]
-        obj._dim = aux_data[0]
-        obj.ran_message_passing = False
-        return obj
-
-        # super().__init__(
-        #     dtype=precision_diag_blocks.dtype,
-        #     validate_args=validate_args,
-        #     allow_nan_stats=allow_nan_stats,
-        #     reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
-        #     parameters=dict(precision_diag_blocks=self._precision_diag_blocks,
-        #                     precision_lower_diag_blocks=self._precision_lower_diag_blocks,
-        #                     linear_potential=self._linear_potential),
-        #     name=name,
-        # )
-
-    # @classmethod
-    # def _parameter_properties(cls, dtype, num_classes=None):
-    #     # pylint: disable=g-long-lambda
-    #     return dict(
-    #         precision_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
-    #         precision_lower_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
-    #         linear_potential=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
-    #     )
-
-    def tree_flatten(self):
-        children = (self._precision_diag_blocks,
-                    self._precision_lower_diag_blocks,
-                    self._linear_potential)
-        aux_data = (self._num_timesteps, self._dim)
-        return children, aux_data
+        # We would detect the dtype dynamically but that would break vmap
+        # see https://github.com/tensorflow/probability/issues/1271
+        dtype = np.float32
+        super(MultivariateNormalBlockTridiag, self).__init__(
+            dtype=dtype,
+            validate_args=validate_args,
+            allow_nan_stats=allow_nan_stats,
+            reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            parameters=dict(precision_diag_blocks=self._precision_diag_blocks,
+                            precision_lower_diag_blocks=self._precision_lower_diag_blocks,
+                            linear_potential=self._linear_potential,
+                            log_normalizer=self._log_normalizer,
+                            filtered_precisions=self._filtered_precisions,
+                            filtered_linear_potentials=self._filtered_linear_potentials,
+                            expected_states=self._expected_states,
+                            expected_states_squared=self._expected_states_squared,
+                            expected_states_next_states=self._expected_states_next_states),
+            name=name,
+        )
 
     @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        return cls.restore(children, aux_data)
+    def _parameter_properties(cls, dtype, num_classes=None):
+        # pylint: disable=g-long-lambda
+        return dict(
+            precision_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=3),
+            precision_lower_diag_blocks=tfp.internal.parameter_properties.ParameterProperties(event_ndims=3),
+            linear_potential=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
+            log_normalizer=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+            filtered_precisions=tfp.internal.parameter_properties.ParameterProperties(event_ndims=3),
+            filtered_linear_potentials=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
+            expected_states=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
+            expected_states_squared=tfp.internal.parameter_properties.ParameterProperties(event_ndims=3),
+            expected_states_next_states=tfp.internal.parameter_properties.ParameterProperties(event_ndims=3),
+        )
+
+    @classmethod
+    def infer(cls,
+              precision_diag_blocks,
+              precision_lower_diag_blocks,
+              linear_potential):
+        assert precision_diag_blocks.ndim == 3
+        num_timesteps, dim = precision_diag_blocks.shape[:2]
+        assert precision_diag_blocks.shape[2] == dim
+        assert precision_lower_diag_blocks.shape == (num_timesteps - 1, dim, dim)
+        assert linear_potential.shape == (num_timesteps, dim)
+
+        # Run message passing code to get the log normalizer, the filtering potentials,
+        # and the expected values of x. Technically, the natural parameters are -1/2 J
+        # so we need to do a little correction of the gradients to get the expectations.
+        f = value_and_grad(block_tridiag_mvn_log_normalizer, argnums=(0, 1, 2), has_aux=True)
+        (log_normalizer, (filtered_precisions, filtered_linear_potentials)), grads = \
+            f(precision_diag_blocks, precision_lower_diag_blocks, linear_potential)
+
+        # Correct for the -1/2 J -> J implementation
+        expected_states_squared = -2 * grads[0]
+        expected_states_next_states = -grads[1]
+        expected_states = grads[2]
+
+        return cls(precision_diag_blocks,
+                   precision_lower_diag_blocks,
+                   linear_potential,
+                   log_normalizer,
+                   filtered_precisions,
+                   filtered_linear_potentials,
+                   expected_states,
+                   expected_states_squared,
+                   expected_states_next_states)
+
+    @classmethod
+    def infer_from_precision_and_mean(cls,
+                                      precision_diag_blocks,
+                                      precision_lower_diag_blocks,
+                                      mean):
+        assert precision_diag_blocks.ndim == 3
+        num_timesteps, dim = precision_diag_blocks.shape[:2]
+        assert precision_diag_blocks.shape[2] == dim
+        assert precision_lower_diag_blocks.shape == (num_timesteps - 1, dim, dim)
+        assert mean.shape == (num_timesteps, dim)
+
+        # Convert the mean to the linear potential
+        linear_potential = np.einsum('tij,tj->ti', precision_diag_blocks, mean)
+        linear_potential = linear_potential.at[:-1].add(
+            np.einsum('tji,tj->ti', precision_lower_diag_blocks, mean[1:]))
+        linear_potential = linear_potential.at[1:].add(
+            np.einsum('tij,tj->ti', precision_lower_diag_blocks, mean[:-1]))
+
+        # Call the constructor above
+        return cls.infer(precision_diag_blocks,
+                         precision_lower_diag_blocks,
+                         linear_potential)
+
+    # Properties to get private class variables
+    @property
+    def precision_diag_blocks(self):
+        return self._precision_diag_blocks
+
+    @property
+    def precision_lower_diag_blocks(self):
+        return self._precision_lower_diag_blocks
+
+    @property
+    def linear_potential(self):
+        return self._linear_potential
+
+    @property
+    def log_normalizer(self):
+        return self._log_normalizer
+
+    @property
+    def filtered_precisions(self):
+        return self._filtered_precisions
+
+    @property
+    def filtered_linear_potentials(self):
+        return self._filtered_linear_potentials
+
+    @property
+    def expected_states(self):
+        return self._expected_states
+
+    @property
+    def expected_states_squared(self):
+        return self._expected_states_squared
+
+    @property
+    def expected_states_next_states(self):
+        return self._expected_states_next_states
 
     def _log_prob(self, data, **kwargs):
         lp = -0.5 * np.einsum('...ti,tij,...tj->...', data, self._precision_diag_blocks, data)
@@ -175,76 +247,20 @@ class MultivariateNormalBlockTridiag:
         lp -= self.log_normalizer
         return lp
 
-    def log_prob(self, data):
-        return self._log_prob(data)
+    def _mean(self):
+        return self.expected_states
 
-    def message_passing(self):
-        # Run message passing code to get the log normalizer, the filtering potentials,
-        # and the expected values of x.
-        # assumes a batch dim
-        def _message_passing_single(J, J_lower, h):
-            f = value_and_grad(_forward_pass, argnums=(0, 1, 2), has_aux=True)
-            (_log_normalizer, (_filtered_Js, _filtered_hs)), grads = \
-                f(J, J_lower, h)
-
-            _ExxT = -2 * grads[0]
-            _ExnxT = -grads[1] 
-            _Ex = grads[2]
-
-            return _log_normalizer, _filtered_Js, _filtered_hs, _Ex, _ExxT, _ExnxT
-
-        if self._precision_diag_blocks.ndim == 4:
-            self._log_normalizer, self._filtered_Js, self._filtered_hs, self._Ex, self._ExxT, self._ExnxT =\
-                vmap(_message_passing_single)(self._precision_diag_blocks, 
-                                            self._precision_lower_diag_blocks, 
-                                            self._linear_potential)
-        else:
-            self._log_normalizer, self._filtered_Js, self._filtered_hs, self._Ex, self._ExxT, self._ExnxT =\
-                (_message_passing_single)(self._precision_diag_blocks, 
-                                            self._precision_lower_diag_blocks, 
-                                            self._linear_potential)
-        self.ran_message_passing = True
-
-    @property
-    def log_normalizer(self):
-        if not self.ran_message_passing:
-            self.message_passing()
-        return self._log_normalizer
-
-    @property
-    def mean(self):
-        if not self.ran_message_passing:
-            self.message_passing()
-        return self._Ex
-
-    @property
-    def covariance(self):
+    def _covariance(self):
         """
         NOTE: This computes the _marginal_ covariance Cov[x_t] for each t
         """
-        Ex = self.mean
-        ExxT, _ = self.second_moments
-        
-        # if there's a batch dim
-        # TODO make this better
-        if Ex.ndim == 3:
-            return ExxT - Ex[:, :, :, None] * Ex[:, :, None, :]
-        else:
-            return ExxT - Ex[:, :, None] * Ex[:, None, :]
-
-    @property
-    def second_moments(self):
-        if not self.ran_message_passing:
-            self.message_passing()
-        return self._ExxT, self._ExnxT
+        Ex = self._expected_states
+        ExxT = self._expected_states_squared
+        return ExxT - np.einsum("...i,...j->...ij", Ex, Ex)
 
     def _sample(self, seed=None, sample_shape=()):
-        if not self.ran_message_passing:
-            self.message_passing()
-
-        # TODO make these parameters w/ lazy op?
-        filtered_Js = self._filtered_Js
-        filtered_hs = self._filtered_hs
+        filtered_Js = self._filtered_precisions
+        filtered_hs = self._filtered_linear_potentials
         J_lower_diag = self._precision_lower_diag_blocks
 
         def sample_single(seed, filtered_Js, filtered_hs, J_lower_diag):
@@ -283,7 +299,7 @@ class MultivariateNormalBlockTridiag:
         # batch mode
         if filtered_Js.ndim == 4:
             samples = vmap(sample_single)(seed, filtered_Js, filtered_hs, J_lower_diag)
-        
+
         # non-batch mode
         else:
             samples = sample_single(seed, filtered_Js, filtered_hs, J_lower_diag)
@@ -297,8 +313,9 @@ class MultivariateNormalBlockTridiag:
                  = -E[-1/2 x^T J x + x^T h - log Z(J, h)]
                  = 1/2 <J, E[x x^T] - <h, E[x]> + log Z(J, h)
         """
-        Ex = self.mean
-        ExxT, ExnxT = self.second_moments
+        Ex = self._expected_states
+        ExxT = self._expected_states_squared
+        ExnxT = self._expected_states_next_states
         J_diag = self._precision_diag_blocks
         J_lower_diag = self._precision_lower_diag_blocks
         h = self._linear_potential
@@ -308,3 +325,20 @@ class MultivariateNormalBlockTridiag:
         entropy -= np.sum(h, Ex)
         entropy += self.log_normalizer
         return entropy
+
+    def tree_flatten(self):
+        children = (self._precision_diag_blocks,
+                    self._precision_lower_diag_blocks,
+                    self._linear_potential,
+                    self._log_normalizer,
+                    self._filtered_precisions,
+                    self._filtered_linear_potentials,
+                    self._expected_states,
+                    self._expected_states_squared,
+                    self._expected_states_next_states)
+        aux_data = None
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)

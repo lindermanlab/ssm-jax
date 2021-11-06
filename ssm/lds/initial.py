@@ -82,7 +82,7 @@ class StandardInitialCondition(InitialCondition):
     def m_step(self, dataset, posteriors, prior=None):
 
         def compute_stats_and_counts(data, posterior):
-            Ex = posterior.mean[0]
+            Ex = posterior.expected_states[0]
             ExxT = posterior.expected_states_squared[0]
             stats = (1.0, Ex, ExxT, 1.0)
             return stats

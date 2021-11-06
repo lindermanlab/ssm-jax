@@ -12,7 +12,6 @@ from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.utils import Verbosity, ssm_pbar
 
 
-
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
 def _compute_laplace_mean(lds, x0, data, method="L-BFGS", num_iters=50, learning_rate=1e-3):
     """Find the mode of the log joint for the Laplace approximation.
@@ -143,9 +142,8 @@ def _laplace_e_step(lds, data, initial_states, laplace_mode_fit_method="L-BFGS",
     J_diag, J_lower_diag = _compute_laplace_precision_blocks(
         lds, most_likely_states, data)
 
-    return MultivariateNormalBlockTridiag(J_diag,
-                                          J_lower_diag,
-                                          mean=most_likely_states)
+    return MultivariateNormalBlockTridiag.infer_from_precision_and_mean(
+        J_diag, J_lower_diag, most_likely_states)
 
 
 def _elbo(model, rng, data, posterior, num_samples=1):
@@ -228,7 +226,7 @@ def laplace_em(
         # laplace e step
         xs = (data, states)
         posteriors = lax.map(_laplace_e_step_single, xs)
-        states = posteriors.mean
+        states = posteriors.mean()
 
         # compute elbo
         elbo_rng = jr.split(elbo_rng, data.shape[0])

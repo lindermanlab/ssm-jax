@@ -135,8 +135,11 @@ class _HMMPosterior(tfp.distributions.Distribution):
         self._expected_states = expected_states
         self._expected_transitions = expected_transitions
 
+        # We would detect the dtype dynamically but that would break vmap
+        # see https://github.com/tensorflow/probability/issues/1271
+        dtype = np.int32
         super(_HMMPosterior, self).__init__(
-            dtype=int,
+            dtype=dtype,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
