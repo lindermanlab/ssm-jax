@@ -258,15 +258,16 @@ class MultivariateNormalBlockTridiag(tfd.Distribution):
         ExxT = self._expected_states_squared
         return ExxT - np.einsum("...i,...j->...ij", Ex, Ex)
 
-    def _sample(self, seed=None, sample_shape=()):
+    def _sample_n(self, n, seed=None):
         filtered_Js = self._filtered_precisions
         filtered_hs = self._filtered_linear_potentials
         J_lower_diag = self._precision_lower_diag_blocks
 
         def sample_single(seed, filtered_Js, filtered_hs, J_lower_diag):
 
-            def _sample_info_gaussian(seed, J, h, shape):
-                # TODO: avoid inversion. see https://github.com/mattjj/pybasicbayes/blob/master/pybasicbayes/util/stats.py#L117-L122
+            def _sample_info_gaussian(seed, J, h, sample_shape=()):
+                # TODO: avoid inversion.
+                # see https://github.com/mattjj/pybasicbayes/blob/master/pybasicbayes/util/stats.py#L117-L122
                 # L = np.linalg.cholesky(J)
                 # x = np.random.randn(h.shape[0])
                 # return scipy.linalg.solve_triangular(L,x,lower=True,trans='T') \
@@ -274,7 +275,7 @@ class MultivariateNormalBlockTridiag(tfd.Distribution):
                 cov = np.linalg.inv(J)
                 loc = np.einsum("...ij,...j->...i", cov, h)
                 return tfp.distributions.MultivariateNormalFullCovariance(
-                    loc=loc, covariance_matrix=cov).sample(sample_shape=shape, seed=seed)
+                    loc=loc, covariance_matrix=cov).sample(sample_shape=sample_shape, seed=seed)
 
             def _step(carry, inpt):
                 x_next, seed = carry
@@ -282,23 +283,31 @@ class MultivariateNormalBlockTridiag(tfd.Distribution):
 
                 # Condition on the next observation
                 Jc = Jf
-                hc = hf - x_next @ L
+                hc = hf - np.einsum('ni,ij->nj', x_next, L)
 
                 # Split the seed
                 seed, this_seed = jr.split(seed)
-                x = _sample_info_gaussian(this_seed, Jc, hc, sample_shape)
+                x = _sample_info_gaussian(this_seed, Jc, hc)
                 return (x, seed), x
 
-            # Initialize with sample of last state
+            # Initialize with sample of last timestep and sample in reverse
             seed_T, seed = jr.split(seed)
-            x_T = _sample_info_gaussian(seed_T, filtered_Js[-1], filtered_hs[-1], sample_shape)
+            x_T = _sample_info_gaussian(seed_T, filtered_Js[-1], filtered_hs[-1], sample_shape=(n,))
             inputs = (filtered_Js[:-1][::-1], filtered_hs[:-1][::-1], J_lower_diag[::-1])
             _, x_rev = lax.scan(_step, (x_T, seed), inputs)
-            return np.concatenate((x_rev[::-1], x_T[None, ...]), axis=0)
+
+            # Reverse and concatenate the last time-step's sample
+            x = np.concatenate((x_rev[::-1], x_T[None, ...]), axis=0)
+
+            # Transpose to be (num_samples, num_timesteps, dim)
+            return np.transpose(x, (1, 0, 2))
+
 
         # batch mode
         if filtered_Js.ndim == 4:
             samples = vmap(sample_single)(seed, filtered_Js, filtered_hs, J_lower_diag)
+            # Transpose to be (num_samples, num_batches, num_timesteps, dim)
+            samples = np.transpose(samples, (1, 0, 2, 3))
 
         # non-batch mode
         else:

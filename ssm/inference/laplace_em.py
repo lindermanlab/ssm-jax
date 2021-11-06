@@ -13,7 +13,6 @@ from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.utils import Verbosity, ssm_pbar
 
 
-
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
 def _compute_laplace_mean(lds, x0, data, method="L-BFGS", num_iters=50, learning_rate=1e-3):
     """Find the mode of the log joint for the Laplace approximation.
@@ -161,7 +160,7 @@ def _elbo(model, rng, data, posterior, num_samples=1):
     general we will approximate it with ordinary Monte Carlo.
     """
     if num_samples == 1:
-        states = posterior._sample(seed=rng)
+        states = posterior.sample(seed=rng)
     else:
         # TODO: implement cls._sample_n for mvn_block_tridiag
         raise NotImplementedError
