@@ -137,23 +137,23 @@ class StationaryStickyTransitions(Transitions):
         # Use specified transition matrix.
         if transition_distribution is not None:
             self.alpha = transition_distribution.probs_parameter()[0, 0]
-            self._transition_distribution = transition_distribution
+            self._distribution = transition_distribution
 
         # If the transition matrix is not given, recompute it given alpha.
         else:
             assert (alpha >= 0) and (alpha <= 1)
             self.alpha = alpha
-            self._transition_distribution = tfd.Categorical(
+            self._distribution = tfd.Categorical(
                 logits=self._recompute_log_transition_matrix()
             )
 
         # default prior, expected dwell prob = 0.9
         if transition_distribution_prior is None:
             transition_distribution_prior = tfd.Beta(9, 1)
-        self._transition_distribution_prior = transition_distribution_prior
+        self._distribution_prior = transition_distribution_prior
 
     def tree_flatten(self):
-        children = (self._transition_distribution, self._transition_distribution_prior)
+        children = (self._distribution, self._distribution_prior)
         aux_data = (self.num_states, self.alpha)
         return children, aux_data
 
@@ -173,10 +173,10 @@ class StationaryStickyTransitions(Transitions):
 
     @property
     def transition_matrix(self):
-        return self._transition_distribution.probs_parameter()
+        return self._distribution.probs_parameter()
 
     def distribution(self, state):
-       return self._transition_distribution[state]
+       return self._distribution[state]
 
     def m_step(self, dataset, posteriors):
 
@@ -189,11 +189,11 @@ class StationaryStickyTransitions(Transitions):
         # distribution with parameters (c1, c0).
         c1 = (
             np.sum(stats[np.diag_indices_from(stats)]) +
-            self._transition_distribution_prior.concentration1
+            self._distribution_prior.concentration1
         )
         c1_plus_c0 = (
             np.sum(stats) +
-            self._transition_distribution_prior.concentration0
+            self._distribution_prior.concentration0
         )
 
         # Set alpha to the mode of the posterior distribution,
@@ -202,7 +202,7 @@ class StationaryStickyTransitions(Transitions):
         self.alpha = (dwells - 1) / (total - 2)
 
         # Recompute the log transition matrix.
-        self._transition_distribution = tfd.Categorical(
+        self._distribution = tfd.Categorical(
             logits=self._recompute_log_transition_matrix()
         )
 
