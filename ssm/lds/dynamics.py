@@ -1,12 +1,8 @@
 import jax.numpy as np
-from jax import tree_util, vmap
-from jax.tree_util import register_pytree_node_class
-import tensorflow_probability.substrates.jax as tfp
-tfd = tfp.distributions
+from jax import vmap
+from jax.tree_util import tree_map, register_pytree_node_class
 
-from ssm.distributions.expfam import EXPFAM_DISTRIBUTIONS
-from ssm.distributions import GaussianLinearRegression
-from ssm.utils import sum_tuples
+import ssm.distributions as ssmd
 
 
 class Dynamics:
@@ -41,8 +37,8 @@ class StationaryDynamics(Dynamics):
                  weights=None,
                  bias=None,
                  scale_tril=None,
-                 dynamics_distribution: GaussianLinearRegression=None,
-                 dynamics_distribution_prior: tfd.Distribution=None) -> None:
+                 dynamics_distribution: ssmd.GaussianLinearRegression=None,
+                 dynamics_distribution_prior: ssmd.GaussianLinearRegressionPrior=None) -> None:
         super(StationaryDynamics, self).__init__()
 
         assert (weights is not None and \
@@ -51,16 +47,16 @@ class StationaryDynamics(Dynamics):
             or dynamics_distribution is not None
 
         if weights is not None:
-            self._distribution = GaussianLinearRegression(weights, bias, scale_tril)
+            self._distribution = ssmd.GaussianLinearRegression(weights, bias, scale_tril)
         else:
             self._distribution = dynamics_distribution
 
         if dynamics_distribution_prior is None:
             pass  # TODO: implement default prior
-        self._distribution_prior = dynamics_distribution_prior
+        self._prior = dynamics_distribution_prior
 
     def tree_flatten(self):
-        children = (self._distribution, self._distribution_prior)
+        children = (self._distribution, self._prior)
         aux_data = None
         return children, aux_data
 
@@ -92,9 +88,7 @@ class StationaryDynamics(Dynamics):
 
     def m_step(self, dataset, posteriors):
 
-        expfam = EXPFAM_DISTRIBUTIONS["GaussianLinearRegression"]
-
-        # Extract expected sufficient statistics from posterior
+        # Manually extract the expected sufficient statistics from posterior
         def compute_stats_and_counts(data, posterior):
             Ex = posterior.expected_states
             ExxT = posterior.expected_states_squared
@@ -106,19 +100,15 @@ class StationaryDynamics(Dynamics):
             sum_xxT = ExxT[:-1].sum(axis=0)
             sum_yxT = ExnxT.sum(axis=0)
             sum_yyT = ExxT[1:].sum(axis=0)
-            stats = (sum_x, sum_y, sum_xxT, sum_yxT, sum_yyT)
-            counts = len(data) - 1
-            return stats, counts
+            T = len(data) - 1
+            stats = (T, sum_xxT, sum_x, T, sum_yxT, sum_y, sum_yyT)
+            return stats
 
-        stats, counts = vmap(compute_stats_and_counts)(dataset, posteriors)
-        stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
-        counts = counts.sum(axis=0)
+        stats = vmap(compute_stats_and_counts)(dataset, posteriors)
+        stats = tree_map(sum, stats)  # sum out batch for each leaf
 
-        if self._distribution_prior  is not None:
-            prior_stats, prior_counts = \
-                expfam.prior_pseudo_obs_and_counts(self._distribution_prior )
-            stats = sum_tuples(stats, prior_stats)
-            counts += prior_counts
+        if self._prior is not None:
+            stats = tree_map(np.add, stats, self._prior.natural_parameters)
 
-        param_posterior = expfam.posterior_from_stats(stats, counts)
-        self._distribution = expfam.from_params(param_posterior.mode())
+        conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
+        self._distribution = ssmd.GaussianLinearRegression.from_params(conditional.mode())

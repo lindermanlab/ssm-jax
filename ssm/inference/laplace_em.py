@@ -3,11 +3,10 @@ Laplace EM (for non-conjugate LDS models such as GLM-LDS)
 """
 
 import jax.numpy as np
-from jax import jit, lax, value_and_grad, hessian, vmap, jacfwd, jacrev
 import jax.random as jr
 import jax.experimental.optimizers as optimizers
 import jax.scipy.optimize
-from jax import lax
+from jax import jit, value_and_grad, hessian, vmap, jacfwd, jacrev, lax
 
 from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.utils import Verbosity, ssm_pbar
