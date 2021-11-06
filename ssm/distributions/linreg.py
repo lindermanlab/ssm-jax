@@ -86,7 +86,7 @@ class GaussianLinearRegression(ExponentialFamilyDistribution,
 
     @classmethod
     def from_params(cls, params):
-        return GaussianLinearRegression(**params)
+        return cls(**params)
 
     @staticmethod
     def sufficient_statistics(data, covariates):
@@ -120,6 +120,10 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
     Wishart distribution, M is the mean of the weights, and V is the
     covariance of the columns of W.
     """
+    def __repr__(self) -> str:
+        return "<GaussianLinearRegressionPrior batch_shape={} event_shape={}>".\
+            format(self.loc.shape[:-2], self.loc.shape[-2:])
+
     def _mode(self):
         r"""Solve for the mode. Recall,
         .. math::

@@ -3,21 +3,15 @@ Laplace EM (for non-conjugate LDS models such as GLM-LDS)
 """
 
 import jax.numpy as np
-from jax import jit, value_and_grad, grad, hessian, vmap, jacfwd, jacrev
 import jax.random as jr
-from jax.flatten_util import ravel_pytree
-
-from ssm.distributions.expfam import EXPFAM_DISTRIBUTIONS
-from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
-from ssm.utils import Verbosity, ssm_pbar, sum_tuples
-
 import jax.experimental.optimizers as optimizers
-import tensorflow_probability.substrates.jax as tfp
 import jax.scipy.optimize
+from jax import jit, value_and_grad, hessian, vmap, jacfwd, jacrev, lax
 
-from jax import lax
+from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
+from ssm.utils import Verbosity, ssm_pbar
 
-from functools import partial
+
 
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
 def _compute_laplace_mean(lds, x0, data, method="L-BFGS", num_iters=50, learning_rate=1e-3):
