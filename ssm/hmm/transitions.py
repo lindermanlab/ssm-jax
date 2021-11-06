@@ -1,4 +1,3 @@
-import math
 import jax.numpy as np
 import jax.scipy as spsp
 from jax import vmap
