@@ -130,3 +130,7 @@ class AutoregressiveHMM(HMM):
             states, emissions = _sample(key)
 
         return states, emissions
+    
+    def __repr__(self):
+        return f"<ssm.hmm.{type(self).__name__} num_states={self.num_states} " \
+               f"emissions_dim={self.emissions_dim} num_lags={self.num_lags}>"

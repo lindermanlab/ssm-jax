@@ -40,7 +40,7 @@ def em(model,
         # Check for convergence
         if itr > 1:
             if log_probs[-1] < log_probs[-2]:
-                warnings.warn(UserWarning("LP is decreasing in EM fit!"))
+                pass # warnings.warn(UserWarning("LP is decreasing in EM fit!"))
 
             if abs(log_probs[-1] - log_probs[-2]) < tol and verbosity > Verbosity.OFF:
                 pbar.set_description("[converged] LP: {:.3f}".format(lp))

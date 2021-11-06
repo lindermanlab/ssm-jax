@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-import os
 from distutils.core import setup
+import setuptools
+import os
 
 
 setup(
@@ -24,5 +25,5 @@ setup(
         "ipywidgets",
         "tensorflow-probability",
     ],
-    packages=["ssm"],
+    packages=setuptools.find_packages(),
 )

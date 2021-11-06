@@ -19,6 +19,8 @@ from ssm.hmm.posterior import StationaryHMMPosterior
 
 @register_pytree_node_class
 class HMM(SSM):
+    """The Hidden Markov Model base class.
+    """
     def __init__(self, num_states: int,
                  initial_condition: initial.InitialCondition,
                  transitions: transitions.Transitions,
@@ -48,6 +50,10 @@ class HMM(SSM):
     @property
     def num_states(self):
         return self._num_states
+    
+    @property
+    def emissions_dim(self):
+        return self._emissions.emissions_dim
 
     def tree_flatten(self):
         children = (self._initial_condition,
@@ -179,3 +185,7 @@ class HMM(SSM):
             raise ValueError(f"Method {method} is not recognized/supported.")
 
         return log_probs, model, posteriors
+    
+    def __repr__(self):
+        return f"<ssm.hmm.{type(self).__name__} num_states={self.num_states} " \
+               f"emissions_dim={self.emissions_dim}>"

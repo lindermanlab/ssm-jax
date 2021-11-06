@@ -81,6 +81,10 @@ class GaussianEmissions(Emissions):
         aux_data = self.num_states
         return children, aux_data
 
+    @property
+    def emissions_dim(self):
+        return self._distribution.loc.shape[-1]
+
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
@@ -146,6 +150,10 @@ class PoissonEmissions(Emissions):
             self._distribution = emissions_distribution
 
         self._prior = emissions_distribution_prior
+
+    @property
+    def emissions_dim(self):
+        return self._distribution.log_rates.shape[-1]
 
     def distribution(self, state, covariates=None):
         """Get the distribution at the provided state.
