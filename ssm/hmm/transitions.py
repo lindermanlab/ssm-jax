@@ -1,3 +1,4 @@
+import math
 import jax.numpy as np
 import jax.scipy as spsp
 from jax import vmap
@@ -111,3 +112,97 @@ class StationaryTransitions(Transitions):
         stats += self._prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
         self._distribution = ssmd.Categorical.from_params(conditional.mode())
+
+@register_pytree_node_class
+class StationaryStickyTransitions(Transitions):
+    """
+    HMM transition model where diagonal elements are a learned
+    parameter (alpha) and off-diagonal elements are uniform. That is,
+    for a model with n hidden states, the transition matrix is:
+
+        alpha * eye(n) + (1 - alpha) * ones(n, n) / (n - 1)
+
+    where 0 <= alpha <= 1 is a learned parameter.
+    """
+    def __init__(self,
+                 num_states: int,
+                 alpha: float=None,
+                 transition_distribution: tfd.Categorical=None,
+                 transition_distribution_prior: tfd.Beta=None) -> None:
+
+        super(StationaryStickyTransitions, self).__init__(num_states)
+
+        assert transition_distribution is not None or alpha is not None
+
+        # Use specified transition matrix.
+        if transition_distribution is not None:
+            self.alpha = transition_distribution.probs_parameter()[0, 0]
+            self._transition_distribution = transition_distribution
+
+        # If the transition matrix is not given, recompute it given alpha.
+        else:
+            assert (alpha >= 0) and (alpha <= 1)
+            self.alpha = alpha
+            self._transition_distribution = tfd.Categorical(
+                logits=self._recompute_log_transition_matrix()
+            )
+
+        # default prior, expected dwell prob = 0.9
+        if transition_distribution_prior is None:
+            transition_distribution_prior = tfd.Beta(9, 1)
+        self._transition_distribution_prior = transition_distribution_prior
+
+    def tree_flatten(self):
+        children = (self._transition_distribution, self._transition_distribution_prior)
+        aux_data = (self.num_states, self.alpha)
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        num_states, alpha = aux_data
+        distribution, prior = children
+        return cls(num_states, alpha,
+                   transition_distribution=distribution,
+                   transition_distribution_prior=prior)
+
+    def _recompute_log_transition_matrix(self):
+        return np.log(
+            self.alpha * np.eye(num_states) +
+            (1 - self.alpha) * np.ones((num_states, num_states)) / (num_states - 1)
+        )
+
+    @property
+    def transition_matrix(self):
+        return self._transition_distribution.probs_parameter()
+
+    def distribution(self, state):
+       return self._transition_distribution[state]
+
+    def m_step(self, dataset, posteriors):
+
+        # Compute num_states x num_states matrix where i, j
+        # holds the expected number of transitions from state i
+        # to state j.
+        stats = np.sum(posteriors.expected_transitions, axis=0)
+
+        # Compute the posterior over alpha, which is a Beta
+        # distribution with parameters (c1, c0).
+        c1 = (
+            np.sum(stats[np.diag_indices_from(stats)]) +
+            self._transition_distribution_prior.concentration1
+        )
+        c1_plus_c0 = (
+            np.sum(stats) +
+            self._transition_distribution_prior.concentration0
+        )
+
+        # Set alpha to the mode of the posterior distribution,
+        # which is given by (c1 - 1) / (c1 + c2 - 2) for
+        # a Beta distribution.
+        self.alpha = (dwells - 1) / (total - 2)
+
+        # Recompute the log transition matrix.
+        self._transition_distribution = tfd.Categorical(
+            logits=self._recompute_log_transition_matrix()
+        )
+
