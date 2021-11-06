@@ -96,8 +96,9 @@ class StationaryDynamics(Dynamics):
 
         # Extract expected sufficient statistics from posterior
         def compute_stats_and_counts(data, posterior):
-            Ex = posterior.mean
-            ExxT, ExnxT = posterior.second_moments
+            Ex = posterior.expected_states
+            ExxT = posterior.expected_states_squared
+            ExnxT = posterior.expected_states_next_states
 
             # Sum over time
             sum_x = Ex[:-1].sum(axis=0)

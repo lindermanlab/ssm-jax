@@ -123,8 +123,8 @@ class GaussianEmissions(Emissions):
 
         def compute_stats_and_counts(data, posterior):
             # Extract expected sufficient statistics from posterior
-            Ex = posterior.mean
-            ExxT, _ = posterior.second_moments
+            Ex = posterior.expected_states
+            ExxT = posterior.expected_states_squared
 
             # Sum over time
             sum_x = Ex.sum(axis=0)

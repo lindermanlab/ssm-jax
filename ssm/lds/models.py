@@ -11,6 +11,8 @@ from ssm.lds.dynamics import StationaryDynamics
 from ssm.lds.emissions import GaussianEmissions, PoissonEmissions
 from ssm.utils import Verbosity, format_dataset, random_rotation
 
+LDSPosterior = MultivariateNormalBlockTridiag
+
 
 @register_pytree_node_class
 class GaussianLDS(LDS):
@@ -27,10 +29,10 @@ class GaussianLDS(LDS):
                  emission_scale_tril: np.ndarray=None,
                  seed: jr.PRNGKey=None):
         """LDS with Gaussian emissions.
-        
+
         .. math::
             p(y_t | x_t) \sim \mathcal{N}(\mu_{x_t}, \Sigma_{x_t})
-            
+
         The GaussianLDS can be initialized by specifying each parameter explicitly,
         or you can simply specify the ``num_latent_dims``, ``num_emission_dims``, and ``seed``
         to create a GaussianLDS with generic, randomly initialized parameters.
@@ -105,9 +107,13 @@ class GaussianLDS(LDS):
         R_sqrt = self._emissions.scale_tril
         return R_sqrt @ R_sqrt.T
 
-    def natural_parameters(self, data):
-        seq_len = data.shape[0]
-
+    # Methods for inference
+    def infer_posterior(self, data):
+        """
+        Compute the exact posterior by extracting the natural parameters
+        of the LDS, namely the block tridiagonal precision matrix (J) and
+        the linear coefficient (h).
+        """
         # Shorthand names for parameters
         m1 = self.initial_mean
         Q1 = self.initial_covariance
@@ -117,6 +123,7 @@ class GaussianLDS(LDS):
         C = self.emissions_matrix
         d = self.emissions_bias
         R = self.emissions_noise_covariance
+        seq_len = data.shape[0]
 
         # diagonal blocks of precision matrix
         J_diag = np.dot(C.T, np.linalg.solve(R, C))  # from observations
@@ -129,15 +136,13 @@ class GaussianLDS(LDS):
         J_lower_diag = -np.linalg.solve(Q, A)
         J_lower_diag = np.tile(J_lower_diag[None, :, :], (seq_len - 1, 1, 1))
 
+        # linear potential
         h = np.dot(data - d, np.linalg.solve(R, C))  # from observations
         h = h.at[0].add(np.linalg.solve(Q1, m1))
         h = h.at[:-1].add(-np.dot(A.T, np.linalg.solve(Q, b)))
         h = h.at[1:].add(np.linalg.solve(Q, b))
-        return J_diag, J_lower_diag, h
 
-    # Methods for inference
-    def infer_posterior(self, data):
-        return MultivariateNormalBlockTridiag(*self.natural_parameters(data))
+        return LDSPosterior.infer(J_diag, J_lower_diag, h)
 
     def marginal_likelihood(self, data, posterior=None):
         """The exact marginal likelihood of the observed data.
@@ -164,27 +169,27 @@ class GaussianLDS(LDS):
 
         if posterior is None:
             posterior = self.e_step(data)
-        states = posterior.mean
+        states = posterior.mean()
         lps = self.log_probability(states, data) - posterior.log_prob(states)
         return lps
 
     @format_dataset
     def fit(self, dataset, method="em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
         r"""Fit the GaussianLDS to a dataset using the specified method.
-        
+
         Note: because the observations are Gaussian, we can perform exact EM for a GaussianEM
         (i.e. the model is conjugate).
 
         Args:
             dataset (np.ndarray): observed data
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
-            method (str, optional): model fit method. 
+                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
+            method (str, optional): model fit method.
                 Must be one of ["em", "laplace_em"]. Defaults to "em".
             rng (jr.PRNGKey, optional): Random seed.
                 Defaults to None.
             num_iters (int, optional): number of fit iterations.
                 Defaults to 100.
-            tol (float, optional): tolerance in log probability to determine convergence. 
+            tol (float, optional): tolerance in log probability to determine convergence.
                 Defaults to 1e-4.
             verbosity (Verbosity, optional): print verbosity.
                 Defaults to Verbosity.DEBUG.
@@ -228,10 +233,10 @@ class PoissonLDS(LDS):
                  emission_scale_tril=None,  # TODO: remove
                  seed=None):
         r"""LDS with Poisson emissions.
-        
+
         .. math::
             p(y_t | x_t) \sim \text{Po}(\lambda = \lambda_{x_t})
-            
+
         The PoissonLDS can be initialized by specifying each parameter explicitly,
         or you can simply specify the ``num_latent_dims``, ``num_emission_dims``, and ``seed``
         to create a GaussianLDS with generic, randomly initialized parameters.

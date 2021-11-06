@@ -85,7 +85,7 @@ class StandardInitialCondition(InitialCondition):
         expfam = EXPFAM_DISTRIBUTIONS["MultivariateNormalTriL"]
 
         def compute_stats_and_counts(data, posterior):
-            Ex = posterior.mean[0]
+            Ex = posterior.expected_states[0]
             ExxT = posterior.expected_states_squared[0]
             stats = (1.0, Ex, ExxT)
             counts = 1.0

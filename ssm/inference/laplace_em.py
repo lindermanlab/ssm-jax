@@ -3,21 +3,16 @@ Laplace EM (for non-conjugate LDS models such as GLM-LDS)
 """
 
 import jax.numpy as np
-from jax import jit, value_and_grad, grad, hessian, vmap, jacfwd, jacrev
+from jax import jit, lax, value_and_grad, hessian, vmap, jacfwd, jacrev
 import jax.random as jr
-from jax.flatten_util import ravel_pytree
-
-from ssm.distributions.expfam import EXPFAM_DISTRIBUTIONS
-from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
-from ssm.utils import Verbosity, ssm_pbar, sum_tuples
-
 import jax.experimental.optimizers as optimizers
-import tensorflow_probability.substrates.jax as tfp
 import jax.scipy.optimize
-
 from jax import lax
 
-from functools import partial
+from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
+from ssm.utils import Verbosity, ssm_pbar
+
+
 
 ### Laplace EM for nonconjugate LDS with exponential family GLM emissions
 def _compute_laplace_mean(lds, x0, data, method="L-BFGS", num_iters=50, learning_rate=1e-3):
@@ -149,9 +144,8 @@ def _laplace_e_step(lds, data, initial_states, laplace_mode_fit_method="L-BFGS",
     J_diag, J_lower_diag = _compute_laplace_precision_blocks(
         lds, most_likely_states, data)
 
-    return MultivariateNormalBlockTridiag(J_diag,
-                                          J_lower_diag,
-                                          mean=most_likely_states)
+    return MultivariateNormalBlockTridiag.infer_from_precision_and_mean(
+        J_diag, J_lower_diag, most_likely_states)
 
 
 def _elbo(model, rng, data, posterior, num_samples=1):
@@ -234,7 +228,7 @@ def laplace_em(
         # laplace e step
         xs = (data, states)
         posteriors = lax.map(_laplace_e_step_single, xs)
-        states = posteriors.mean
+        states = posteriors.mean()
 
         # compute elbo
         elbo_rng = jr.split(elbo_rng, data.shape[0])
