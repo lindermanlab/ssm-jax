@@ -6,7 +6,6 @@ from tensorflow_probability.substrates import jax as tfp
 
 from ssm.hmm.emissions import Emissions
 from ssm.hmm.posterior import StationaryHMMPosterior
-import ssm.distributions.expfam as expfam
 import ssm.distributions as ssmd
 tfd = tfp.distributions
 
@@ -19,21 +18,21 @@ class AutoregressiveEmissions(Emissions):
                  biases: np.ndarray=None,
                  covariances: np.ndarray=None,
                  emissions_distribution: ssmd.GaussianLinearRegression=None,
-                 emissions_distribution_prior: ssmd.MatrixNormalInverseWishart=None) -> None:
+                 emissions_distribution_prior: ssmd.GaussianLinearRegressionPrior=None) -> None:
         """Gaussian linear regression emissions class for Autoregressive HMM.
-        
-        Can be instantiated by specifying the parameters or you can pass in 
+
+        Can be instantiated by specifying the parameters or you can pass in
         the initialized distribution object directly to ``emissions_distribution``.
-        
+
         Optionally takes an emissions prior distribution.
 
         Args:
             num_states (int): number of discrete states
-            weights (np.ndarray, optional): state-based weight matrix for Gaussian linear regression 
+            weights (np.ndarray, optional): state-based weight matrix for Gaussian linear regression
                 of shape :math:`(\text{num_states}, \text{num_emission_dims}, \text{num_emission_dims} * \text{num_lags})`.
                 Defaults to None.
             biases (np.ndarray, optional): state-based bias vector for Gaussian linear regression
-                of shape :math:`(\text{num_states}, \text{num_emission_dims})`. 
+                of shape :math:`(\text{num_states}, \text{num_emission_dims})`.
                 Defaults to None.
             covariances (np.ndarray, optional): state-based covariances for Gaussian linear regression
                 of shape :math:`(\text{num_states}, \text{num_emission_dims}, \text{num_emission_dims})`.
@@ -41,7 +40,7 @@ class AutoregressiveEmissions(Emissions):
             emissions_distribution (ssmd.GaussianLinearRegression, optional): initialized emissions distribution. Defaults to None.
             emissions_distribution_prior (ssmd.MatrixNormalInverseWishart, optional): emissions prior distribution. Defaults to None.
         """
-        
+
         super(AutoregressiveEmissions, self).__init__(num_states)
 
         params_given = None not in (weights, biases, covariances)
@@ -65,8 +64,8 @@ class AutoregressiveEmissions(Emissions):
         #         )
         # else:
         #     self._distribution_prior = emissions_distribution_prior
-        self._distribution_prior = emissions_distribution_prior
-        
+        self._prior = emissions_distribution_prior
+
     @property
     def emissions_dim(self):
         return self._distribution.weights.shape[-1]
@@ -129,18 +128,17 @@ class AutoregressiveEmissions(Emissions):
 
     def m_step(self, dataset: np.ndarray, posteriors: StationaryHMMPosterior) -> None:
         r"""Update the distribution (in-place) with an M step.
-        
+
         Operates over a batch of data.
 
         Args:
-            dataset (np.ndarray): observed data 
+            dataset (np.ndarray): observed data
                 of shape :math:`(\text{batch_dim}, \text{num_timesteps}, \text{emissions_dim})`.
             posteriors (StationaryHMMPosterior): HMM posterior object
                 with batch_dim to match dataset.
         """
-        
-        # Can we compute the expected sufficient statistics with a convolution or scan?
-        
+        # TODO: Can we compute the expected sufficient statistics with a convolution or scan?
+
         # weights are shape (num_states, dim, dim * lag)
         num_states = self._distribution.weights.shape[0]
         dim = self._distribution.weights.shape[1]
@@ -148,55 +146,46 @@ class AutoregressiveEmissions(Emissions):
 
         # Collect statistics with a scan over data
         def _collect_stats(carry, args):
-            x, stats, counts = carry
+            x, stats = carry
             y, w = args
 
             new_x = np.row_stack([x[1:], y])
-            new_stats = tree_map(np.add, stats,
-                                 tree_map(lambda s: np.einsum('k,...->k...', w, s),
-                                          expfam._gaussian_linreg_suff_stats(y, x.ravel())))
-            new_counts = counts + w
-            return (new_x, new_stats, new_counts), None
+            new_stats = \
+                tree_map(np.add, stats,
+                         tree_map(lambda s: np.einsum('k,...->k...', w, s),
+                                  ssmd.GaussianLinearRegression.sufficient_statistics(y, x.ravel())))
+            return (new_x, new_stats), None
 
-        # Initialize the stats and counts to zero
-        init_stats = (np.zeros((num_states, num_lags * dim)),
-                      np.zeros((num_states, dim)),
+        # Initialize the stats to zero
+        init_stats = (np.zeros(num_states),
                       np.zeros((num_states, num_lags * dim, num_lags * dim)),
+                      np.zeros((num_states, num_lags * dim)),
+                      np.zeros(num_states),
                       np.zeros((num_states, dim, num_lags * dim)),
+                      np.zeros((num_states, dim)),
                       np.zeros((num_states, dim, dim)))
-        init_counts = np.zeros(num_states)
 
         # Scan over one time series
         def scan_one(data, weights):
-            (_, stats, counts), _ = lax.scan(_collect_stats,
-                                             (data[:num_lags], init_stats, init_counts),
-                                             (data[num_lags:], weights[num_lags:]))
-            return stats, counts
+            (_, stats), _ = lax.scan(_collect_stats,
+                                     (data[:num_lags], init_stats),
+                                     (data[num_lags:], weights[num_lags:]))
+            return stats
 
         # vmap over all time series in dataset
-        stats, counts = vmap(scan_one)(dataset, posteriors.expected_states)
+        stats = vmap(scan_one)(dataset, posteriors.expected_states)
         stats = tree_map(partial(np.sum, axis=0), stats)
-        counts = np.sum(counts, axis=0)
 
         # Add the prior stats and counts
-        if self._distribution_prior is not None:
-            prior_stats, prior_counts = \
-                expfam._mniw_pseudo_obs_and_counts(self._distribution_prior)
-            stats = tree_map(np.add, stats, prior_stats)
-            counts = counts + prior_counts
+        if self._prior is not None:
+            stats = tree_map(np.add, stats, self._prior.natural_parameters)
 
-        # Compute the conditional distribution over parameters
-        conditional = expfam._mniw_from_stats(stats, counts)
-
-        # Set the emissions to the posterior mode
-        weights_and_bias, covariance_matrix = conditional.mode()
-        weights, bias = weights_and_bias[..., :-1], weights_and_bias[..., -1]
-        self._distribution = \
-            ssmd.GaussianLinearRegression(
-                weights, bias, np.linalg.cholesky(covariance_matrix))
+        # Compute the conditional distribution over parameters and take the mode
+        conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
+        self._distribution = ssmd.GaussianLinearRegression.from_params(conditional.mode())
 
     def tree_flatten(self):
-        children = (self._distribution, self._distribution_prior)
+        children = (self._distribution, self._prior)
         aux_data = self.num_states
         return children, aux_data
 

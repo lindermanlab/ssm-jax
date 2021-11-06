@@ -51,7 +51,6 @@ def block_tridiag_mvn_log_normalizer(J_diag, J_lower_diag, h):
     return log_Z, (filtered_Js, filtered_hs)
 
 
-# @register_pytree_node_class
 class MultivariateNormalBlockTridiag(tfd.Distribution):
     """
     The Gaussian linear dynamical system's posterior distribution over latent states

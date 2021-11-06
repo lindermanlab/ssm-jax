@@ -2,9 +2,9 @@ import jax.numpy as np
 import jax.scipy as spsp
 from jax import vmap
 from jax.tree_util import register_pytree_node_class
-from tensorflow_probability.substrates import jax as tfp
 
-tfd = tfp.distributions
+import ssm.distributions as ssmd
+
 
 class Transitions:
     """
@@ -28,22 +28,22 @@ class Transitions:
         """
         raise NotImplementedError
 
-    def log_probs(self, data):    
+    def log_probs(self, data):
         r"""Returns the log probability of data where
 
         .. math::
             \texttt{log_P}[i, j] = \log \Pr(z_{t+1} = j | z_t = i)
-            
+
         if the transition probabilities are stationary or
-        
+
         .. math::
             \texttt{log_P}[t, i, j] = \log \Pr(z_{t+1} = j | z_t = i)
-            
+
         if they are nonstationary.
-        
+
         Args:
             data (np.ndarray): observed data
-        
+
         Returns:
             log probs (np.ndarray): log probability as defined above
 
@@ -65,25 +65,25 @@ class StationaryTransitions(Transitions):
     def __init__(self,
                  num_states: int,
                  transition_matrix=None,
-                 transition_distribution: tfd.Categorical=None,
-                 transition_distribution_prior: tfd.Dirichlet=None) -> None:
+                 transition_distribution: ssmd.Categorical=None,
+                 transition_distribution_prior: ssmd.Dirichlet=None) -> None:
         super(StationaryTransitions, self).__init__(num_states)
 
         assert transition_matrix is not None or transition_distribution is not None
 
         if transition_matrix is not None:
-            self._transition_distribution = tfd.Categorical(logits=np.log(transition_matrix))
+            self._distribution = ssmd.Categorical(logits=np.log(transition_matrix))
         else:
-            self._transition_distribution = transition_distribution
+            self._distribution = transition_distribution
 
         if transition_distribution_prior is None:
-            num_states = self._transition_distribution.probs_parameter().shape[-1]
+            num_states = self._distribution.probs_parameter().shape[-1]
             transition_distribution_prior = \
-                tfd.Dirichlet(1.1 * np.ones((num_states, num_states)))
-        self._transition_distribution_prior = transition_distribution_prior
+                ssmd.Dirichlet(1.1 * np.ones((num_states, num_states)))
+        self._prior = transition_distribution_prior
 
     def tree_flatten(self):
-        children = (self._transition_distribution, self._transition_distribution_prior)
+        children = (self._distribution, self._prior)
         aux_data = self.num_states
         return children, aux_data
 
@@ -96,18 +96,18 @@ class StationaryTransitions(Transitions):
 
     @property
     def transition_matrix(self):
-        return self._transition_distribution.probs_parameter()
+        return self._distribution.probs_parameter()
 
     def distribution(self, state):
-       return self._transition_distribution[state]
+       return self._distribution[state]
 
     def transition_log_probs(self, data):
-        log_P = self._transition_distribution.logits_parameter()
+        log_P = self._distribution.logits_parameter()
         log_P -= spsp.logsumexp(log_P, axis=1, keepdims=True)
         return log_P
 
     def m_step(self, dataset, posteriors):
         stats = np.sum(posteriors.expected_transitions, axis=0)
-        stats += self._transition_distribution_prior.concentration
-        conditional =  tfp.distributions.Dirichlet(concentration=stats)
-        self._transition_distribution = tfp.distributions.Categorical(probs=conditional.mode())
+        stats += self._prior.concentration
+        conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
+        self._distribution = ssmd.Categorical.from_params(conditional.mode())
