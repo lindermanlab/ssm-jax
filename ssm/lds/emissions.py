@@ -82,15 +82,16 @@ class Emissions:
             raise ValueError("PRNGKey needed for generic m-step")
 
         # Draw samples of the latent states
-        sample_shape = () if num_samples == 1 else (num_samples,)
-        x_sample = posteriors.sample(seed=rng, sample_shape=sample_shape)
+        state_samples = posteriors.sample(seed=rng, sample_shape=(num_samples,))
 
         # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
         flat_emissions_distribution, unravel = ravel_pytree(self._distribution)
+
         def _objective(flat_emissions_distribution):
             # TODO: Consider proximal gradient descent to counter sampling noise
             emissions_distribution = unravel(flat_emissions_distribution)
-            return -1 * np.mean(emissions_distribution.predict(x_sample).log_prob(dataset))
+            _lp_single = lambda sample: emissions_distribution.predict(sample).log_prob(dataset) / dataset.size
+            return -1 * np.mean(vmap(_lp_single)(state_samples))
 
         optimize_results = jax.scipy.optimize.minimize(
             _objective,
