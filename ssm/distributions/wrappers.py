@@ -17,7 +17,9 @@ __all__ = ["Categorical",
 class Categorical(ExponentialFamilyDistribution, tfd.Categorical):
     @classmethod
     def from_params(cls, params):
-        return cls(probs=params)
+        # it's important to be consistent with how we init classes
+        # to avoid re-jit (i.e. logits then probs causes recompile)
+        return cls(logits=np.log(params))
 
     @staticmethod
     def sufficient_statistics(datapoint, num_classes):
