@@ -176,14 +176,9 @@ class AutoregressiveEmissions(Emissions):
         if self._prior is not None:
             stats = tree_map(np.add, stats, self._prior.natural_parameters)
 
-        # Compute the conditional distribution over parameters
+        # Compute the conditional distribution over parameters and take the mode
         conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
         self._distribution = ssmd.GaussianLinearRegression.from_params(conditional.mode())
-        # weights_and_bias, covariance_matrix = conditional.mode()
-        # weights, bias = weights_and_bias[..., :-1], weights_and_bias[..., -1]
-        # self._distribution = \
-        #     ssmd.GaussianLinearRegression(
-        #         weights, bias, np.linalg.cholesky(covariance_matrix))
 
     def tree_flatten(self):
         children = (self._distribution, self._prior)
