@@ -127,8 +127,8 @@ class StationaryStickyTransitions(Transitions):
     def __init__(self,
                  num_states: int,
                  alpha: float=None,
-                 transition_distribution: tfd.Categorical=None,
-                 transition_distribution_prior: tfd.Beta=None) -> None:
+                 transition_distribution: ssmd.Categorical=None,
+                 transition_distribution_prior: ssmd.Beta=None) -> None:
 
         super(StationaryStickyTransitions, self).__init__(num_states)
 
@@ -143,13 +143,13 @@ class StationaryStickyTransitions(Transitions):
         else:
             assert (alpha >= 0) and (alpha <= 1)
             self.alpha = alpha
-            self._distribution = tfd.Categorical(
+            self._distribution = ssmd.Categorical(
                 logits=self._recompute_log_transition_matrix()
             )
 
         # default prior, expected dwell prob = 0.9
         if transition_distribution_prior is None:
-            transition_distribution_prior = tfd.Beta(9, 1)
+            transition_distribution_prior = ssmd.Beta(9, 1)
         self._distribution_prior = transition_distribution_prior
 
     def tree_flatten(self):
@@ -202,7 +202,7 @@ class StationaryStickyTransitions(Transitions):
         self.alpha = (c1 - 1) / (c1_plus_c0 - 2)
 
         # Recompute the log transition matrix.
-        self._distribution = tfd.Categorical(
+        self._distribution = ssmd.Categorical(
             logits=self._recompute_log_transition_matrix()
         )
 
