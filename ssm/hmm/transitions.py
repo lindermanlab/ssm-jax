@@ -132,18 +132,18 @@ class SimpleStickyTransitions(Transitions):
 
         assert transition_distribution is not None or stay_probability is not None
 
-        # Use specified transition matrix.
-        if transition_distribution is not None:
-            self.stay_probability = transition_distribution.probs_parameter()[0, 0]
-            self._distribution = transition_distribution
-
-        # If the transition matrix is not given, recompute it given stay_probability.
-        else:
+        # If the transition matrix is given, recompute it given stay_probability.
+        if transition_distribution is None:
             assert (stay_probability >= 0) and (stay_probability <= 1)
             self.stay_probability = stay_probability
             self._distribution = ssmd.Categorical(
                 logits=self._recompute_log_transition_matrix()
             )
+
+        # Use specified transition matrix.
+        else:
+            self.stay_probability = transition_distribution.probs_parameter()[0, 0]
+            self._distribution = transition_distribution
 
         # default prior, expected dwell prob = 0.9
         if transition_distribution_prior is None:
