@@ -166,10 +166,11 @@ class SimpleStickyTransitions(Transitions):
     def _recompute_log_transition_matrix(self):
         T = np.full(
             (self.num_states, self.num_states),
-            (1 - self.stay_probability) / (self.num_states - 1)
+            np.log((1 - self.stay_probability) / (self.num_states - 1))
         )
-        T = T.at[np.diag_indices_from(T)].set(self.stay_probability)
-        return np.log(T)
+        return (
+            T.at[np.diag_indices_from(T)].set(np.log(self.stay_probability))
+        )
 
     @property
     def transition_matrix(self):
