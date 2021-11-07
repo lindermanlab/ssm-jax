@@ -41,15 +41,14 @@ class Emissions:
         raise NotImplementedError
 
 
-@register_pytree_node_class
-class GaussianEmissions(Emissions):
+class ExponentialFamilyEmissions(Emissions):
+    _emissions_distribution_class = None
+
     def __init__(self,
                  num_states: int,
-                 means: np.ndarray=None,
-                 covariances: np.ndarray=None,
-                 emissions_distribution: ssmd.MultivariateNormalTriL=None,
-                 emissions_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
-        """Gaussian Emissions for HMM.
+                 emissions_distribution: ssmd.ExponentialFamilyDistribution=None,
+                 emissions_distribution_prior: ssmd.ConjugatePrior=None) -> None:
+        """Exponential Family Emissions for HMM.
 
         Can be initialized by specifying parameters or by passing in a pre-initialized
         ``emissions_distribution`` object.
@@ -64,16 +63,8 @@ class GaussianEmissions(Emissions):
                 Defaults to None.
         """
 
-        super(GaussianEmissions, self).__init__(num_states)
-
-        assert (means is not None and covariances is not None) \
-            or emissions_distribution is not None
-
-        if means is not None and covariances is not None:
-            self._distribution = ssmd.MultivariateNormalTriL(means, covariances)
-        else:
-            self._distribution = emissions_distribution
-
+        super(ExponentialFamilyEmissions, self).__init__(num_states)
+        self._distribution = emissions_distribution
         self._prior = emissions_distribution_prior
 
     def tree_flatten(self):
@@ -81,16 +72,16 @@ class GaussianEmissions(Emissions):
         aux_data = self.num_states
         return children, aux_data
 
-    @property
-    def emissions_dim(self):
-        return self._distribution.loc.shape[-1]
-
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
         return cls(aux_data,
                    emissions_distribution=distribution,
                    emissions_distribution_prior=prior)
+
+    @property
+    def emissions_dim(self):
+        return self._distribution.event_shape
 
     def distribution(self, state: int, covariates: np.ndarray=None) -> ssmd.MultivariateNormalTriL:
         """Get the distribution at the provided state.
@@ -115,13 +106,89 @@ class GaussianEmissions(Emissions):
             dataset (np.ndarray): the observed dataset
             posteriors ([type]): the HMM posteriors
         """
-        conditional = ssmd.MultivariateNormalTriL.compute_conditional(
+        conditional = self._emissions_distribution_class.compute_conditional(
             dataset, weights=posteriors.expected_states, prior=self._prior)
-        self._distribution = ssmd.MultivariateNormalTriL.from_params(conditional.mode())
+        self._distribution = self._emissions_distribution_class.from_params(
+            conditional.mode())
 
 
 @register_pytree_node_class
-class PoissonEmissions(Emissions):
+class BernoulliEmissions(ExponentialFamilyEmissions):
+    _emissions_distribution_class = ssmd.IndependentBernoulli
+
+    def __init__(self,
+                 num_states: int,
+                 probs: np.ndarray=None,
+                 emissions_distribution: ssmd.MultivariateNormalTriL=None,
+                 emissions_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
+        """Gaussian Emissions for HMM.
+
+        Can be initialized by specifying parameters or by passing in a pre-initialized
+        ``emissions_distribution`` object.
+
+        Args:
+            num_states (int): number of discrete states
+            probs (np.ndarray, optional): state-dependent emission probabilities. Defaults to None.
+            covariances (np.ndarray, optional): state-dependent emission covariances. Defaults to None.
+            emissions_distribution (ssmd.MultivariateNormalTriL, optional): initialized emissions distribution.
+                Defaults to None.
+            emissions_distribution_prior (ssmd.NormalInverseWishart, optional): initialized emissions distribution prior.
+                Defaults to None.
+        """
+
+        assert probs is not None or emissions_distribution is not None
+
+        if probs is not None:
+            emissions_distribution = ssmd.IndependentBernoulli(probs=probs)
+
+        if emissions_distribution_prior is None:
+            emissions_distribution_prior = ssmd.Beta(1.1, 1.1)
+
+        super(BernoulliEmissions, self).__init__(num_states,
+                                                 emissions_distribution,
+                                                 emissions_distribution_prior)
+
+
+@register_pytree_node_class
+class GaussianEmissions(ExponentialFamilyEmissions):
+    _emissions_distribution_class = ssmd.MultivariateNormalTriL
+
+    def __init__(self,
+                 num_states: int,
+                 means: np.ndarray=None,
+                 covariances: np.ndarray=None,
+                 emissions_distribution: ssmd.MultivariateNormalTriL=None,
+                 emissions_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
+        """Gaussian Emissions for HMM.
+
+        Can be initialized by specifying parameters or by passing in a pre-initialized
+        ``emissions_distribution`` object.
+
+        Args:
+            num_states (int): number of discrete states
+            means (np.ndarray, optional): state-dependent emission means. Defaults to None.
+            covariances (np.ndarray, optional): state-dependent emission covariances. Defaults to None.
+            emissions_distribution (ssmd.MultivariateNormalTriL, optional): initialized emissions distribution.
+                Defaults to None.
+            emissions_distribution_prior (ssmd.NormalInverseWishart, optional): initialized emissions distribution prior.
+                Defaults to None.
+        """
+
+        assert (means is not None and covariances is not None) \
+            or emissions_distribution is not None
+
+        if means is not None and covariances is not None:
+            emissions_distribution = ssmd.MultivariateNormalTriL(means, covariances)
+
+        super(GaussianEmissions, self).__init__(num_states,
+                                                emissions_distribution,
+                                                emissions_distribution_prior)
+
+
+@register_pytree_node_class
+class PoissonEmissions(ExponentialFamilyEmissions):
+    _emissions_distribution_class = ssmd.IndependentPoisson
+
     def __init__(self,
                  num_states: int,
                  rates: np.ndarray=None,
@@ -140,57 +207,10 @@ class PoissonEmissions(Emissions):
             emissions_distribution_prior (tfd.Gamma, optional): pre-initialized emissions distribution prior.
                 Defaults to None.
         """
-        super(PoissonEmissions, self).__init__(num_states)
-
         assert rates is not None or emissions_distribution is not None
-
         if rates is not None:
-            self._distribution = ssmd.IndependentPoisson(rates)
-        else:
-            self._distribution = emissions_distribution
+            emissions_distribution = ssmd.IndependentPoisson(rates)
 
-        self._prior = emissions_distribution_prior
-
-    @property
-    def emissions_dim(self):
-        return self._distribution.log_rates.shape[-1]
-
-    def distribution(self, state, covariates=None):
-        """Get the distribution at the provided state.
-
-        Args:
-            state (int): discrete state
-            covariates (np.ndarray, optional): optional covariates.
-                Not yet supported. Defaults to None.
-
-        Returns:
-            emissions distribution (tfd.MultivariateNormalLinearOperator):
-                emissions distribution at given state
-        """
-        return self._distribution[state]
-
-    def m_step(self, dataset, posteriors):
-        """Update the emissions distribution in-place using an M-step.
-
-        Operates over a batch of data (posterior must have the same batch dim).
-
-        Args:
-            dataset (np.ndarray): the observed dataset
-            posteriors ([type]): the HMM posteriors
-        """
-        conditional = ssmd.IndependentPoisson.compute_conditional(
-            dataset, weights=posteriors.expected_states, prior=self._prior)
-        self._distribution = ssmd.IndependentPoisson.from_params(conditional.mode())
-
-
-    def tree_flatten(self):
-        children = (self._distribution, self._prior)
-        aux_data = self.num_states
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        distribution, prior = children
-        return cls(aux_data,
-                   emissions_distribution=distribution,
-                   emissions_distribution_prior=prior)
+        super(PoissonEmissions, self).__init__(num_states,
+                                               emissions_distribution,
+                                               emissions_distribution_prior)

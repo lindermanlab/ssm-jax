@@ -5,12 +5,69 @@ tfd = tfp.distributions
 
 from jax.tree_util import register_pytree_node_class
 
+import ssm.distributions as ssmd
 from ssm.hmm.base import HMM
 from ssm.hmm.initial import StandardInitialCondition
 from ssm.hmm.transitions import StationaryTransitions
-from ssm.hmm.emissions import GaussianEmissions, PoissonEmissions
+from ssm.hmm.emissions import BernoulliEmissions, GaussianEmissions, PoissonEmissions
 
 import warnings
+
+@register_pytree_node_class
+class BernoulliHMM(HMM):
+    def __init__(self,
+                 num_states: int,
+                 num_emission_dims: int=None,
+                 initial_state_probs: np.ndarray=None,
+                 transition_matrix: np.ndarray=None,
+                 emission_probs: np.ndarray=None,
+                 seed: jr.PRNGKey=None):
+        r"""HMM with conditionally independent Bernoulli emissions.
+
+        .. math::
+            p(x_t | z_t = k) \sim \prod_{d=1}^D \mathrm{Bern}(x_{td} \mid p_{kd})
+
+        where :math:`p_{kd}` is the probability of seeing a one in dimension :math:`d`
+        given discrete latent state :math:`k`.
+
+        The BernoulliHMM can be initialized by specifying each parameter explicitly,
+        or you can simply specify the ``num_states``, ``num_emission_dims``, and ``seed``
+        to create a BernoulliHMM with generic, randomly initialized parameters.
+
+        Args:
+            num_states (int): number of discrete latent states
+            num_emission_dims (int, optional): number of emission dims. Defaults to None.
+            initial_state_probs (np.ndarray, optional): initial state probabilities
+                with shape :math:`(\text{num_states},)`. Defaults to None.
+            transition_matrix (np.ndarray, optional): transition matrix
+                with shape :math:`(\text{num_states}, \text{num_states})`. Defaults to None.
+            emission_probs] (np.ndarray, optional): specifies emission probabilities
+                with shape :math:`(\text{num_states}, \text{emission_dims})`. Defaults to None.
+            seed (jr.PRNGKey, optional): random seed. Defaults to None.
+        """
+
+        if initial_state_probs is None:
+            initial_state_probs = np.ones(num_states) / num_states
+
+        if transition_matrix is None:
+            transition_matrix = np.ones((num_states, num_states)) / num_states
+
+        if emission_probs is None:
+            assert seed is not None and num_emission_dims is not None, \
+                "You must either specify the emission_means or give a dimension and seed (PRNGKey) "\
+                "so that they can be initialized randomly."
+
+            probs_prior = ssmd.Beta(1, 1)
+            emission_probs = probs_prior.sample(seed=seed, sample_shape=(num_states, num_emission_dims))
+
+        initial_condition = StandardInitialCondition(num_states, initial_probs=initial_state_probs)
+        transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
+        emissions = BernoulliEmissions(num_states, probs=emission_probs)
+        super(BernoulliHMM, self).__init__(num_states,
+                                           initial_condition,
+                                           transitions,
+                                           emissions)
+
 
 @register_pytree_node_class
 class GaussianHMM(HMM):
@@ -25,10 +82,10 @@ class GaussianHMM(HMM):
                  emission_covariances: np.ndarray=None,
                  seed: jr.PRNGKey=None):
         r"""HMM with Gaussian emissions.
-        
+
         .. math::
             p(x_t | z_t = k) \sim \mathcal{N}(\mu_k, \Sigma_k)
-        
+
         The GaussianHMM can be initialized by specifying each parameter explicitly,
         or you can simply specify the ``num_states``, ``num_emission_dims``, and ``seed``
         to create a GaussianHMM with generic, randomly initialized parameters.
@@ -36,7 +93,7 @@ class GaussianHMM(HMM):
         Args:
             num_states (int): number of discrete latent states
             num_emission_dims (int, optional): number of emission dims. Defaults to None.
-            initial_state_probs (np.ndarray, optional): initial state probabilities 
+            initial_state_probs (np.ndarray, optional): initial state probabilities
                 with shape :math:`(\text{num_states},)`. Defaults to None.
             transition_matrix (np.ndarray, optional): transition matrix
                 with shape :math:`(\text{num_states}, \text{num_states})`. Defaults to None.
@@ -78,20 +135,6 @@ class GaussianHMM(HMM):
                                           transitions,
                                           emissions)
 
-    def tree_flatten(self):
-        children = (self._initial_condition,
-                    self._transitions,
-                    self._emissions)
-        aux_data = self._num_states
-        return children, aux_data
-
-    # directly GaussianHMM using parent (HMM) constructor
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        obj = object.__new__(cls)
-        super(cls, obj).__init__(aux_data, *children)
-        return obj
-
 
 @register_pytree_node_class
 class PoissonHMM(HMM):
@@ -103,10 +146,10 @@ class PoissonHMM(HMM):
                  emission_rates: np.ndarray=None,
                  seed: jr.PRNGKey=None):
         r"""HMM with Poisson emissions.
-        
+
         .. math::
             p(x_t | z_t = k) \sim \text{Po}(\lambda=\lambda_k)
-        
+
         The PoissonHMM can be initialized by specifying each parameter explicitly,
         or you can simply specify the ``num_states``, ``num_emission_dims``, and ``seed``
         to create a GaussianHMM with generic, randomly initialized parameters.
@@ -114,7 +157,7 @@ class PoissonHMM(HMM):
         Args:
             num_states (int): number of discrete latent states
             num_emission_dims (int, optional): number of emission dims. Defaults to None.
-            initial_state_probs (np.ndarray, optional): initial state probabilities 
+            initial_state_probs (np.ndarray, optional): initial state probabilities
                 with shape :math:`(\text{num_states},)`. Defaults to None.
             transition_matrix (np.ndarray, optional): transition matrix
                 with shape :math:`(\text{num_states}, \text{num_states})`. Defaults to None.
@@ -148,16 +191,3 @@ class PoissonHMM(HMM):
                                          transitions,
                                          emissions)
 
-    def tree_flatten(self):
-        children = (self._initial_condition,
-                    self._transitions,
-                    self._emissions)
-        aux_data = self._num_states
-        return children, aux_data
-
-    # directly init PoissonHMM using parent (HMM) constructor
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        obj = object.__new__(cls)
-        super(cls, obj).__init__(aux_data, *children)
-        return obj
