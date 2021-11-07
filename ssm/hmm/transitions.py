@@ -199,7 +199,7 @@ class StationaryStickyTransitions(Transitions):
         # Set alpha to the mode of the posterior distribution,
         # which is given by (c1 - 1) / (c1 + c2 - 2) for
         # a Beta distribution.
-        self.alpha = (dwells - 1) / (total - 2)
+        self.alpha = (c1 - 1) / (c1_plus_c0 - 2)
 
         # Recompute the log transition matrix.
         self._distribution = tfd.Categorical(
