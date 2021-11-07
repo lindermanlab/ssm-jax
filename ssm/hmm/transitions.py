@@ -167,8 +167,8 @@ class StationaryStickyTransitions(Transitions):
 
     def _recompute_log_transition_matrix(self):
         return np.log(
-            self.alpha * np.eye(num_states) +
-            (1 - self.alpha) * np.ones((num_states, num_states)) / (num_states - 1)
+            self.alpha * np.eye(self.num_states) +
+            (1 - self.alpha) * np.ones((self.num_states, self.num_states)) / (self.num_states - 1)
         )
 
     @property
