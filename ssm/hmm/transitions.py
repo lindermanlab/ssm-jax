@@ -150,10 +150,10 @@ class StationaryStickyTransitions(Transitions):
         # default prior, expected dwell prob = 0.9
         if transition_distribution_prior is None:
             transition_distribution_prior = ssmd.Beta(9, 1)
-        self._distribution_prior = transition_distribution_prior
+        self._prior = transition_distribution_prior
 
     def tree_flatten(self):
-        children = (self._distribution, self._distribution_prior)
+        children = (self._distribution, self._prior)
         aux_data = (self.num_states, self.alpha)
         return children, aux_data
 
@@ -167,8 +167,11 @@ class StationaryStickyTransitions(Transitions):
 
     def _recompute_log_transition_matrix(self):
         return np.log(
-            self.alpha * np.eye(self.num_states) +
-            (1 - self.alpha) * np.ones((self.num_states, self.num_states)) / (self.num_states - 1)
+            np.eye(self.num_states) * self.alpha +
+            np.full(
+                (self.num_states, self.num_states),
+                (1 - self.alpha) / (self.num_states - 1)
+            ) * np.abs(np.eye(self.num_states) - 1)
         )
 
     @property
@@ -180,20 +183,21 @@ class StationaryStickyTransitions(Transitions):
 
     def m_step(self, dataset, posteriors):
 
-        # Compute num_states x num_states matrix where i, j
-        # holds the expected number of transitions from state i
-        # to state j.
+        # Sum over trials to compute num_states x num_states matrix
+        # where i, j holds the expected number of transitions from
+        # state i to state j.
         stats = np.sum(posteriors.expected_transitions, axis=0)
 
         # Compute the posterior over alpha, which is a Beta
         # distribution with parameters (c1, c0).
         c1 = (
             np.sum(stats[np.diag_indices_from(stats)]) +
-            self._distribution_prior.concentration1
+            self._prior.concentration1
         )
         c1_plus_c0 = (
             np.sum(stats) +
-            self._distribution_prior.concentration0
+            self._prior.concentration1 +
+            self._prior.concentration0
         )
 
         # Set alpha to the mode of the posterior distribution,

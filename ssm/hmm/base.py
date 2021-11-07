@@ -104,7 +104,7 @@ class HMM(SSM):
 
         elif method.lower() == "kmeans":
             # cluster the data with kmeans
-            print("initializing with kmeans")
+            # print("initializing with kmeans")
             from sklearn.cluster import KMeans
             km = KMeans(num_states)
             flat_dataset = dataset.reshape(-1, dataset.shape[-1])
