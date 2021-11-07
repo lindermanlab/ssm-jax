@@ -114,35 +114,33 @@ class StationaryTransitions(Transitions):
 
 
 @register_pytree_node_class
-class StationaryStickyTransitions(Transitions):
+class SimpleStickyTransitions(Transitions):
     """
     HMM transition model where diagonal elements are a learned
-    parameter (alpha) and off-diagonal elements are uniform. That is,
-    for a model with n hidden states, the transition matrix is:
-
-        alpha * eye(n) + (1 - alpha) * ones(n, n) / (n - 1)
-
-    where 0 <= alpha <= 1 is a learned parameter.
+    parameter (stay_probability) and off-diagonal elements are uniform.
+    That is, for a model with n hidden states, the diagonal entries
+    of the transition matrix are `stay_probability`, and the off-diagonal
+    entries are `(1 - stay_probability) / (n - 1)`.
     """
     def __init__(self,
                  num_states: int,
-                 alpha: float=None,
+                 stay_probability: float=None,
                  transition_distribution: ssmd.Categorical=None,
                  transition_distribution_prior: ssmd.Beta=None) -> None:
 
-        super(StationaryStickyTransitions, self).__init__(num_states)
+        super(SimpleStickyTransitions, self).__init__(num_states)
 
-        assert transition_distribution is not None or alpha is not None
+        assert transition_distribution is not None or stay_probability is not None
 
         # Use specified transition matrix.
         if transition_distribution is not None:
-            self.alpha = transition_distribution.probs_parameter()[0, 0]
+            self.stay_probability = transition_distribution.probs_parameter()[0, 0]
             self._distribution = transition_distribution
 
-        # If the transition matrix is not given, recompute it given alpha.
+        # If the transition matrix is not given, recompute it given stay_probability.
         else:
-            assert (alpha >= 0) and (alpha <= 1)
-            self.alpha = alpha
+            assert (stay_probability >= 0) and (stay_probability <= 1)
+            self.stay_probability = stay_probability
             self._distribution = ssmd.Categorical(
                 logits=self._recompute_log_transition_matrix()
             )
@@ -154,25 +152,24 @@ class StationaryStickyTransitions(Transitions):
 
     def tree_flatten(self):
         children = (self._distribution, self._prior)
-        aux_data = (self.num_states, self.alpha)
+        aux_data = (self.num_states, self.stay_probability)
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        num_states, alpha = aux_data
+        num_states, stay_probability = aux_data
         distribution, prior = children
-        return cls(num_states, alpha,
+        return cls(num_states, stay_probability,
                    transition_distribution=distribution,
                    transition_distribution_prior=prior)
 
     def _recompute_log_transition_matrix(self):
-        return np.log(
-            np.eye(self.num_states) * self.alpha +
-            np.full(
-                (self.num_states, self.num_states),
-                (1 - self.alpha) / (self.num_states - 1)
-            ) * np.abs(np.eye(self.num_states) - 1)
+        T = np.full(
+            (self.num_states, self.num_states),
+            (1 - self.stay_probability) / (self.num_states - 1)
         )
+        T = T.at[np.diag_indices_from(T)].set(self.stay_probability)
+        return np.log(T)
 
     @property
     def transition_matrix(self):
@@ -188,8 +185,9 @@ class StationaryStickyTransitions(Transitions):
         # state i to state j.
         stats = np.sum(posteriors.expected_transitions, axis=0)
 
-        # Compute the posterior over alpha, which is a Beta
-        # distribution with parameters (c1, c0).
+        # Compute sufficient statistics of posterior.
+        #  c1 = number of observed stays + pseudo-observed stays from the prior.
+        #  c0 = number of observed jumps + pseudo-observed jumps from the prior.
         c1 = (
             np.sum(stats[np.diag_indices_from(stats)]) +
             self._prior.concentration1
@@ -199,11 +197,8 @@ class StationaryStickyTransitions(Transitions):
             self._prior.concentration1 +
             self._prior.concentration0
         )
-
-        # Set alpha to the mode of the posterior distribution,
-        # which is given by (c1 - 1) / (c1 + c2 - 2) for
-        # a Beta distribution.
-        self.alpha = (c1 - 1) / (c1_plus_c0 - 2)
+        self.stay_probability = \
+            ssmd.Bernoulli.compute_conditional_from_stats((c1, c1_plus_c0 - c1)).mode()
 
         # Recompute the log transition matrix.
         self._distribution = ssmd.Categorical(
