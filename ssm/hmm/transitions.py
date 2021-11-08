@@ -111,3 +111,98 @@ class StationaryTransitions(Transitions):
         stats += self._prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
         self._distribution = ssmd.Categorical.from_params(conditional.mode())
+
+
+@register_pytree_node_class
+class SimpleStickyTransitions(Transitions):
+    """
+    HMM transition model where diagonal elements are a learned
+    parameter (stay_probability) and off-diagonal elements are uniform.
+    That is, for a model with n hidden states, the diagonal entries
+    of the transition matrix are `stay_probability`, and the off-diagonal
+    entries are `(1 - stay_probability) / (n - 1)`.
+    """
+    def __init__(self,
+                 num_states: int,
+                 stay_probability: float=None,
+                 transition_distribution: ssmd.Categorical=None,
+                 transition_distribution_prior: ssmd.Beta=None) -> None:
+
+        super(SimpleStickyTransitions, self).__init__(num_states)
+
+        assert transition_distribution is not None or stay_probability is not None
+
+        # If the transition matrix is given, recompute it given stay_probability.
+        if transition_distribution is None:
+            assert (stay_probability >= 0) and (stay_probability <= 1)
+            self.stay_probability = stay_probability
+            self._distribution = ssmd.Categorical(
+                logits=self._recompute_log_transition_matrix()
+            )
+
+        # Use specified transition matrix.
+        else:
+            self.stay_probability = transition_distribution.probs_parameter()[0, 0]
+            self._distribution = transition_distribution
+
+        # default prior, expected dwell prob = 0.9
+        if transition_distribution_prior is None:
+            transition_distribution_prior = ssmd.Beta(9, 1)
+        self._prior = transition_distribution_prior
+
+    def tree_flatten(self):
+        children = (self._distribution, self._prior)
+        aux_data = (self.num_states, self.stay_probability)
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        num_states, stay_probability = aux_data
+        distribution, prior = children
+        return cls(num_states, stay_probability,
+                   transition_distribution=distribution,
+                   transition_distribution_prior=prior)
+
+    def _recompute_log_transition_matrix(self):
+        T = np.full(
+            (self.num_states, self.num_states),
+            np.log((1 - self.stay_probability) / (self.num_states - 1))
+        )
+        return (
+            T.at[np.diag_indices_from(T)].set(np.log(self.stay_probability))
+        )
+
+    @property
+    def transition_matrix(self):
+        return self._distribution.probs_parameter()
+
+    def distribution(self, state):
+        return self._distribution[state]
+
+    def m_step(self, dataset, posteriors):
+
+        # Sum over trials to compute num_states x num_states matrix
+        # where i, j holds the expected number of transitions from
+        # state i to state j.
+        stats = np.sum(posteriors.expected_transitions, axis=0)
+
+        # Compute sufficient statistics of posterior.
+        #  c1 = number of observed stays + pseudo-observed stays from the prior.
+        #  c0 = number of observed jumps + pseudo-observed jumps from the prior.
+        c1 = (
+            np.sum(stats[np.diag_indices_from(stats)]) +
+            self._prior.concentration1
+        )
+        c1_plus_c0 = (
+            np.sum(stats) +
+            self._prior.concentration1 +
+            self._prior.concentration0
+        )
+        self.stay_probability = \
+            ssmd.Bernoulli.compute_conditional_from_stats((c1, c1_plus_c0 - c1)).mode()
+
+        # Recompute the log transition matrix.
+        self._distribution = ssmd.Categorical(
+            logits=self._recompute_log_transition_matrix()
+        )
+
