@@ -8,7 +8,7 @@ from jax.tree_util import register_pytree_node_class
 import ssm.distributions as ssmd
 from ssm.hmm.base import HMM
 from ssm.hmm.initial import StandardInitialCondition
-from ssm.hmm.transitions import StationaryTransitions
+from ssm.hmm.transitions import Transitions, StationaryTransitions
 from ssm.hmm.emissions import BernoulliEmissions, GaussianEmissions, PoissonEmissions
 
 import warnings
@@ -77,6 +77,7 @@ class GaussianHMM(HMM):
                  num_states: int,
                  num_emission_dims: int=None,
                  initial_state_probs: np.ndarray=None,
+                 transitions: Transitions=None,
                  transition_matrix: np.ndarray=None,
                  emission_means: np.ndarray=None,
                  emission_covariances: np.ndarray=None,
@@ -95,8 +96,11 @@ class GaussianHMM(HMM):
             num_emission_dims (int, optional): number of emission dims. Defaults to None.
             initial_state_probs (np.ndarray, optional): initial state probabilities
                 with shape :math:`(\text{num_states},)`. Defaults to None.
+            transitions (Transitions, optional): object specifying transitions
+                Defaults to None. If specified, then `transition_matrix` is ignored.
             transition_matrix (np.ndarray, optional): transition matrix
-                with shape :math:`(\text{num_states}, \text{num_states})`. Defaults to None.
+                with shape :math:`(\text{num_states}, \text{num_states})`.
+                Defaults to None. Only used if `transitions` is None.
             emission_means (np.ndarray, optional): specifies emission means
                 with shape :math:`(\text{num_states}, \text{emission_dims})`. Defaults to None.
             emission_covariances (np.ndarray, optional): specifies emissions covariances
@@ -108,8 +112,11 @@ class GaussianHMM(HMM):
         if initial_state_probs is None:
             initial_state_probs = np.ones(num_states) / num_states
 
-        if transition_matrix is None:
+        if (transitions is None) and (transition_matrix is None):
             transition_matrix = np.ones((num_states, num_states)) / num_states
+
+        if transitions is None:
+            transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
 
         if emission_means is None:
             assert seed is not None and num_emission_dims is not None, \
@@ -128,7 +135,6 @@ class GaussianHMM(HMM):
             emission_covariances = np.tile(np.eye(num_emission_dims), (num_states, 1, 1))
 
         initial_condition = StandardInitialCondition(num_states, initial_probs=initial_state_probs)
-        transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
         emissions = GaussianEmissions(num_states, means=emission_means, covariances=emission_covariances)
         super(GaussianHMM, self).__init__(num_states,
                                           initial_condition,
