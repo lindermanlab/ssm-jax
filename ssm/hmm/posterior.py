@@ -140,7 +140,7 @@ def _factorial_hmm_log_normalizer(log_initial_state_probs,
     """
 
     def marginalize(alphas, log_likes):
-        # Matrix-multiply in log-space for time constant transition matrix.
+        # Matrix-multiply each in transition matrix in log-space.
         for k, log_trans in enumerate(log_transition_matrices):
             alphas = logspace_tensordot(alphas, log_trans, k)
         # Weight each state by its log-likelihood.
