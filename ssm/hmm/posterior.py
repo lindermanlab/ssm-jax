@@ -75,6 +75,9 @@ def hmm_log_normalizer(log_initial_state_probs,
 def _stationary_hmm_log_normalizer(log_initial_state_probs,
                                    log_transition_matrix,
                                    log_likelihoods):
+    # alpha = log p(z_t | x_{1:t-1})
+    # then: 1) condition on x_t to get p(z_t | x_{1:t})
+    #       2) marginalize to get p(z_{t+1} | x_{1:t})
     def marginalize(alpha, ll):
         alpha = spsp.logsumexp(alpha + ll + log_transition_matrix.T, axis=1)
         return alpha, alpha
@@ -140,20 +143,28 @@ def _factorial_hmm_log_normalizer(log_initial_state_probs,
     """
 
     def marginalize(alphas, log_likes):
-        # Matrix-multiply each in transition matrix in log-space.
+        # Weight each state by its log-likelihood to get log p(z_t | x_{1:t})
+        alphas += log_likes
+
+        # Matrix-multiply each in transition matrix in log-space
+        # to get log p(z_{t+1} | x_{1:t}).
+        # Note: may want to lax.fori_loop this step.
         for k, log_trans in enumerate(log_transition_matrices):
             alphas = logspace_tensordot(alphas, log_trans, k)
-        # Weight each state by its log-likelihood.
-        alphas += ll
-        return alphas, None
+
+        return alphas, alphas
 
     # Forward pass.
-    alphas_T, _ = lax.scan(
+    alpha_T, alphas = lax.scan(
         marginalize, log_initial_state_probs, log_likelihoods[:-1]
     )
 
+    # Include the initial potentials to get log Pr(z_t | x_{1:t-1})
+    # for all time steps. These are the "filtered potentials".
+    filtered_potentials = np.concatenate([log_initial_state_probs[None, ...], alphas], axis=0)
+
     # Account for the last timestep when computing marginal lkhd
-    return spsp.logsumexp(alpha_T + log_likelihoods[-1])
+    return spsp.logsumexp(alpha_T + log_likelihoods[-1]), filtered_potentials
 
 
 class _HMMPosterior(tfp.distributions.Distribution):

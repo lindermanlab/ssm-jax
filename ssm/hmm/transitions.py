@@ -2,7 +2,9 @@ import jax.numpy as np
 import jax.scipy as spsp
 from jax import vmap
 from jax.tree_util import register_pytree_node_class
-import math
+
+from tensorflow_probability.substrates import jax as tfp
+tfd = tfp.distributions
 
 import ssm.distributions as ssmd
 
@@ -107,8 +109,8 @@ class StationaryTransitions(Transitions):
         log_P -= spsp.logsumexp(log_P, axis=1, keepdims=True)
         return log_P
 
-    def m_step(self, expected_transitions):
-        stats = np.sum(expected_transitions, axis=0)
+    def m_step(self, dataset, posteriors):
+        stats = np.sum(posteriors.expected_transitions, axis=0)
         stats += self._prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
         self._distribution = ssmd.Categorical.from_params(conditional.mode())
@@ -216,24 +218,28 @@ class FactorialStationaryTransitions(Transitions):
 
         self.num_groups = len(transitions)
         self._transitions = transitions
-        num_states = math.prod([t.num_states for t in transitions])
+        num_states = np.prod([t.num_states for t in transitions])
         super(FactorialStationaryTransitions, self).__init__(num_states)
 
     def tree_flatten(self):
-        children, aux_data = [], []
-        for t in self._transitions:
-            c, a = t.tree_flatten()
-            children.append(c)
-            aux_data.append((type(t), *a))
-        return tuple(children), tuple(aux_data)
+        # children, aux_data = [], []
+        # for t in self._transitions:
+        #     c, a = t.tree_flatten()
+        #     children.append(c)
+        #     aux_data.append((type(t), *a))
+        # return tuple(children), tuple(aux_data)
+        aux_data = None
+        children = self._transitions
+        return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        transitions = []
-        for aux, chd in zip(aux_data, children):
-            sub_cls = aux[0]
-            transitions.append(sub_cls.tree_unflatten(aux[1:], chd))
-        return cls(transitions)
+        # transitions = []
+        # for aux, chd in zip(aux_data, children):
+        #     sub_cls = aux[0]
+        #     transitions.append(sub_cls.tree_unflatten(aux[1:], chd))
+        # return cls(transitions)
+        return cls(children)
 
     @property
     def transition_matrix(self):
@@ -243,23 +249,26 @@ class FactorialStationaryTransitions(Transitions):
         return M
 
     def distribution(self, state):
-        return tuple(
-            [t._distribution[s] for t, s in zip(self._transitions, state)]
-        )
+        Root = tfd.JointDistributionCoroutine.Root
+        def model():
+            for prev_state, transitions in zip(state, self._transitions):
+                yield Root(transitions.distribution(prev_state))
+        return tfd.JointDistributionCoroutine(model)
 
-    def m_step(self, expected_transitions):
+    def m_step(self, dataset, posteriors):
 
-        # Sum over trials.
-        stats = np.sum(expected_transitions, axis=0)
 
-        # Iterate over groups of latent variables.
-        for i, t in enumerate(self._transitions):
+        # # Sum over trials.
+        # stats = np.sum(expected_transitions, axis=0)
 
-            # Sum over axes associated with other transitions.
-            ax = [j for j in range(stats.ndim)]
-            ax.remove(i)
-            ax.remove(i + self.num_groups)
-            reduced_stats = np.sum(stats, axis=ax)
+        # # Iterate over groups of latent variables.
+        # for i, t in enumerate(self._transitions):
 
-            # Perform m-step for transition operator t.
-            t.m_step(dataset, reduced_stats)
+        #     # Sum over axes associated with other transitions.
+        #     ax = [j for j in range(stats.ndim)]
+        #     ax.remove(i)
+        #     ax.remove(i + self.num_groups)
+        #     reduced_stats = np.sum(stats, axis=ax)
+
+        #     # Perform m-step for transition operator t.
+        #     t.m_step(dataset, reduced_stats)

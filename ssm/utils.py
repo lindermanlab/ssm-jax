@@ -4,6 +4,8 @@ Useful utility functions.
 
 import jax.numpy as np
 import jax.random as jr
+import jax.scipy.special as spsp
+
 import inspect
 from enum import IntEnum
 from tqdm.auto import trange
@@ -216,6 +218,6 @@ def logspace_tensordot(tensor, matrix, axis):
     result : (..., n, ...)-array
     """
     tensor = np.moveaxis(tensor, axis, -1)
-    spsp.logsumexp(tensor[..., None] + matrix, axis=-2)
+    tensor = spsp.logsumexp(tensor[..., None] + matrix, axis=-2)
     return np.moveaxis(tensor, -1, axis)
 
