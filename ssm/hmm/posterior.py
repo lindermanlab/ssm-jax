@@ -8,6 +8,8 @@ from jax import lax, value_and_grad, vmap
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
 
+from ssm.utils import logspace_tensordot
+
 
 ### Core message passing routines
 def hmm_log_normalizer(log_initial_state_probs,
@@ -109,6 +111,49 @@ def _nonstationary_hmm_log_normalizer(log_initial_state_probs,
 
     # Account for the last timestep when computing marginal lkhd
     return spsp.logsumexp(alpha_T + log_likelihoods[-1]), filtered_potentials
+
+
+def _factorial_hmm_log_normalizer(log_initial_state_probs,
+                                  log_transition_matrices,
+                                  log_likelihoods):
+    """
+    Computes the log normalization constant of the joint distribution over
+    observations and latent state trajectories of a factorial HMM with ``m``
+    groups of latent state variables with ``n_1, n_2, ..., n_m`` discrete
+    states.
+
+    Parameters
+    ----------
+    log_initial_state_probs : (n_1, n_2, ..., n_m)-array
+        Log unnormalized state probalitities at the initial timestep.
+
+    log_transition_matrices : ((n_1, n_1)-array, (n_2, n_2)-array, ...)
+        Log transition matrices for ``m`` groups of variables.
+
+    log_likelihoods : (T, n_1, n_2, ..., n_m)-array
+        Log likelihoods of all states over ``T`` timesteps.
+
+    Returns
+    -------
+    log_normalizer : float
+        Log normalization constant.
+    """
+
+    def marginalize(alphas, log_likes):
+        # Matrix-multiply in log-space for time constant transition matrix.
+        for k, log_trans in enumerate(log_transition_matrices):
+            alphas = logspace_tensordot(alphas, log_trans, k)
+        # Weight each state by its log-likelihood.
+        alphas += ll
+        return alphas, None
+
+    # Forward pass.
+    alphas_T, _ = lax.scan(
+        marginalize, log_initial_state_probs, log_likelihoods[:-1]
+    )
+
+    # Account for the last timestep when computing marginal lkhd
+    return spsp.logsumexp(alpha_T + log_likelihoods[-1])
 
 
 class _HMMPosterior(tfp.distributions.Distribution):

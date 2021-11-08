@@ -191,6 +191,7 @@ def format_dataset(f):
 
     return wrapper
 
+
 def one_hot(z, K):
     z = np.atleast_1d(z).astype(int)
     assert np.all(z >= 0) and np.all(z < K)
@@ -200,3 +201,21 @@ def one_hot(z, K):
     zoh = zoh.at[np.arange(N), np.arange(K)[np.ravel(z)]].set(1)
     zoh = np.reshape(zoh, shp + (K,))
     return zoh
+
+
+def logspace_tensordot(tensor, matrix, axis):
+    """
+    Parameters
+    ----------
+    tensor : (..., m, ...)-array
+    matrix : (m, n)-array
+    axis : int
+
+    Returns
+    -------
+    result : (..., n, ...)-array
+    """
+    tensor = np.moveaxis(tensor, axis, -1)
+    spsp.logsumexp(tensor[..., None] + matrix, axis=-2)
+    return np.moveaxis(tensor, -1, axis)
+
