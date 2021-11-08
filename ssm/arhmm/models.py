@@ -46,16 +46,16 @@ class GaussianARHMM(AutoregressiveHMM):
             num_lags (int, optional): number of previous timesteps on which to autoregress. 
                 Defaults to None.
             initial_state_probs (np.ndarray, optional): initial state probabilities 
-                with shape :math:`(\text{num_states},)`. Defaults to None.
+                with shape :math:`(\text{num\_states},)`. Defaults to None.
             transition_matrix (np.ndarray, optional): transition matrix
-                with shape :math:`(\text{num_states}, \text{num_states})`. Defaults to None.
+                with shape :math:`(\text{num\_states}, \text{num\_states})`. Defaults to None.
             emission_weights (np.ndarray, optional): emission weights ..math`A_{z_t}` 
-                with shape :math:`(\text{num_states}, \text{num_emission_dims}, \text{num_emission_dims} * \text{num_lags})`.
+                with shape :math:`(\text{num\_states}, \text{emissions\_dim}, \text{emissions\_dim} * \text{num\_lags})`.
                 Defaults to None.
             emission_biases (np.ndarray, optional): emission biases ..math`b_{z_t}`
-                with shape :math:`(\text{num_states}, \text{num_emission_dims})`. Defaults to None.
+                with shape :math:`(\text{num\_states}, \text{emissions\_dim})`. Defaults to None.
             emission_covariances (np.ndarray, optional): emission covariance ..math`Q_{z_t}`
-                with shape :math:`(\text{num_states}, \text{num_emission_dims}, \text{num_emission_dims})`.
+                with shape :math:`(\text{num\_states}, \text{emissions\_dim}, \text{emissions\_dim})`.
                 Defaults to None.
             seed (jr.PRNGKey, optional): random seed. Defaults to None.
         """

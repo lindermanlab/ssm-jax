@@ -273,15 +273,15 @@ def debug_rejit(func):
     Checks if input and output pytrees are consistent across multiple 
     calls to func (else: func will need to be re-compiled).
     
-    Example:
+    Example::
     
         @debug_rejit
         @jit
         def fn(inputs):
             return outputs
 
-        ==> will print out useful description when input/output
-            pytrees mismatch (i.e. when fn will re-jit)
+        # ==> will print out useful description when input/output
+        #     pytrees mismatch (i.e. when fn will re-jit)
     """
     def wrapper(*args, **kwargs):
         

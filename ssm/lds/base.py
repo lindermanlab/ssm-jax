@@ -120,7 +120,7 @@ class LDS(SSM):
 
         Args:
             dataset (np.ndarray): observed data
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
+                of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{emissions\_dim})`
             method (str, optional): model fit method.
                 Must be one of ["laplace_em"]. Defaults to "laplace_em".
             rng (jr.PRNGKey, optional): Random seed.

@@ -182,7 +182,7 @@ class GaussianLDS(LDS):
 
         Args:
             dataset (np.ndarray): observed data
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
+                of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{emissions\_dim})`
             method (str, optional): model fit method.
                 Must be one of ["em", "laplace_em"]. Defaults to "em".
             rng (jr.PRNGKey, optional): Random seed.

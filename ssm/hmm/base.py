@@ -88,7 +88,7 @@ class HMM(SSM):
 
         Args:
             dataset (np.ndarray): array of observed data
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
+                of shape :math:`(\text{batch} , \text{num\_timesteps} , \text{emissions\_dim})`
             key (jr.PRNGKey): random seed
             method (str, optional): state assignment method.
                 One of "random" or "kmeans". Defaults to "kmeans".
@@ -153,7 +153,7 @@ class HMM(SSM):
 
         Args:
             dataset (np.ndarray): observed data
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
+                of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{emissions\_dim})`
             method (str, optional): model fit method.
                 Must be one of ["em"]. Defaults to "em".
             num_iters (int, optional): number of fit iterations.

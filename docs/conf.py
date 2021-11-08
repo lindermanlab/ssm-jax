@@ -30,8 +30,7 @@ author = 'Scott Linderman, et al.'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
-    'sphinx.ext.mathjax',
-    # 'sphinx.ext.imgmath',
+    'sphinx.ext.imgmath',
 ]
 
 # Some extension configurations
