@@ -85,7 +85,7 @@ class SSM(object):
         def _log_probability_single(_states, _data):
             lp = 0
             # Get the first timestep probability
-            initial_state, initial_data = _states[0], _data[0]
+            initial_state, initial_data = tree_map(lambda x: x[0], (_states, _data))
             lp += self.initial_distribution().log_prob(initial_state)
             lp += self.emissions_distribution(initial_state).log_prob(initial_data)
 
@@ -96,7 +96,7 @@ class SSM(object):
                 lp += self.emissions_distribution(state).log_prob(emission)
                 return (state, lp), None
 
-            (_, lp), _ = lax.scan(_step, (initial_state, lp), (_states[1:], _data[1:]))
+            (_, lp), _ = lax.scan(_step, (initial_state, lp), tree_map(lambda x: x[1:], (_states, _data)))
             return lp
 
         if data.ndim > 2:
