@@ -4,12 +4,14 @@ Useful utility functions.
 
 import jax.numpy as np
 import jax.random as jr
+from jax import tree_util
 import inspect
 from enum import IntEnum
 from tqdm.auto import trange
 from scipy.optimize import linear_sum_assignment
 from typing import Sequence, Optional
 from functools import wraps
+import copy
 
 class Verbosity(IntEnum):
     """
@@ -200,3 +202,113 @@ def one_hot(z, K):
     zoh = zoh.at[np.arange(N), np.arange(K)[np.ravel(z)]].set(1)
     zoh = np.reshape(zoh, shp + (K,))
     return zoh
+
+
+#### FUNCTIONS FOR DEBUGGING ####
+
+# terminal color macros
+CRED = '\033[91m'
+CEND = '\033[0m'
+
+def check_pytree_structure_match(obj_a, obj_b, mode="input", sig=None):
+    """Checks whether pytrees A and B have the same structure.
+    Used for debugging re-jit problems (see debug_rejit decorator).
+
+    Args:
+        obj_a (jaxlib.xla_extension.PyTreeDef): pytree obj A (prev)
+        obj_b (jaxlib.xla_extension.PyTreeDef): pytree obj B (curr)
+        mode (str, optional): "input" or "output". Defaults to "input".
+        sig (inspect.FullArgSpec, optional): optional function signature.
+            Used for better debug description. Defaults to None.
+    """
+    struct_a = tree_util.tree_structure(obj_a)
+    struct_b = tree_util.tree_structure(obj_b)
+    if struct_a != struct_b:
+        for i, (a, b) in enumerate(zip(struct_a.children(), struct_b.children())):
+            if a != b:
+                print(f"{CRED}[[structure mismatch found for {mode} at index {i}"\
+                        f"{f' (arg={sig.args[i]})' if sig is not None else ''}]]{CEND}")
+                print(f"prev={a}\ncurr={b}")
+        
+def check_pytree_shape_match(obj_a, obj_b, mode="input", sig=None):
+    """Checks whether pytrees A and B have the same leaf shapes.
+    Used for debugging re-jit problems (see debug_rejit decorator).
+
+    Args:
+        obj_a (jaxlib.xla_extension.PyTreeDef): pytree obj A (prev)
+        obj_b (jaxlib.xla_extension.PyTreeDef): pytree obj B (curr)
+        mode (str, optional): "input" or "output". Defaults to "input".
+        sig (inspect.FullArgSpec, optional): optional function signature.
+            Used for better debug description. Defaults to None.
+    """
+    shape_a = [x.shape for x in tree_util.tree_leaves(obj_a)]
+    shape_b = [x.shape for x in tree_util.tree_leaves(obj_b)]
+    if shape_a != shape_b:
+        for i, (a, b) in enumerate(zip(shape_a, shape_b)):
+            if a != b:
+                print(f"{CRED}[[shape mismatch found for {mode} at index {i}"\
+                        f"{f' (arg={sig.args[i]})' if sig is not None else ''}]]{CEND}")
+                print(f"prev={a}\ncurr={b}")
+
+def check_pytree_match(obj_a,
+                       obj_b,
+                       mode: str="input",
+                       sig: inspect.FullArgSpec=None):
+    """Checks whether pytrees A and B are the same by checking shape AND structure.
+    Used for debugging re-jit problems (see debug_rejit decorator).
+
+    Args:
+        obj_a (jaxlib.xla_extension.PyTreeDef): pytree structure A (prev)
+        obj_b (jaxlib.xla_extension.PyTreeDef): pytree structure B (curr)
+        mode (str, optional): "input" or "output". Defaults to "input".
+        sig (inspect.FullArgSpec, optional): optional function signature.
+            Used for better debug description. Defaults to None.
+    """
+    check_pytree_shape_match(obj_a, obj_b, mode, sig)
+    check_pytree_structure_match(obj_a, obj_b, mode, sig)
+
+def debug_rejit(func):
+    """Decorator to debug re-jitting errors.
+    
+    Checks if input and output pytrees are consistent across multiple 
+    calls to func (else: func will need to be re-compiled).
+    
+    Example:
+    
+        @debug_rejit
+        @jit
+        def fn(inputs):
+            return outputs
+
+        ==> will print out useful description when input/output
+            pytrees mismatch (i.e. when fn will re-jit)
+    """
+    def wrapper(*args, **kwargs):
+        
+        # get tree structure for args and kwargs
+        inputs = list(args) + list(kwargs.values())
+        if wrapper.prev_in is None:
+            wrapper.prev_in = copy.deepcopy(inputs)
+        
+        # run the function
+        outputs = func(*args, **kwargs)
+
+        # get tree structure for output (this works for tuple outputs too)
+        if wrapper.prev_out is None:
+            wrapper.prev_out = copy.deepcopy(outputs)
+
+        # check whether the input and output structures match w/ prev fn call
+        check_pytree_match(inputs, wrapper.prev_in, mode="input", sig=wrapper.sig)
+        check_pytree_match(outputs, wrapper.prev_out, mode="output")
+        
+        # store for next fn call
+        wrapper.prev_in = inputs
+        wrapper.prev_out = outputs
+        
+        # return the output
+        return outputs
+    
+    wrapper.sig = inspect.getfullargspec(func)
+    wrapper.prev_in = None
+    wrapper.prev_out = None
+    return wrapper
