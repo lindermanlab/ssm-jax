@@ -1,6 +1,6 @@
-import string
-import jax.numpy as np
 from jax import vmap
+import jax.numpy as np
+from jax.tree_util import register_pytree_node_class
 
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
@@ -20,9 +20,10 @@ class FactorialEmissions(Emissions):
         return self._num_groups
 
 
+@register_pytree_node_class
 class NormalFactorialEmissions(FactorialEmissions):
     """
-    x_t | \{z_{tg} \}_{g=1}^G ~ N(\sum_g m_{z_{tg}}, \sum_g \sigma^2_{z_{tg}})
+    x_t | \{z_{tj} \}_{j=1}^J ~ N(\sum_j m_{z_{tj}}, \sigma^2)
     """
     def __init__(self, num_states: tuple,
                  means: (tuple or list)=None,
@@ -66,6 +67,10 @@ class NormalFactorialEmissions(FactorialEmissions):
                    emissions_distribution=distribution,
                    emissions_distribution_prior=prior)
 
+    @property
+    def emissions_shape(self):
+        return self._distribution.event_shape
+
     def distribution(self, state):
         """
         Return the conditional distribution of emission x_t
@@ -75,7 +80,7 @@ class NormalFactorialEmissions(FactorialEmissions):
 
     def log_probs(self, data):
         """
-        Compute log p(x_t | z_t=(k1, ..., kG)) for all t and (k1,...,kG).
+        Compute log p(x_t | z_t=(k_1, ..., k_J)) for all t and (k_1,...,k_J).
         """
         return vmap(self._distribution.log_prob)(data)
 
@@ -83,9 +88,31 @@ class NormalFactorialEmissions(FactorialEmissions):
         pass
         # expected_states = posteriors.expected_states
 
+        # Precompute posterior marginals
+        # marginals = []
+        # for j in range(self.num_groups):
+        #     axes = np.concatenate([np.arange(j), np.arange(j+1, self.num_groups)]) + 2
+        #     marginals.append(np.sum(posteriors.expected_states, axes=axes))
+
+        # # Precompute pairwise marginals
+        # pairwise_marginals = []
+        # for i in range(self.num_groups):
+        #     row = []
+        #     for j in range(i):
+        #         axes = np.concatenate([np.arange(j),
+        #                                np.arange(j+1, i),
+        #                                np.arange(i+1, self.num_groups)]) + 2
+        #         row.append(np.sum(posteriors.expected_states, axes=axes))
+        #     pairwise_marginals.append(row)
+
+        # def _m_step_single(j, k):
+        #     """Update \mu_{j,k} for group j and state z_{tj} = k holding the rest fixed.
+        #     """
+        #     precision = marginals[j]
+
         # def _objective(params):
-        #     group_means, log_variance = params
-        #     dist = NormalFactorialEmissions(self.num_states, group_means, np.exp(log_variance))
+        #     means, log_variance = params
+        #     dist = NormalFactorialEmissions(self.num_states, means, np.exp(log_variance))
         #     f = lambda data, expected_states: np.sum(dist.log_probs(data) * expected_states)
         #     lp = vmap(f)(dataset, posteriors.expected_states)
         #     return -lp / dataset.size

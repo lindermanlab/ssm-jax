@@ -1,6 +1,7 @@
 from ssm.hmm.base import HMM
 import jax.numpy as np
 import jax.random as jr
+from jax.tree_util import register_pytree_node_class
 
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
@@ -25,7 +26,7 @@ class FactorialHMM(HMM):
 
     @format_dataset
     def initialize(self, dataset: np.ndarray, key: jr.PRNGKey, method: str="kmeans") -> None:
-        raise NotImplementedError
+        pass
 
     def infer_posterior(self, data):
         return FactorialHMMPosterior.infer(self._initial_condition.log_probs(data),
@@ -33,6 +34,7 @@ class FactorialHMM(HMM):
                                            self._transitions.log_probs(data))
 
 
+@register_pytree_node_class
 class NormalFactorialHMM(FactorialHMM):
 
     def __init__(self,

@@ -6,7 +6,6 @@ tfd = tfp.distributions
 
 from ssm.hmm.initial import InitialCondition
 
-
 @register_pytree_node_class
 class FactorialInitialCondition(InitialCondition):
     """
@@ -28,11 +27,10 @@ class FactorialInitialCondition(InitialCondition):
     def tree_unflatten(cls, aux_data, children):
         return cls(children)
 
-    @property
-    def log_probs(self):
+    def log_probs(self, data):
         lp = 0
         for g, ic in enumerate(self._initial_conditions):
-            lp_expanded = np.expand_dims(ic.log_probs(), axis=range(1, self.num_groups))
+            lp_expanded = np.expand_dims(ic.log_probs(data), axis=range(1, self.num_groups))
             lp += np.swapaxes(lp_expanded, 0, g)
         return lp
 
@@ -53,6 +51,6 @@ class FactorialInitialCondition(InitialCondition):
             # Marginalize over all but this group
             # (first two axes are batches and time steps)
             axes = np.concatenate([np.arange(g), np.arange(g+1, self.num_groups)]) + 2
-            expected_states = np.sum(posteriors.expected_states, axes=axes)
+            expected_states = np.sum(posteriors.expected_states, axis=axes)
             assert expected_states.ndim == 3 and np.allclose(expected_states.sum(axis=2), 1.0)
             ic.m_step(dataset, DummyPosterior(expected_states))

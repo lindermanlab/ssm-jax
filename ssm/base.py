@@ -64,6 +64,15 @@ class SSM(object):
         """
         raise NotImplementedError
 
+    @property
+    def emissions_shape(self):
+        """
+        Return a PyTree specifying the shape of the emissions. Generally, this
+        will just be a tuple of length 1 specifying the emission dimension.
+        E.g. for a HMM with d-dimensional Gaussian emissions, this would return (d,).
+        """
+        raise NotImplementedError
+
     def log_probability(self, states, data):
         r"""
         Computes the log joint probability of a set of states and data (observations).

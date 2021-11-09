@@ -80,7 +80,7 @@ class ExponentialFamilyEmissions(Emissions):
                    emissions_distribution_prior=prior)
 
     @property
-    def emissions_dim(self):
+    def emissions_shape(self):
         return self._distribution.event_shape
 
     def distribution(self, state: int, covariates: np.ndarray=None) -> ssmd.MultivariateNormalTriL:

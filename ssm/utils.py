@@ -5,6 +5,7 @@ Useful utility functions.
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
+from jax.tree_util import tree_map
 
 import inspect
 from enum import IntEnum
@@ -166,13 +167,27 @@ def format_dataset(f):
         bound_args = sig.bind(*args, **kwargs)
         bound_args.apply_defaults()
         dataset = bound_args.arguments['dataset']
+        if "self" in bound_args.arguments:
+            model = bound_args.arguments["self"]
+        elif "model" in bound_args.arguments:
+            model = bound_args.arguments["model"]
+        else:
+            raise Exception("Expected function to have either `self` or `model` as an argument.")
 
-        # Make sure dataset is a 3D tensor of shape (B, T, D)
-        if hasattr(dataset, "ndim"):
-            if dataset.ndim == 2:
-                dataset = dataset[None, :, :]
+        # Make sure dataset is a pytree whose leave nodes have a batch dimension
+        def _ensure_batch_dim(arr, shp):
+            ndim = len(shp)
+            if ndim > 0:
+                assert arr.shape[-ndim:] == shp
+            if arr.ndim == ndim + 2:
+                return arr
+            elif arr.ndim == ndim + 1:
+                return arr[None, ...]
             else:
-                assert dataset.ndim == 3
+                raise Exception("dataset must consist of arrays of shape "\
+                    "((batch, timesteps) + event_shape) or ((timesteps,) + event_shape)")
+
+        dataset = tree_map(_ensure_batch_dim, dataset, model.emissions_shape)
 
         # if isinstance(dataset, (list, tuple)):
         #     assert all([isinstance(d, dict) and "data" in d for d in dataset])

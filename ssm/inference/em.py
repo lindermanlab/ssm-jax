@@ -14,7 +14,6 @@ def em(model,
        tol=1e-4,
        verbosity=Verbosity.DEBUG,
     ):
-
     @jit
     def update(model):
         posteriors = vmap(model.infer_posterior)(dataset)

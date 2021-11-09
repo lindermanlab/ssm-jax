@@ -105,6 +105,21 @@ class FactorialHMMPosterior:
                    expected_states,
                    expected_transitions)
 
+    @property
+    def log_normalizer(self):
+        return self._log_normalizer
+
+    def _mean(self):
+        return self._expected_states
+
+    @property
+    def expected_states(self):
+        return self._mean()
+
+    @property
+    def expected_transitions(self):
+        return self._expected_transitions
+
     def tree_flatten(self):
         aux_data = None
         children = (

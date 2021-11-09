@@ -52,8 +52,8 @@ class HMM(SSM):
         return self._num_states
 
     @property
-    def emissions_dim(self):
-        return self._emissions.emissions_dim
+    def emissions_shape(self):
+        return self._emissions.emissions_shape
 
     def tree_flatten(self):
         children = (self._initial_condition,
@@ -192,4 +192,4 @@ class HMM(SSM):
 
     def __repr__(self):
         return f"<ssm.hmm.{type(self).__name__} num_states={self.num_states} " \
-               f"emissions_dim={self.emissions_dim}>"
+               f"emissions_shape={self.emissions_shape}>"
