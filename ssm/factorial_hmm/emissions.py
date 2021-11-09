@@ -1,3 +1,4 @@
+import string
 import jax.numpy as np
 from jax import vmap
 
@@ -8,19 +9,25 @@ import ssm.distributions as ssmd
 from ssm.hmm.emissions import Emissions
 
 class FactorialEmissions(Emissions):
-    pass
+
+    def __init__(self, num_states: tuple):
+        super().__init__(num_states)
+        self._num_groups = len(num_states)
+
+    @property
+    def num_groups(self):
+        return self._num_groups
 
 
 class NormalFactorialEmissions(FactorialEmissions):
     """
     x_t | \{z_{tg} \}_{g=1}^G ~ N(\sum_g m_{z_{tg}}, \sum_g \sigma^2_{z_{tg}})
     """
-    def __init__(self, num_states: int,
+    def __init__(self, num_states: tuple,
                  group_means: (tuple or list)=None,
                  variance: float=1.0,
                  emissions_distribution: ssmd.MultivariateNormalTriL=None,
                  emissions_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
-        super().__init__(num_states)
         """Normal Emissions for HMM.
 
         Can be initialized by specifying parameters or by passing in a pre-initialized
@@ -35,14 +42,17 @@ class NormalFactorialEmissions(FactorialEmissions):
             emissions_distribution_prior (ssmd.NormalInverseWishart, optional): initialized emissions distribution prior.
                 Defaults to None.
         """
+        super().__init__(num_states)
         if group_means is not None:
-            means = np.einsum()
+            means = np.zeros(num_states)
+            for k, m in enumerate(group_means):
+                m_expanded = np.expand_dims(m, axis=range(1, self.num_groups))
+                means += np.swapaxes(m_expanded, 0, k)
             emissions_distribution = tfd.Normal(means, variance)
 
         self._num_states = num_states
         self._distribution = emissions_distribution
         self._prior = emissions_distribution_prior
-
 
     def tree_flatten(self):
         children = (self._distribution, self._prior)
@@ -70,6 +80,9 @@ class NormalFactorialEmissions(FactorialEmissions):
         return vmap(self._distribution.log_prob)(data)
 
     def m_step(self, dataset, posteriors):
+
+        expected_states = posteriors.expected_states
+
         def _objective(params):
             group_means, log_variance = params
             dist = NormalFactorialEmissions(self.num_states, group_means, np.exp(log_variance))
@@ -78,7 +91,4 @@ class NormalFactorialEmissions(FactorialEmissions):
             return -lp / dataset.size
 
         # TODO: Optimize the objective with jax.scipy.optimize.minimize like in laplace_em
-
-
-
 
