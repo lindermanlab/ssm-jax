@@ -8,16 +8,16 @@ from ssm.hmm.transitions import Transitions
 
 
 @register_pytree_node_class
-class FactorialStationaryTransitions(Transitions):
+class FactorialTransitions(Transitions):
     """
     Transitions over several hidden states evolving in parallel.
     """
     def __init__(self, transitions) -> None:
 
+        num_states = tuple(t.num_states for t in transitions)
         self.num_groups = len(transitions)
         self._transitions = transitions
-        num_states = np.prod([t.num_states for t in transitions])
-        super(FactorialStationaryTransitions, self).__init__(num_states)
+        super(FactorialTransitions, self).__init__(num_states)
 
     def tree_flatten(self):
         # children, aux_data = [], []
@@ -52,6 +52,9 @@ class FactorialStationaryTransitions(Transitions):
             for prev_state, transitions in zip(state, self._transitions):
                 yield Root(transitions.distribution(prev_state))
         return tfd.JointDistributionCoroutine(model)
+
+    def log_probs(self, data):
+        return tuple(t.log_probs(data) for t in self._transitions)
 
     def m_step(self, dataset, posteriors):
 
