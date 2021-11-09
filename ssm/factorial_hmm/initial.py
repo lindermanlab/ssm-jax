@@ -28,11 +28,7 @@ class FactorialInitialCondition(InitialCondition):
         return cls(children)
 
     def log_probs(self, data):
-        lp = 0
-        for g, ic in enumerate(self._initial_conditions):
-            lp_expanded = np.expand_dims(ic.log_probs(data), axis=range(1, self.num_groups))
-            lp += np.swapaxes(lp_expanded, 0, g)
-        return lp
+        return tuple(ic.log_probs(data) for ic in self._initial_conditions)
 
     def distribution(self):
         Root = tfd.JointDistributionCoroutine.Root
@@ -44,13 +40,9 @@ class FactorialInitialCondition(InitialCondition):
     def m_step(self, dataset, posteriors):
 
         class DummyPosterior:
-            def __init__(self, expected_states) -> None:
-                self.expected_states = expected_states
+            def __init__(self, expected_initial_states) -> None:
+                self.expected_initial_states = expected_initial_states
 
-        for g, ic in enumerate(self._initial_conditions):
-            # Marginalize over all but this group
-            # (first two axes are batches and time steps)
-            axes = np.concatenate([np.arange(g), np.arange(g+1, self.num_groups)]) + 2
-            expected_states = np.sum(posteriors.expected_states, axis=axes)
-            assert expected_states.ndim == 3 and np.allclose(expected_states.sum(axis=2), 1.0)
-            ic.m_step(dataset, DummyPosterior(expected_states))
+        for ic, expected_initial_states in \
+            zip(self._initial_conditions, posteriors.expected_initial_states):
+            ic.m_step(dataset, DummyPosterior(expected_initial_states))

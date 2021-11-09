@@ -84,7 +84,7 @@ class StandardInitialCondition(InitialCondition):
         return lps - spsp.logsumexp(lps)
 
     def m_step(self, dataset, posteriors):
-        stats = np.sum(posteriors.expected_states[:, 0, :], axis=0)
+        stats = np.sum(posteriors.expected_initial_states, axis=0)
         stats += self._distribution_prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
         self._distribution = ssmd.Categorical.from_params(conditional.mode())

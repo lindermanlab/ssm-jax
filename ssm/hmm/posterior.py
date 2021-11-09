@@ -124,6 +124,7 @@ class _HMMPosterior(tfp.distributions.Distribution):
                  log_transition_matrix,
                  log_normalizer,
                  filtered_potentials,
+                 expected_initial_states,
                  expected_states,
                  expected_transitions,
                  validate_args=False,
@@ -135,6 +136,7 @@ class _HMMPosterior(tfp.distributions.Distribution):
         self._log_likelihoods = log_likelihoods
         self._log_normalizer = log_normalizer
         self._filtered_potentials = filtered_potentials
+        self._expected_initial_states = expected_initial_states
         self._expected_states = expected_states
         self._expected_transitions = expected_transitions
 
@@ -151,6 +153,7 @@ class _HMMPosterior(tfp.distributions.Distribution):
                             log_transition_matrix=self._log_transition_matrix,
                             log_normalizer=self._log_normalizer,
                             filtered_potentials=self._filtered_potentials,
+                            expected_initial_states=self._expected_initial_states,
                             expected_states=self._expected_states,
                             expected_transitions=self._expected_transitions),
             name=name,
@@ -188,11 +191,15 @@ class _HMMPosterior(tfp.distributions.Distribution):
         (log_normalizer, filtered_potentials), (expected_transitions, expected_states) = \
             f(log_initial_state_probs, log_transition_matrix, log_likelihoods)
 
+        # The expected initial states are part of expected states
+        expected_initial_states = expected_states[0]
+
         return cls(log_initial_state_probs,
                    log_likelihoods,
                    log_transition_matrix,
                    log_normalizer,
                    filtered_potentials,
+                   expected_initial_states,
                    expected_states,
                    expected_transitions)
 
@@ -225,8 +232,12 @@ class _HMMPosterior(tfp.distributions.Distribution):
         return self._expected_states
 
     @property
+    def expected_initial_states(self):
+        return self._expected_initial_states
+
+    @property
     def expected_states(self):
-        return self.mean()
+        return self._expected_states
 
     @property
     def expected_transitions(self):
@@ -291,6 +302,7 @@ class StationaryHMMPosterior(_HMMPosterior):
             log_transition_matrix=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
             log_normalizer=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
             filtered_potentials=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
+            expected_initial_states=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1),
             expected_states=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
             expected_transitions=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
         )
@@ -309,6 +321,7 @@ class NonstationaryHMMPosterior(_HMMPosterior):
             log_transition_matrix=tfp.internal.parameter_properties.ParameterProperties(event_ndims=3),
             log_normalizer=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
             filtered_potentials=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
+            expected_initial_states=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1),
             expected_states=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
             expected_transitions=tfp.internal.parameter_properties.ParameterProperties(event_ndims=3),
         )

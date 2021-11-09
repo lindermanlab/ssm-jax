@@ -31,6 +31,10 @@ def _factorial_hmm_log_normalizer(log_initial_state_probs,
     log_normalizer : float
         Log normalization constant.
     """
+    # Compute the initial message for all combinations of states
+    alpha_0 = log_initial_state_probs[0]
+    for lp in log_initial_state_probs[1:]:
+        alpha_0 = alpha_0[..., None] + lp
 
     def marginalize(alphas, log_likes):
         # Weight each state by its log-likelihood to get log p(z_t | x_{1:t})
@@ -45,13 +49,11 @@ def _factorial_hmm_log_normalizer(log_initial_state_probs,
         return alphas, alphas
 
     # Forward pass.
-    alpha_T, alphas = lax.scan(
-        marginalize, log_initial_state_probs, log_likelihoods[:-1]
-    )
+    alpha_T, alphas = lax.scan(marginalize, alpha_0, log_likelihoods[:-1])
 
     # Include the initial potentials to get log Pr(z_t | x_{1:t-1})
     # for all time steps. These are the "filtered potentials".
-    filtered_potentials = np.concatenate([log_initial_state_probs[None, ...], alphas], axis=0)
+    filtered_potentials = np.concatenate([alpha_0[None, ...], alphas], axis=0)
 
     # Account for the last timestep when computing marginal lkhd
     return spsp.logsumexp(alpha_T + log_likelihoods[-1]), filtered_potentials
@@ -68,6 +70,7 @@ class FactorialHMMPosterior:
                  log_transition_matrices,
                  log_normalizer,
                  filtered_potentials,
+                 expected_initial_states,
                  expected_states,
                  expected_transitions
              ) -> None:
@@ -76,6 +79,7 @@ class FactorialHMMPosterior:
         self._log_likelihoods = log_likelihoods
         self._log_normalizer = log_normalizer
         self._filtered_potentials = filtered_potentials
+        self._expected_initial_states = expected_initial_states
         self._expected_states = expected_states
         self._expected_transitions = expected_transitions
 
@@ -93,15 +97,17 @@ class FactorialHMMPosterior:
         """
         # Since this is a natural exponential family, the expected states and transitions
         # are given by gradients of the log normalizer.
-        f = value_and_grad(_factorial_hmm_log_normalizer, argnums=(1, 2), has_aux=True)
-        (log_normalizer, filtered_potentials), (expected_transitions, expected_states) = \
-            f(log_initial_state_probs, log_transition_matrices, log_likelihoods)
+        f = value_and_grad(_factorial_hmm_log_normalizer, argnums=(0, 1, 2), has_aux=True)
+        (log_normalizer, filtered_potentials), \
+            (expected_initial_states, expected_transitions, expected_states) = \
+                f(log_initial_state_probs, log_transition_matrices, log_likelihoods)
 
         return cls(log_initial_state_probs,
                    log_likelihoods,
                    log_transition_matrices,
                    log_normalizer,
                    filtered_potentials,
+                   expected_initial_states,
                    expected_states,
                    expected_transitions)
 
@@ -113,8 +119,12 @@ class FactorialHMMPosterior:
         return self._expected_states
 
     @property
+    def expected_initial_states(self):
+        return self._expected_initial_states
+
+    @property
     def expected_states(self):
-        return self._mean()
+        return self._expected_states
 
     @property
     def expected_transitions(self):
@@ -128,6 +138,7 @@ class FactorialHMMPosterior:
             self._log_likelihoods,
             self._log_normalizer,
             self._filtered_potentials,
+            self._expected_initial_states,
             self._expected_states,
             self._expected_transitions,
         )
@@ -145,6 +156,7 @@ class FactorialHMMPosterior:
             self._log_likelihoods[index],
             self._log_normalizer[index],
             self._filtered_potentials[index],
+            self._expected_initial_states[index],
             self._expected_states[index],
             self._expected_transitions[index],
         )
