@@ -114,6 +114,7 @@ class StationaryTransitions(Transitions):
         stats += self._prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
         self._distribution = ssmd.Categorical.from_params(conditional.mode())
+        return self
 
 
 @register_pytree_node_class
@@ -208,3 +209,5 @@ class SimpleStickyTransitions(Transitions):
         self._distribution = ssmd.Categorical(
             logits=self._recompute_log_transition_matrix()
         )
+
+        return self

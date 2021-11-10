@@ -1,6 +1,9 @@
 import jax.numpy as np
 from jax import vmap
-from jax.tree_util import register_pytree_node_class
+from jax.tree_util import register_pytree_node_class, tree_flatten, tree_unflatten
+from jax.flatten_util import ravel_pytree
+import jax.scipy.optimize
+
 from tensorflow_probability.substrates import jax as tfp
 import ssm.distributions as ssmd
 tfd = tfp.distributions
@@ -37,8 +40,29 @@ class Emissions:
         return vmap(lambda k: self.distribution(k).log_prob(data))(inds).T
 
     def m_step(self, dataset, posteriors):
-        # TODO: implement generic m-step
-        raise NotImplementedError
+        """By default, try to optimize the emission distribution via generic
+        gradient-based optimization of the expected log likelihood.
+
+        This function assumes that the Emissions subclass is a PyTree and
+        that all of its leaf nodes are unconstrained parameters.
+        """
+        # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
+        flat_self, unravel = ravel_pytree(self)
+
+        def _objective(flat_emissions):
+            emissions = unravel(flat_emissions)
+            f = lambda data, expected_states: np.sum(emissions.log_probs(data) * expected_states)
+            lp = vmap(f)(dataset, posteriors.expected_states).sum()
+            return -lp / dataset.size
+
+        results = jax.scipy.optimize.minimize(
+            _objective,
+            flat_self,
+            method="bfgs",
+            options=dict(maxiter=10))
+
+        # Update class parameters
+        return unravel(results.x)
 
 
 class ExponentialFamilyEmissions(Emissions):
@@ -110,6 +134,7 @@ class ExponentialFamilyEmissions(Emissions):
             dataset, weights=posteriors.expected_states, prior=self._prior)
         self._distribution = self._emissions_distribution_class.from_params(
             conditional.mode())
+        return self
 
 
 @register_pytree_node_class

@@ -137,9 +137,9 @@ class HMM(SSM):
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
     def m_step(self, dataset, posteriors):
-        self._initial_condition.m_step(dataset, posteriors)
-        self._transitions.m_step(dataset, posteriors)
-        self._emissions.m_step(dataset, posteriors)
+        self._initial_condition = self._initial_condition.m_step(dataset, posteriors)
+        self._transitions = self._transitions.m_step(dataset, posteriors)
+        self._emissions = self._emissions.m_step(dataset, posteriors)
 
     @format_dataset
     def fit(self, dataset: np.ndarray,

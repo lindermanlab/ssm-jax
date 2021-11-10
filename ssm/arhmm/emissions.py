@@ -183,6 +183,7 @@ class AutoregressiveEmissions(Emissions):
         # Compute the conditional distribution over parameters and take the mode
         conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
         self._distribution = ssmd.GaussianLinearRegression.from_params(conditional.mode())
+        return self
 
     def tree_flatten(self):
         children = (self._distribution, self._prior)

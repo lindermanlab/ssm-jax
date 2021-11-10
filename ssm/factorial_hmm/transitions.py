@@ -66,17 +66,4 @@ class FactorialTransitions(Transitions):
             zip(self._transitions, posteriors.expected_transitions):
             transitions_object.m_step(dataset, DummyPosterior(expected_transitions))
 
-        # # Sum over trials.
-        # stats = np.sum(expected_transitions, axis=0)
-
-        # # Iterate over groups of latent variables.
-        # for i, t in enumerate(self._transitions):
-
-        #     # Sum over axes associated with other transitions.
-        #     ax = [j for j in range(stats.ndim)]
-        #     ax.remove(i)
-        #     ax.remove(i + self.num_groups)
-        #     reduced_stats = np.sum(stats, axis=ax)
-
-        #     # Perform m-step for transition operator t.
-        #     t.m_step(dataset, reduced_stats)
+        return self

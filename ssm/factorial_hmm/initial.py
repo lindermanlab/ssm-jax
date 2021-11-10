@@ -46,3 +46,5 @@ class FactorialInitialCondition(InitialCondition):
         for ic, expected_initial_states in \
             zip(self._initial_conditions, posteriors.expected_initial_states):
             ic.m_step(dataset, DummyPosterior(expected_initial_states))
+
+        return self

@@ -104,7 +104,7 @@ class NormalFactorialHMM(FactorialHMM):
         factorial_initial_condition = FactorialInitialCondition(initial_conditions)
         factorial_transitions = FactorialTransitions(transitions)
         factorial_emissions = NormalFactorialEmissions(
-            num_states, means=emission_means, variance=emission_variance)
+            num_states, means=emission_means, log_scale=np.log(np.sqrt(emission_variance)))
         super(NormalFactorialHMM, self).__init__(
             num_states, factorial_initial_condition, factorial_transitions, factorial_emissions)
 

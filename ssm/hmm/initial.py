@@ -88,3 +88,4 @@ class StandardInitialCondition(InitialCondition):
         stats += self._distribution_prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
         self._distribution = ssmd.Categorical.from_params(conditional.mode())
+        return self
