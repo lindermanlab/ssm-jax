@@ -67,7 +67,7 @@ def plot_series(x, y, color="C0", label=""):
         plt.plot([], [], "--", color=color, label=label)
     ys = np.copy(mean_times)
     # ys[isnan] = m * params[isnan] + b  # replace nans with linear prediction
-    ys[isnan] = 0.  # replace nans with zero
+    ys[isnan] = 0.0  # replace nans with zero
     for x, y, isna in zip(params, ys, isnan):
         plt.scatter(
             x, y, marker="x" if isna else "o", s=80 if isna else 40, color=color
@@ -91,7 +91,9 @@ def load_multiple_runs(benchmark_runs):
 
 
 def generate_report_across_params(
-    runs_df, show_plots=False, save_to_pdf: bool or str = False,
+    runs_df,
+    show_plots=False,
+    save_to_pdf: bool or str = False,
     out_units="seconds",
 ):
     """Main function to generate plotting report of runtime versus params
@@ -100,17 +102,38 @@ def generate_report_across_params(
     This is best for comparing how runtime scales with different param values
     across the different runs.
     """
-    
+
     if out_units == "seconds":
         unit_factor = 1.0
     elif out_units == "minutes":
         unit_factor = 60.0
     else:
         raise ValueError(f"out_units {out_units} not recognized.")
-        
+
     colors = [plt.cm.tab20(i) for i in range(20)]
     if save_to_pdf:
         pdf = PdfPages(save_to_pdf)
+        
+    if "params" in runs_df["extra_info"].iloc[0]:
+        fig = plt.figure(figsize=(10, 6))
+        ax = plt.gca()
+        ax.set_axis_off()
+        default_params = runs_df["extra_info"].iloc[0]["params"]
+        cellText = [[key, value] for key,value in default_params.items()]
+        numRows = len(cellText)
+        plt.table(
+            cellText = cellText,
+            cellColours = [["gray", "lightgrey"] for i in range(numRows)],
+            bbox=(0.1, 0.5-0.5*(0.05 * numRows), 0.8, 0.04 * numRows),
+            colWidths=[0.4, 0.6]
+        )
+        
+        if save_to_pdf:
+            pdf.savefig()
+        if show_plots:
+            plt.show()
+        plt.close()
+        
     for test_name, test_grp in runs_df.groupby(["test_name"]):
         plt.figure(figsize=(10, 6))
         # plot time vs. params for different runs (as different series)
