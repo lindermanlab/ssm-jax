@@ -100,9 +100,13 @@ class NormalFactorialHMM(FactorialHMM):
             for K in num_states:
                 this_seed, seed = jr.split(seed, 2)
                 emission_means.append(tfd.Normal(0, 1).sample(seed=this_seed, sample_shape=K))
+        
+        # emissions_variance needs to be NOT weakly typed else 2x jit
+        if isinstance(emission_variance, float):
+            emission_variance = np.array([emission_variance])
 
         factorial_initial_condition = FactorialInitialCondition(initial_conditions)
-        factorial_transitions = FactorialTransitions(transitions)
+        factorial_transitions = FactorialTransitions(transitions)    
         factorial_emissions = NormalFactorialEmissions(
             num_states, means=emission_means, log_scale=np.log(np.sqrt(emission_variance)))
         super(NormalFactorialHMM, self).__init__(
