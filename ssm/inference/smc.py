@@ -14,6 +14,14 @@ from copy import deepcopy as dc
 import matplotlib.pyplot as plt
 
 
+disable_jit = True
+from contextlib import contextmanager, ExitStack
+@contextmanager
+def nothing():
+    yield
+possibly_disabled = jax.disable_jit if disable_jit else nothing
+
+
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
 
@@ -47,6 +55,56 @@ def multinomial_resampling(key, log_weights, particles):
     num_particles = log_weights.shape[0]
     cat = tfd.Categorical(logits=log_weights)
     parents = cat.sample(sample_shape=(num_particles,), seed=key)
+    return jax.tree_map(lambda item: item[parents], particles), parents
+
+
+def systematic_resampling(key, log_weights, particles):
+    r"""Resample particles with systematic resampling.
+
+    Args:
+      key: A JAX PRNG key.
+      log_weights: A [num_particles] ndarray, the log weights for each particle.
+      particles: A pytree of [num_particles, ...] ndarrays that
+        will be resampled.
+    Returns:
+      resampled_particles: A pytree of [num_particles, ...] ndarrays resampled via
+        systematic sampling.
+    """
+
+    # Grab the number of particles.
+    num_particles = log_weights.shape[0]
+
+    # Construct the bins.
+    alpha = jnp.max(log_weights)
+    zeroed_weights = jnp.exp(log_weights - alpha)
+    normalized_weights = zeroed_weights / jnp.sum(zeroed_weights)
+    cumsum_weights = jnp.cumsum(normalized_weights)
+    bins_weights = jnp.concatenate((jnp.asarray([0]), cumsum_weights))
+
+    # Force re-normalize.
+    bins_weights = bins_weights / bins_weights[-1]
+
+    # Construct the uniform vector.
+    u = jax.random.uniform(key, minval=0, maxval=(1.0 / num_particles))
+    uvec = u + jnp.linspace(0, (num_particles - 1) / num_particles, num_particles)
+
+    # Use digitize to grab bin occupancies.
+    # NOTE!  Finally found the problem, digitize treats everything to the left of
+    # the zeroth bin index as the zeroth bin (which is kind of wild) so we have
+    # to subtract one to make sure the indexing is correct as we never show it
+    # values < 0.0.
+    parents = jnp.digitize(uvec, bins_weights) - 1
+
+    # # Do some error checking.
+    # if jnp.min(parents) < 0:
+    #     print('Lower limit error.')
+    #     raise RuntimeError()
+    #
+    # if jnp.max(parents) >= num_particles:
+    #     print('Upper limit error.')
+    #     raise RuntimeError()
+
+    # Do the resampling using treemap.
     return jax.tree_map(lambda item: item[parents], particles), parents
 
 
@@ -97,12 +155,12 @@ def do_resample(key,
 def _single_smc(key,
                 model,
                 dataset,
-                initialization_distribution=None,
-                proposal=None,
-                num_particles=100,
-                resampling_criterion=always_resample_criterion,
-                resampling_fn=multinomial_resampling,
-                verbosity=default_verbosity):
+                initialization_distribution,
+                proposal,
+                num_particles,
+                resampling_criterion,
+                resampling_fn,
+                verbosity):
     r"""Recover posterior over latent state given a SINGLE dataset and model.
 
     Assumes the model has the following methods:
@@ -220,9 +278,14 @@ def _smc_forward_pass(key,
     x_log_prob = model.emissions_distribution(initial_particles).log_prob(dataset[0])
     initial_incr_log_ws = p_log_prob - q_log_prob + x_log_prob
 
-    # Resample particles.
+    # Do an initial resampling step.
     initial_resampled_particles, _, accumulated_log_ws, initial_resampled = \
         do_resample(subkey2, initial_incr_log_ws, initial_particles, resampling_criterion, resampling_fn)
+
+    # # Uncomment this to force not do an initial resampling step.
+    # initial_resampled_particles = initial_particles
+    # accumulated_log_ws = initial_incr_log_ws
+    # initial_resampled = False
 
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
@@ -255,7 +318,7 @@ def _smc_forward_pass(key,
     # Scan over the dataset.
     _, (filtering_particles, log_weights, resampled, ancestors) = jax.lax.scan(
         smc_step,
-        (key, initial_particles, accumulated_log_ws),
+        (key, initial_resampled_particles, accumulated_log_ws),
         jnp.arange(1, len(dataset)))
 
     # Need to append the initial timestep.
@@ -321,7 +384,7 @@ def smc(key,
         proposal=None,
         num_particles=50,
         resampling_criterion=always_resample_criterion,
-        resampling_fn=multinomial_resampling,
+        resampling_fn=systematic_resampling,
         verbosity=default_verbosity):
     r"""Recover posterior over latent state given potentially batch of observation traces
     and a model.
@@ -400,6 +463,30 @@ def smc(key,
 #     plt.pause(0.1)
 
 
+def plot_sweep(smoothing_particles, true_states, _idx=0, tag=''):
+    single_sweep = smoothing_particles[_idx]
+    single_true = true_states[_idx]
+
+    single_sweep_median = jnp.median(single_sweep, axis=1)
+    single_sweep_lsd = jnp.quantile(single_sweep, 0.17, axis=1)
+    single_sweep_usd = jnp.quantile(single_sweep, 0.83, axis=1)
+
+    x = range(true_states.shape[1])
+
+    plt.figure()
+
+    for _i, _c in zip(range(single_sweep_median.shape[1]), color_names):
+        plt.plot(x, single_sweep_median[:, _i], c=_c)
+        plt.fill_between(x, single_sweep_lsd[:, _i], single_sweep_usd[:, _i], color=_c, alpha=0.1)
+        plt.plot(x, single_true[:, _i], c=_c, linestyle='--')
+
+    plt.title(tag)
+    plt.grid(True)
+    plt.tight_layout()
+    #     plt.xlim((0, 5))
+    plt.pause(0.1)
+
+
 def test_smc(key):
     r"""
     Script for deploying and inspecting SMC code.
@@ -414,36 +501,60 @@ def test_smc(key):
         axes[1].grid(True)
         plt.pause(0.1)
 
-    from ssm.hmm import BernoulliHMM, GaussianHMM
     from ssm.lds.models import GaussianLDS
     import matplotlib.pyplot as plt
 
     # Set up true model and draw some data.
-    emissions_dim = 3
     latent_dim = 2
+    emissions_dim = 3
     num_trials = 2
     num_timesteps = 100
+    num_particles = 1000
 
     key, subkey = jax.random.split(key)
-    true_model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey)
+    model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey, emission_scale_tril=1.0**2 * jnp.eye(emissions_dim))
 
     key, subkey = jax.random.split(key)
-    true_states, data = true_model.sample(key=subkey, num_steps=num_timesteps, num_samples=num_trials)
+    true_states, data = model.sample(key=subkey, num_steps=num_timesteps, num_samples=num_trials)
 
-    _do_plot(true_states, data)
+    # _do_plot(true_states, data)
 
-    # Set up the model that we will test with.
-    test_model = dc(true_model)  # Lets just use the true model for now.
-
-    # # Note - we will disable JIT since this is quite fast anyway, and it will give us
-    # # better debug information.
-    # with jax.disable_jit():
+    # Test against EM (which for the LDS is exact.
+    em_posterior = jax.vmap(model.infer_posterior)(data)
+    em_log_marginal_likelihood = model.marginal_likelihood(data, posterior=em_posterior)
 
     # Do the SMC filtering sweep using BPF.
-    key, subkey = jax.random.split(key)
-    smoothing_particles, log_marginal_likelihood, ancestry, filtering_particles = smc(subkey, test_model, data, proposal=None)
+    for _ in range(1):
+        key, subkey = jax.random.split(key)
+        with possibly_disabled():
+            smoothing_particles, log_marginal_likelihood, ancestry, filtering_particles = smc(subkey, model, data, proposal=None, num_particles=num_particles)
+
+        # Print the estimated marginals.
+        for _smc, _em in zip([log_marginal_likelihood[0]], [em_log_marginal_likelihood[0]]):
+            print('SMC/EM LML: \t {: >6.4f} \t {: >6.4f}'.format(_smc, _em))
+
+    # # Plot the results.
+    dset = 0
+
+    # SMC.
+    plot_sweep(filtering_particles, true_states, _idx=dset, tag='SMC filtering')
+    plot_sweep(smoothing_particles, true_states, _idx=dset, tag='SMC smoothing')
+
+    # Now plot the EM results.
+    em_states = em_posterior.mean()
+    sds = jnp.sqrt(jnp.asarray([[jnp.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))
+    x = range(true_states.shape[1])
+    plt.figure()
+    for _idx, _c in zip(range(len(em_states.T)), color_names):
+        plt.plot(x, em_states[dset, :, _idx], c=_c)
+        plt.fill_between(x, em_states[dset, :, _idx] - sds[dset, :, _idx], em_states[dset, :, _idx] + sds[dset, :, _idx], color=_c, alpha=0.1)
+        plt.plot(x, true_states[dset, :, _idx], c=_c, linestyle='--')
+    plt.grid(True)
+    plt.title('EM Smoothing')
+    plt.pause(0.1)
 
 
+    plt.waitforbuttonpress()
 
     p = 0
 
