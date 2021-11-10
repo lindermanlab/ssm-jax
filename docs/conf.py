@@ -30,8 +30,7 @@ author = 'Scott Linderman, et al.'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
-    'sphinx.ext.mathjax',
-    # 'sphinx.ext.imgmath',
+    'sphinx.ext.imgmath',
 ]
 
 # Some extension configurations
@@ -39,6 +38,8 @@ autodoc_typehints = "description"
 autoclass_content = 'both'
 napoleon_custom_sections = [('Returns', 'params_style')]
 autodoc_member_order = "bysource"
+
+imgmath_image_format = "svg"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

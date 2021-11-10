@@ -33,11 +33,11 @@ class AutoregressiveHMM(HMM):
 
         Args:
             states: latent states :math:`x_{1:T}`
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{latent_dim})` 
+                of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{latent\_dim})` 
             data: observed data :math:`y_{1:T}`
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})` 
+                of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{emissions\_dim})` 
             prev_emissions: previous emissions to condition on
-                of shape :math:`(\text{[batch]} , \text{num_lags} , \text{emissions_dim})`.
+                of shape :math:`(\text{[batch]} , \text{num\_lags} , \text{emissions\_dim})`.
                 Default is None which will condition on zeros.
 
         Returns:
@@ -89,14 +89,14 @@ class AutoregressiveHMM(HMM):
                 Default is None which samples the intial state from the initial distribution.
             num_samples (int): Number of indepedent samples (defines a batch dimension).
             prev_emissions: previous emissions to condition on
-                of shape :math:`(\text{[batch]} , \text{num_lags} , \text{emissions_dim})`.
+                of shape :math:`(\text{[batch]} , \text{num\_lags} , \text{emissions\_dim})`.
                 Default is None which will condition on zeros.
 
         Returns:
             states: an array of latent states across time :math:`x_{1:T}`
-                of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{latent_dim})` 
+                of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{latent\_dim})` 
             emissions: an array of observations across time :math:`y_{1:T}`
-                of shape :math:`(\text{[batch]} , \text{num_lags} , \text{emissions_dim})`.
+                of shape :math:`(\text{[batch]} , \text{num\_lags} , \text{emissions\_dim})`.
         """
 
         def _sample(key):

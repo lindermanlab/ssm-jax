@@ -35,12 +35,12 @@ class Transitions:
         r"""Returns the log probability of data where
 
         .. math::
-            \texttt{log_P}[i, j] = \log \Pr(z_{t+1} = j | z_t = i)
+            \texttt{log\_P}[i, j] = \log \Pr(z_{t+1} = j | z_t = i)
 
         if the transition probabilities are stationary or
 
         .. math::
-            \texttt{log_P}[t, i, j] = \log \Pr(z_{t+1} = j | z_t = i)
+            \texttt{log\_P}[t, i, j] = \log \Pr(z_{t+1} = j | z_t = i)
 
         if they are nonstationary.
 

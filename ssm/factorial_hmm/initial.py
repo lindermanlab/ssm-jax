@@ -15,7 +15,7 @@ class FactorialInitialCondition(InitialCondition):
 
         self.num_groups = len(initial_conditions)
         self._initial_conditions = initial_conditions
-        num_states = (ic.num_states for ic in initial_conditions)
+        num_states = tuple(ic.num_states for ic in initial_conditions)
         super(FactorialInitialCondition, self).__init__(num_states)
 
     def tree_flatten(self):

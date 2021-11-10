@@ -9,7 +9,7 @@ def pytest_benchmark_generate_json(config, benchmarks, include_data, machine_inf
     for bench in benchmarks:
         if bench.has_error or len(bench.stats.data) == 0:
             bench.stats.data = [float("nan")]
-        bench.extra_info = {"has_error": bench.has_error}  # record errored state here
+        bench.extra_info["has_error"] = bench.has_error  # record errored state here
         bench.fixture.has_error = False  # always set to false so it always outputs in report
     yield
 
