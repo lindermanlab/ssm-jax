@@ -14,7 +14,7 @@ from copy import deepcopy as dc
 import matplotlib.pyplot as plt
 
 
-disable_jit = True
+disable_jit = False
 from contextlib import contextmanager, ExitStack
 @contextmanager
 def nothing():
@@ -439,46 +439,25 @@ def smc(key,
         return single_smc_closed(key, dataset)
 
 
-# def plot_sweep(smoothing_particles, true_states, _idx=0, tag=''):
-#
-#     single_sweep = smoothing_particles[_idx]
-#     single_true = true_states[_idx]
-#
-#     single_sweep_median = jnp.median(single_sweep, axis=1)
-#     single_sweep_lq = jnp.quantile(single_sweep, 0.25, axis=1)
-#     single_sweep_uq = jnp.quantile(single_sweep, 0.75, axis=1)
-#
-#     x = range(true_states.shape[1])
-#
-#     plt.figure()
-#
-#     for _i, _c in zip(range(single_sweep_median.shape[1]), color_names):
-#         plt.plot(x, single_sweep_median[:, _i], c=_c)
-#         plt.fill_between(x, single_sweep_lq[:, _i], single_sweep_uq[:, _i], color=_c)
-#         plt.plot(single_true[:, _i], c=_c, linestyle='--')
-#
-#     plt.title(tag)
-#     plt.grid(True)
-#     plt.tight_layout()
-#     plt.pause(0.1)
+def plot_single_sweep(particles, true_states, tag=''):
 
+    single_sweep_median = jnp.median(particles, axis=1)
+    single_sweep_lsd = jnp.quantile(particles, 0.17, axis=1)
+    single_sweep_usd = jnp.quantile(particles, 0.83, axis=1)
 
-def plot_sweep(smoothing_particles, true_states, _idx=0, tag=''):
-    single_sweep = smoothing_particles[_idx]
-    single_true = true_states[_idx]
-
-    single_sweep_median = jnp.median(single_sweep, axis=1)
-    single_sweep_lsd = jnp.quantile(single_sweep, 0.17, axis=1)
-    single_sweep_usd = jnp.quantile(single_sweep, 0.83, axis=1)
-
-    x = range(true_states.shape[1])
+    x = jnp.arange(len(true_states))
 
     plt.figure()
 
     for _i, _c in zip(range(single_sweep_median.shape[1]), color_names):
+
+        # TODO - THERE MAY BE A +1 INDEXING ERROR IN THE COMPILATION OF THE SWEEP.
+        # plt.plot(x + 1, single_sweep_median[:, _i], c=_c)
+        # plt.fill_between(x + 1, single_sweep_lsd[:, _i], single_sweep_usd[:, _i], color=_c, alpha=0.1)
         plt.plot(x, single_sweep_median[:, _i], c=_c)
         plt.fill_between(x, single_sweep_lsd[:, _i], single_sweep_usd[:, _i], color=_c, alpha=0.1)
-        plt.plot(x, single_true[:, _i], c=_c, linestyle='--')
+
+        plt.plot(x, true_states[:, _i], c=_c, linestyle='--')
 
     plt.title(tag)
     plt.grid(True)
@@ -492,27 +471,19 @@ def test_smc(key):
     Script for deploying and inspecting SMC code.
     :return:
     """
-
-    def _do_plot(_particles, _data, _i=0):
-        fig, axes = plt.subplots(2, 1, sharex=True, squeeze=True)
-        axes[0].plot(_particles[_i])
-        axes[0].grid(True)
-        axes[1].plot(_data[_i])
-        axes[1].grid(True)
-        plt.pause(0.1)
-
+    
     from ssm.lds.models import GaussianLDS
     import matplotlib.pyplot as plt
 
     # Set up true model and draw some data.
     latent_dim = 2
     emissions_dim = 3
-    num_trials = 2
-    num_timesteps = 100
+    num_trials = 5
+    num_timesteps = 200
     num_particles = 1000
 
     key, subkey = jax.random.split(key)
-    model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey, emission_scale_tril=1.0**2 * jnp.eye(emissions_dim))
+    model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey, emission_scale_tril=0.25**2 * jnp.eye(emissions_dim))
 
     key, subkey = jax.random.split(key)
     true_states, data = model.sample(key=subkey, num_steps=num_timesteps, num_samples=num_trials)
@@ -524,44 +495,51 @@ def test_smc(key):
     em_log_marginal_likelihood = model.marginal_likelihood(data, posterior=em_posterior)
 
     # Do the SMC filtering sweep using BPF.
-    for _ in range(1):
+    with possibly_disabled():
+        repeat_smc = lambda _k: smc(_k, model, data, proposal=None, num_particles=num_particles)
+        n_reps = 1
+
         key, subkey = jax.random.split(key)
-        with possibly_disabled():
-            smoothing_particles, log_marginal_likelihood, ancestry, filtering_particles = smc(subkey, model, data, proposal=None, num_particles=num_particles)
+        smoothing_particles, log_marginal_likelihood, ancestry, filtering_particles = jax.vmap(repeat_smc)(jax.random.split(subkey, num=n_reps))
 
         # Print the estimated marginals.
-        for _smc, _em in zip([log_marginal_likelihood[0]], [em_log_marginal_likelihood[0]]):
-            print('SMC/EM LML: \t {: >6.4f} \t {: >6.4f}'.format(_smc, _em))
+        for _smc, _em in zip(log_marginal_likelihood.T, em_log_marginal_likelihood):
+            for __smc in _smc:
+                print('SMC/EM LML: \t {: >6.4f} \t {: >6.4f}'.format(__smc, _em))
+
+            print()
 
     # # Plot the results.
+    rep = 0
     dset = 0
+    sweep_filtering = filtering_particles[rep, dset]
+    sweep_smoothing = filtering_particles[rep, dset]
+    sweep_em_mean = em_posterior.mean()[dset]
+    sweep_em_sds = jnp.sqrt(jnp.asarray([[jnp.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset]
+    sweep_true = true_states[dset]
 
     # SMC.
-    plot_sweep(filtering_particles, true_states, _idx=dset, tag='SMC filtering')
-    plot_sweep(smoothing_particles, true_states, _idx=dset, tag='SMC smoothing')
+    plot_single_sweep(sweep_filtering, sweep_true, tag='SMC filtering')
+    plot_single_sweep(sweep_smoothing, sweep_true, tag='SMC smoothing')
 
     # Now plot the EM results.
-    em_states = em_posterior.mean()
-    sds = jnp.sqrt(jnp.asarray([[jnp.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))
-    x = range(true_states.shape[1])
+    x = range(sweep_true.shape[0])
     plt.figure()
-    for _idx, _c in zip(range(len(em_states.T)), color_names):
-        plt.plot(x, em_states[dset, :, _idx], c=_c)
-        plt.fill_between(x, em_states[dset, :, _idx] - sds[dset, :, _idx], em_states[dset, :, _idx] + sds[dset, :, _idx], color=_c, alpha=0.1)
-        plt.plot(x, true_states[dset, :, _idx], c=_c, linestyle='--')
+    for _idx, _c in zip(range(len(sweep_em_mean.T)), color_names):
+        plt.plot(x, sweep_em_mean[:, _idx], c=_c)
+        plt.fill_between(x, sweep_em_mean[:, _idx] - sweep_em_sds[:, _idx], sweep_em_mean[:, _idx] + sweep_em_sds[:, _idx], color=_c, alpha=0.1)
+        plt.plot(x, sweep_true[:, _idx], c=_c, linestyle='--')
     plt.grid(True)
     plt.title('EM Smoothing')
-    plt.pause(0.1)
-
-
-    plt.waitforbuttonpress()
-
+    plt.pause(0.001)
     p = 0
-
 
 
 if __name__ == '__main__':
     print('Test SMC code.')
     _key = jax.random.PRNGKey(1)
     test_smc(_key)
+
+    plt.waitforbuttonpress()
+
     print('Done testing.')
