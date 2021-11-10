@@ -4,7 +4,9 @@ Useful utility functions.
 
 import jax.numpy as np
 import jax.random as jr
-from jax import tree_util
+import jax.scipy.special as spsp
+from jax.tree_util import tree_map, tree_structure, tree_leaves
+
 import inspect
 from enum import IntEnum
 from tqdm.auto import trange
@@ -12,6 +14,7 @@ from scipy.optimize import linear_sum_assignment
 from typing import Sequence, Optional
 from functools import wraps
 import copy
+
 
 class Verbosity(IntEnum):
     """
@@ -25,6 +28,7 @@ class Verbosity(IntEnum):
     - 2: ``LOUD``
     - 3: ``DEBUG``
     """
+
     OFF = 0
     QUIET = 1
     LOUD = 2
@@ -69,7 +73,12 @@ def ssm_pbar(num_iters, verbose, description, *args):
     return pbar
 
 
-def compute_state_overlap(z1: Sequence[int], z2: Sequence[int], K1: Optional[int]=None, K2: Optional[int]=None):
+def compute_state_overlap(
+    z1: Sequence[int],
+    z2: Sequence[int],
+    K1: Optional[int] = None,
+    K2: Optional[int] = None,
+):
     """
     Compute a matrix describing the state-wise overlap between two state vectors
     ``z1`` and ``z2``.
@@ -92,14 +101,21 @@ def compute_state_overlap(z1: Sequence[int], z2: Sequence[int], K1: Optional[int
     K1 = z1.max() + 1 if K1 is None else K1
     K2 = z2.max() + 1 if K2 is None else K2
 
-    overlap = np.sum((z1[:, None] == np.arange(K1))[:, :, None] &
-                     (z2[:, None] == np.arange(K2))[:, None, :],
-                     axis=0)
+    overlap = np.sum(
+        (z1[:, None] == np.arange(K1))[:, :, None]
+        & (z2[:, None] == np.arange(K2))[:, None, :],
+        axis=0,
+    )
     assert overlap.shape == (K1, K2)
     return overlap
 
 
-def find_permutation(z1: Sequence[int], z2: Sequence[int], K1: Optional[int]=None, K2: Optional[int]=None):
+def find_permutation(
+    z1: Sequence[int],
+    z2: Sequence[int],
+    K1: Optional[int] = None,
+    K2: Optional[int] = None,
+):
     """
     Find the permutation between state vectors ``z1`` and ``z2`` that results in the most overlap.
 
@@ -127,6 +143,7 @@ def find_permutation(z1: Sequence[int], z2: Sequence[int], K1: Optional[int]=Non
 
     return perm
 
+
 def random_rotation(seed, n, theta=None):
     """Helper function to create a rotating linear system.
 
@@ -149,8 +166,7 @@ def random_rotation(seed, n, theta=None):
     if n == 1:
         return jr.uniform(key1) * np.eye(1)
 
-    rot = np.array([[np.cos(theta), -np.sin(theta)],
-                    [np.sin(theta), np.cos(theta)]])
+    rot = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
     out = np.eye(n)
     out = out.at[:2, :2].set(rot)
     q = np.linalg.qr(jr.uniform(key2, shape=(n, n)))[0]
@@ -165,14 +181,32 @@ def format_dataset(f):
         # Get the `dataset` argument
         bound_args = sig.bind(*args, **kwargs)
         bound_args.apply_defaults()
-        dataset = bound_args.arguments['dataset']
+        dataset = bound_args.arguments["dataset"]
+        if "self" in bound_args.arguments:
+            model = bound_args.arguments["self"]
+        elif "model" in bound_args.arguments:
+            model = bound_args.arguments["model"]
+        else:
+            raise Exception(
+                "Expected function to have either `self` or `model` as an argument."
+            )
 
-        # Make sure dataset is a 3D tensor of shape (B, T, D)
-        if hasattr(dataset, "ndim"):
-            if dataset.ndim == 2:
-                dataset = dataset[None, :, :]
+        # Make sure dataset is a pytree whose leave nodes have a batch dimension
+        def _ensure_batch_dim(arr, shp):
+            ndim = len(shp)
+            if ndim > 0:
+                assert arr.shape[-ndim:] == shp
+            if arr.ndim == ndim + 2:
+                return arr
+            elif arr.ndim == ndim + 1:
+                return arr[None, ...]
             else:
-                assert dataset.ndim == 3
+                raise Exception(
+                    "dataset must consist of arrays of shape "
+                    "((batch, timesteps) + event_shape) or ((timesteps,) + event_shape)"
+                )
+
+        dataset = tree_map(_ensure_batch_dim, dataset, model.emissions_shape)
 
         # if isinstance(dataset, (list, tuple)):
         #     assert all([isinstance(d, dict) and "data" in d for d in dataset])
@@ -186,12 +220,13 @@ def format_dataset(f):
         #                     "list of dictionaries.  See help(ssm.HMM) for more details.")
 
         # Update the bound arguments
-        bound_args.arguments['dataset'] = dataset
+        bound_args.arguments["dataset"] = dataset
 
         # Call the function
         return f(*bound_args.args, **bound_args.kwargs)
 
     return wrapper
+
 
 def one_hot(z, K):
     z = np.atleast_1d(z).astype(int)
@@ -204,32 +239,81 @@ def one_hot(z, K):
     return zoh
 
 
-#### FUNCTIONS FOR DEBUGGING ####
+def logspace_tensordot(tensor, matrix, axis):
+    """
+    Parameters
+    ----------
+    tensor : (..., m, ...)-array
+    matrix : (m, n)-array
+    axis : int
 
+    Returns
+    -------
+    result : (..., n, ...)-array
+    """
+    tensor = np.moveaxis(tensor, axis, -1)
+    tensor = spsp.logsumexp(tensor[..., None] + matrix, axis=-2)
+    return np.moveaxis(tensor, -1, axis)
+
+
+#### FUNCTIONS FOR DEBUGGING ####
 # terminal color macros
-CRED = '\033[91m'
-CEND = '\033[0m'
+CRED = "\033[91m"
+CEND = "\033[0m"
+
+
+def test_and_find_inequality(obj_a, obj_b, check_name="shape", mode="input", sig=None):
+    """Iterates through zipped components of obj_a and obj_b to find inequality.
+    
+    Prints a message and returns the indices of unequal components in obj_a and obj_b.
+
+    Args:
+        obj_a ([type]): [description]
+        obj_b ([type]): [description]
+        check_name (str, optional): [description]. Defaults to "shape".
+        mode (str, optional): [description]. Defaults to "input".
+        sig ([type], optional): [description]. Defaults to None.
+
+    Returns:
+        [type]: [description]
+    """
+    inequality_idxs = []
+    if obj_a != obj_b:
+        for i, (a, b) in enumerate(zip(obj_a, obj_b)):
+            if a != b:
+                print(
+                    f"{CRED}[[{check_name} mismatch found for {mode} at index {i}"
+                    f"{f' (arg={sig.args[i]})' if sig is not None else ''}]]"
+                )
+                print(f"prev={a}\ncurr={b}", CEND)
+                inequality_idxs.append(i)
+    return inequality_idxs
+    
+                
+
 
 def check_pytree_structure_match(obj_a, obj_b, mode="input", sig=None):
     """Checks whether pytrees A and B have the same structure.
     Used for debugging re-jit problems (see debug_rejit decorator).
 
     Args:
-        obj_a (jaxlib.xla_extension.PyTreeDef): pytree obj A (prev)
-        obj_b (jaxlib.xla_extension.PyTreeDef): pytree obj B (curr)
+        obj_a: pytree obj A (prev)
+        obj_b: pytree obj B (curr)
         mode (str, optional): "input" or "output". Defaults to "input".
         sig (inspect.FullArgSpec, optional): optional function signature.
             Used for better debug description. Defaults to None.
     """
-    struct_a = tree_util.tree_structure(obj_a)
-    struct_b = tree_util.tree_structure(obj_b)
-    if struct_a != struct_b:
-        for i, (a, b) in enumerate(zip(struct_a.children(), struct_b.children())):
-            if a != b:
-                print(f"{CRED}[[structure mismatch found for {mode} at index {i}"\
-                        f"{f' (arg={sig.args[i]})' if sig is not None else ''}]]{CEND}")
-                print(f"prev={a}\ncurr={b}")
-        
+    struct_a = tree_structure(obj_a)
+    struct_b = tree_structure(obj_b)
+    idxs = test_and_find_inequality(
+        struct_a.children(), struct_b.children(), check_name="PyTreeDef Structure", mode=mode, sig=sig
+    )
+    for i in idxs:
+        print(f"{CRED}[{mode} pytree structure [{i}]]")
+        print("prev=", repr(tree_leaves(obj_a)[i]))
+        print("curr=", repr(tree_leaves(obj_b)[i]), CEND)
+
+
 def check_pytree_shape_match(obj_a, obj_b, mode="input", sig=None):
     """Checks whether pytrees A and B have the same leaf shapes.
     Used for debugging re-jit problems (see debug_rejit decorator).
@@ -238,23 +322,53 @@ def check_pytree_shape_match(obj_a, obj_b, mode="input", sig=None):
         obj_a (jaxlib.xla_extension.PyTreeDef): pytree obj A (prev)
         obj_b (jaxlib.xla_extension.PyTreeDef): pytree obj B (curr)
         mode (str, optional): "input" or "output". Defaults to "input".
-        sig (inspect.FullArgSpec, optional): optional function signature.
-            Used for better debug description. Defaults to None.
+        sig (inspect.FullArgSpec, optional): doesn't support signature yet.
     """
-    shape_a = [x.shape for x in tree_util.tree_leaves(obj_a)]
-    shape_b = [x.shape for x in tree_util.tree_leaves(obj_b)]
-    if shape_a != shape_b:
-        for i, (a, b) in enumerate(zip(shape_a, shape_b)):
-            if a != b:
-                print(f"{CRED}[[shape mismatch found for {mode} at index {i}"\
-                        f"{f' (arg={sig.args[i]})' if sig is not None else ''}]]{CEND}")
-                print(f"prev={a}\ncurr={b}")
+    shape_a = [x.shape for x in tree_leaves(obj_a)]
+    shape_b = [x.shape for x in tree_leaves(obj_b)]
+    idxs = test_and_find_inequality(
+        shape_a, shape_b, check_name="PyTree Leaf Shape", mode=mode, sig=None
+    )
+    for i in idxs:
+        print(f"{CRED}[{mode} pytree leaf [{i}]]")
+        print("prev=", repr(tree_leaves(obj_a)[i]))
+        print("curr=", repr(tree_leaves(obj_b)[i]), CEND)
 
-def check_pytree_match(obj_a,
-                       obj_b,
-                       mode: str="input",
-                       sig: inspect.FullArgSpec=None):
-    """Checks whether pytrees A and B are the same by checking shape AND structure.
+def check_pytree_weak_type_match(obj_a, obj_b, mode="input", sig=None):
+    """Checks whether pytrees A and B have the same weak_typing.
+    Used for debugging re-jit problems (see debug_rejit decorator).
+    """    
+    shape_a = [x.weak_type for x in tree_leaves(obj_a)]
+    shape_b = [x.weak_type for x in tree_leaves(obj_b)]
+    idxs = test_and_find_inequality(
+        shape_a, shape_b, check_name="Pytree Leaf Device Array Weak Type", mode=mode, sig=None
+    )
+    for i in idxs:
+        print(f"{CRED}[{mode} pytree leaf [{i}]]")
+        print("prev=", repr(tree_leaves(obj_a)[i]))
+        print("curr=", repr(tree_leaves(obj_b)[i]), CEND)
+    
+def check_pytree_dtype_match(obj_a, obj_b, mode="input", sig=None):
+    """Checks whether pytrees A and B have the same dtype.
+    Used for debugging re-jit problems (see debug_rejit decorator).
+    """
+    shape_a = [x.dtype for x in tree_leaves(obj_a)]
+    shape_b = [x.dtype for x in tree_leaves(obj_b)]
+    idxs = test_and_find_inequality(
+        shape_a, shape_b, check_name="Pytree Leaf Device Array dtype", mode=mode, sig=None
+    )
+    for i in idxs:
+        print(f"{CRED}[{mode} pytree leaf [{i}]]")
+        print("prev=", repr(tree_leaves(obj_a)[i]))
+        print("curr=", repr(tree_leaves(obj_b)[i]), CEND)
+
+
+def check_pytree_match(
+    obj_a, obj_b, mode: str = "input", sig: inspect.FullArgSpec = None
+):
+    """Checks whether pytrees A and B are the same by checking shape, structure,
+    weak_typing, and dtype.
+    
     Used for debugging re-jit problems (see debug_rejit decorator).
 
     Args:
@@ -264,17 +378,20 @@ def check_pytree_match(obj_a,
         sig (inspect.FullArgSpec, optional): optional function signature.
             Used for better debug description. Defaults to None.
     """
-    check_pytree_shape_match(obj_a, obj_b, mode, sig)
     check_pytree_structure_match(obj_a, obj_b, mode, sig)
+    check_pytree_shape_match(obj_a, obj_b, mode, None)
+    check_pytree_weak_type_match(obj_a, obj_b, mode, None)
+    check_pytree_dtype_match(obj_a, obj_b, mode, None)
+
 
 def debug_rejit(func):
     """Decorator to debug re-jitting errors.
-    
-    Checks if input and output pytrees are consistent across multiple 
+
+    Checks if input and output pytrees are consistent across multiple
     calls to func (else: func will need to be re-compiled).
-    
+
     Example::
-    
+
         @debug_rejit
         @jit
         def fn(inputs):
@@ -283,31 +400,32 @@ def debug_rejit(func):
         # ==> will print out useful description when input/output
         #     pytrees mismatch (i.e. when fn will re-jit)
     """
+
     def wrapper(*args, **kwargs):
-        
+
         # get tree structure for args and kwargs
         inputs = list(args) + list(kwargs.values())
         if wrapper.prev_in is None:
-            wrapper.prev_in = copy.deepcopy(inputs)
-        
+            wrapper.prev_in = inputs
+
         # run the function
         outputs = func(*args, **kwargs)
 
         # get tree structure for output (this works for tuple outputs too)
         if wrapper.prev_out is None:
-            wrapper.prev_out = copy.deepcopy(outputs)
+            wrapper.prev_out = outputs
 
         # check whether the input and output structures match w/ prev fn call
         check_pytree_match(inputs, wrapper.prev_in, mode="input", sig=wrapper.sig)
         check_pytree_match(outputs, wrapper.prev_out, mode="output")
-        
+
         # store for next fn call
         wrapper.prev_in = inputs
         wrapper.prev_out = outputs
-        
+
         # return the output
         return outputs
-    
+
     wrapper.sig = inspect.getfullargspec(func)
     wrapper.prev_in = None
     wrapper.prev_out = None
