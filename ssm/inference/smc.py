@@ -93,8 +93,8 @@ def systematic_resampling(key, log_weights, particles):
 def do_resample(key,
                 log_ws,
                 particles,
-                resampling_criterion,
-                resampling_fn,
+                resampling_criterion=always_resample_criterion,
+                resampling_fn=systematic_resampling,
                 num_particles=None,):
     r"""Do resampling.
 
@@ -117,6 +117,8 @@ def do_resample(key,
         should_resample (bool):             Whether particles were resampled.
     """
 
+    # If we have not specified a number of particles to resample, assume that we want
+    # the particle set to remain the same size.
     if num_particles is None:
         num_particles = len(log_ws)
 
@@ -132,6 +134,69 @@ def do_resample(key,
     resampled_log_ws = (1. - should_resample) * log_ws
 
     return resampled_particles, ancestors, resampled_log_ws, should_resample
+
+
+def smc(key,
+        model,
+        dataset,
+        initialization_distribution=None,
+        proposal=None,
+        num_particles=50,
+        resampling_criterion=always_resample_criterion,
+        resampling_fn=systematic_resampling,
+        verbosity=default_verbosity):
+    r"""Recover posterior over latent state given potentially batch of observation traces
+    and a model.
+
+    Assumes the model has the following methods:
+
+        - `.initial_distribution()`
+        - `.dynamics_distribution(state)`
+        - `.emissions_distribution(state)`
+
+    which all return a TFP distribution.
+
+    Assumes that the data and latent states are indexed 0:T-1, i.e. there is a latent
+    state and observation at T=0 that exists prior to any dynamics.
+
+
+    Args:
+        key (JAX PRNG key):                     JAX PRNG key.
+        model (SSM object):                     Defines the model.
+        dataset (jnp.array):                    Data to condition on.  If the dataset has three
+            dimensions then the leading dimension will be vmapped over.
+        initialization_distribution (??, optional): Allows a custom distribution to be used to
+            propose the initial states from.  Using default value of None means that the prior
+            is used as the proposal.
+        proposal (??, option):                  Allows a custom proposal to be used to propose
+            transitions from.  Using default value of None means that the prior
+            is used as the proposal.
+        num_particles (int):                    Number of particles to use.
+        resampling_criterion (fn):              Boolean function for whether to resample.
+        resampling_fn (fn):                     Resampling operation.
+        verbosity (??):                         Level of text output.
+
+
+    :return: Tuple:
+        particles (jnp.array):                  Resampled particles - either filtered or smoothed.
+        log_marginal_likelihood (jnp.float):    Log-normalizer estimated via SMC.
+        ancestry (jnp.array):                   Full matrix of resampled ancestor indices.
+        filtering_particles.
+    """
+
+    # Close over the static arguments.
+    single_smc_closed = lambda _k, _d: \
+        _single_smc(_k, model, _d, initialization_distribution, proposal, num_particles,
+                    resampling_criterion, resampling_fn, verbosity)
+
+    # If there are three dimensions, it assumes that the dimensions correspond to
+    # (batch_dim x time x states).  This copies the format of ssm->base->sample.
+    # If there is a batch dimension, then we will vmap over the leading dim.
+    if dataset.ndim == 3:
+        key = jax.random.split(key, len(dataset))
+        return jax.vmap(single_smc_closed)(key, dataset)
+    else:
+        return single_smc_closed(key, dataset)
 
 
 def _single_smc(key,
@@ -303,7 +368,7 @@ def _smc_forward_pass(key,
         (key, initial_resampled_particles, accumulated_log_ws),
         jnp.arange(1, len(dataset)))
 
-    # Need to append the initial timestep.
+    # Need to prepend the initial timestep.
     filtering_particles = jnp.concatenate((initial_resampled_particles[None, :], filtering_particles))
     log_weights = jnp.concatenate((initial_incr_log_ws[None, :], log_weights))
     resampled = jnp.concatenate((jnp.asarray([initial_resampled]), resampled))
@@ -312,7 +377,7 @@ def _smc_forward_pass(key,
     p_hats = jscipy.special.logsumexp(log_weights, axis=1) - jnp.log(num_particles)
 
     # Compute the log marginal likelihood.
-    # This needs to force the last accumulated incremental weight to be used.
+    # Note that this needs to force the last accumulated incremental weight to be used.
     log_marginal_likelihood = jnp.sum(p_hats[:-1] * resampled[:-1]) + p_hats[-1]
 
     return filtering_particles, log_marginal_likelihood, ancestors
@@ -354,66 +419,4 @@ def _smc_backward_pass(filtering_particles,
     smoothing_particles = jnp.concatenate((smoothing_particles, filtering_particles[-1][jnp.newaxis]))
 
     return smoothing_particles
-
-
-def smc(key,
-        model,
-        dataset,
-        initialization_distribution=None,
-        proposal=None,
-        num_particles=50,
-        resampling_criterion=always_resample_criterion,
-        resampling_fn=systematic_resampling,
-        verbosity=default_verbosity):
-    r"""Recover posterior over latent state given potentially batch of observation traces
-    and a model.
-
-    Assumes the model has the following methods:
-
-        - `.initial_distribution()`
-        - `.dynamics_distribution(state)`
-        - `.emissions_distribution(state)`
-
-    which all return a TFP distribution.
-
-    Assumes that the data and latent states are indexed 0:T-1, i.e. there is a latent
-    state and observation at T=0 that exists prior to any dynamics.
-
-
-    Args:
-        key (JAX PRNG key):                     JAX PRNG key.
-        model (SSM object):                     Defines the model.
-        dataset (jnp.array):                    Data to condition on.  If the dataset has three
-            dimensions then the leading dimension will be vmapped over.
-        initialization_distribution (??, optional): Allows a custom distribution to be used to
-            propose the initial states from.  Using default value of None means that the prior
-            is used as the proposal.
-        proposal (??, option):                  Allows a custom proposal to be used to propose
-            transitions from.  Using default value of None means that the prior
-            is used as the proposal.
-        num_particles (int):                    Number of particles to use.
-        resampling_criterion (fn):              Boolean function for whether to resample.
-        resampling_fn (fn):                     Resampling operation.
-        verbosity (??):                         Level of text output.
-
-
-    :return: Tuple:
-        particles (jnp.array):                  Resampled particles - either filtered or smoothed.
-        log_marginal_likelihood (jnp.float):    Log-normalizer estimated via SMC.
-        ancestry (jnp.array):                   Full matrix of resampled ancestor indices.
-        filtering_particles.
-    """
-
-    single_smc_closed = lambda _k, _d: \
-        _single_smc(_k, model, _d, initialization_distribution, proposal, num_particles,
-                    resampling_criterion, resampling_fn, verbosity)
-
-    # If there are three dimensions, it assumes that the dimensions correspond to
-    # (batch_dim x time x states).  This copies the format of ssm->base->sample.
-    # If there is a batch dimension, then we will vmap over the leading dim.
-    if dataset.ndim == 3:
-        key = jax.random.split(key, len(dataset))
-        return jax.vmap(single_smc_closed)(key, dataset)
-    else:
-        return single_smc_closed(key, dataset)
 
