@@ -265,7 +265,7 @@ def _smc_forward_pass(key,
     initial_resampled_particles, _, accumulated_log_ws, initial_resampled = \
         do_resample(subkey2, initial_incr_log_ws, initial_particles, resampling_criterion, resampling_fn)
 
-    # # Uncomment this to force not do an initial resampling step.
+    # # Uncomment this to force not doing an initial resampling step.
     # initial_resampled_particles = initial_particles
     # accumulated_log_ws = initial_incr_log_ws
     # initial_resampled = False
@@ -336,7 +336,6 @@ def _smc_backward_pass(filtering_particles,
 
         # Grab the ancestor state.
         next_sp = jax.tree_map(lambda item: item[next_an], filtering_particles[t-1])
-        # sp = jnp.concatenate((next_sp[jnp.newaxis, :], sp))
 
         # Update the ancestor indices according to the resampling.
         next_an = jax.tree_map(lambda item: item[next_an], ancestors[t-1])
@@ -352,9 +351,6 @@ def _smc_backward_pass(filtering_particles,
 
     # Append the final state to the return vector.
     smoothing_particles = jnp.concatenate((smoothing_particles, filtering_particles[-1][jnp.newaxis]))
-
-    # # Flip to time goes in the right direction.
-    # smoothing_particles = smoothing_particles[::-1]
 
     return smoothing_particles
 
