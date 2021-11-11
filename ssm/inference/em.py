@@ -38,7 +38,6 @@ def em(model,
     # @debug_rejit
     @jit
     def update(model):
-        print("jitting")
         posteriors = vmap(model.infer_posterior)(dataset)
         lp = vmap(model.marginal_likelihood)(dataset, posteriors).sum()
         model.m_step(dataset, posteriors)

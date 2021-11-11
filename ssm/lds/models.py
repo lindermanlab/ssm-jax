@@ -168,7 +168,7 @@ class GaussianLDS(LDS):
             """
 
         if posterior is None:
-            posterior = self.e_step(data)
+            posterior = self.infer_posterior(data)
         states = posterior.mean()
         lps = self.log_probability(states, data) - posterior.log_prob(states)
         return lps

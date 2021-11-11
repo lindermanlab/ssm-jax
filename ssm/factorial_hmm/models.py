@@ -42,7 +42,7 @@ class NormalFactorialHMM(FactorialHMM):
                  initial_probs: (tuple or list)=None,
                  transition_matrices: (tuple or list)=None,
                  emission_means: (tuple or list)=None,
-                 emission_variance: float=0.1**2,
+                 emission_variance: float=0.01**2,
                  seed: jr.PRNGKey=None):
         r"""
         Factorial HMM with scalar Gaussian emissions.
