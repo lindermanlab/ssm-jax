@@ -84,6 +84,37 @@ class GaussianLinearRegression(ExponentialFamilyDistribution,
     def _log_prob(self, data, covariates=None, **kwargs):
         return self.predict(covariates).log_prob(data)
 
+    def expected_log_prob(self,
+                          expected_data,
+                          expected_covariates,
+                          expected_data_squared,
+                          expected_data_covariates,
+                          expected_covariates_squared):
+        """
+        Helper function to compute the expected log probability
+        under a Gaussian distribution (x, y) with given expectations.
+
+        We have
+        ..math:
+            E_q[\log p(y \mid x)] =
+                \langle -1/2 \Sigma^{-1}, E_q[yy^\top] \rangle +
+                \langle \Sigma^{-1}W, E_q[yx^\top] \rangle +
+                \langle -1/2 W^\top \Sigma^{-1} W, E_q[xx^\top] \rangle +
+                \langle \Sigma^{-1}b, E_q[y] \rangle +
+                \langle -W^\top \Sigma^{-1}b, E_q[x] \rangle +
+                -1/2 \log |\Sigma| -1/2 b^\top \Sigma^{-1} b
+        """
+        transpose = lambda x: np.swapaxes(x, -1, -2)
+        Si = np.linalg.inv(self.scale)
+        SiW = np.einsum('...ij,...jk->...ik', Si, self.weights)
+        Sib = np.einsum('...ij,...j->...i', Si, self.bias)
+        WTSiW = np.einsum('...ij,...jk->...ik', transpose(self.weights), SiW)
+        WTSib = np.einsum('...ij,...jk->...ik', transpose(self.weights), Sib)
+        bTSib = np.einsum('...i,...i->...', self.bias, Sib)
+
+        ell = -0.5 * np.linalg.slogdet(self.scale)[1]
+        ell += -0.5 * bTSib
+
     @classmethod
     def from_params(cls, params):
         return cls(**params)
