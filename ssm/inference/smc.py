@@ -284,7 +284,7 @@ def _smc_forward_pass(key,
         # Compute the incremental importance weight.
         p_log_prob = model.dynamics_distribution(particles).log_prob(new_particles)
         q_log_prob = q_dist.log_prob(new_particles)
-        x_log_prob = model.emissions_distribution(particles).log_prob(dataset[t])
+        x_log_prob = model.emissions_distribution(new_particles).log_prob(dataset[t])
         incr_log_ws = p_log_prob - q_log_prob + x_log_prob
 
         # Update the log weights.
