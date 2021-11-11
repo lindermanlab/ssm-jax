@@ -50,7 +50,8 @@ class NormalFactorialEmissions(FactorialEmissions):
             for k, m in enumerate(means):
                 m_expanded = np.expand_dims(m, axis=range(1, self.num_groups))
                 big_means += np.swapaxes(m_expanded, 0, k)
-            emissions_distribution = tfd.Normal(big_means, np.exp(log_scale))
+            scale = np.exp(log_scale.astype(np.float32)) # ensure not weakly typed else 2x jit
+            emissions_distribution = tfd.Normal(big_means, scale)
 
         self._means = means
         self._distribution = emissions_distribution
