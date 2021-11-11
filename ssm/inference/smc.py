@@ -95,7 +95,8 @@ def do_resample(key,
                 particles,
                 resampling_criterion=always_resample_criterion,
                 resampling_fn=systematic_resampling,
-                num_particles=None,):
+                num_particles=None,
+                use_sgr=False):
     r"""Do resampling.
 
     Allows a resampling condition to be passed in and evaluated to trigger adaptive resampling.
@@ -109,6 +110,7 @@ def do_resample(key,
         resampling_criterion (fn):          Boolean function for whether to resample.
         resampling_fn (fn):                 Resampling operation.
         num_particles (int):                Number of particles to resample (defaults to len(particles)).
+        use_sgr (bool):                     Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
 
     :return: Tuple:
         resampled_particles (jnp.array):    Resampled particles.
@@ -144,6 +146,7 @@ def smc(key,
         num_particles=50,
         resampling_criterion=always_resample_criterion,
         resampling_fn=systematic_resampling,
+        use_sgr=False,
         verbosity=default_verbosity):
     r"""Recover posterior over latent state given potentially batch of observation traces
     and a model.
@@ -174,6 +177,7 @@ def smc(key,
         num_particles (int):                    Number of particles to use.
         resampling_criterion (fn):              Boolean function for whether to resample.
         resampling_fn (fn):                     Resampling operation.
+        use_sgr (bool):                     Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
         verbosity (??):                         Level of text output.
 
 
@@ -187,7 +191,7 @@ def smc(key,
     # Close over the static arguments.
     single_smc_closed = lambda _k, _d: \
         _single_smc(_k, model, _d, initialization_distribution, proposal, num_particles,
-                    resampling_criterion, resampling_fn, verbosity)
+                    resampling_criterion, resampling_fn, use_sgr, verbosity)
 
     # If there are three dimensions, it assumes that the dimensions correspond to
     # (batch_dim x time x states).  This copies the format of ssm->base->sample.
@@ -207,7 +211,8 @@ def _single_smc(key,
                 num_particles,
                 resampling_criterion,
                 resampling_fn,
-                verbosity):
+                use_sgr=False,
+                verbosity=default_verbosity):
     r"""Recover posterior over latent state given a SINGLE dataset and model.
 
     Assumes the model has the following methods:
@@ -237,6 +242,7 @@ def _single_smc(key,
             the smoothing distribution?
         resampling_criterion (fn):              Boolean function for whether to resample.
         resampling_fn (fn):                     Resampling operation.
+        use_sgr (bool):                     Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
         verbosity (??):                         Level of text output.
 
 
@@ -271,6 +277,7 @@ def _single_smc(key,
                           num_particles,
                           resampling_criterion,
                           resampling_fn,
+                          use_sgr,
                           verbosity)
 
     # Now do the backwards pass to generate the smoothing distribution.
@@ -287,6 +294,7 @@ def _smc_forward_pass(key,
                       num_particles,
                       resampling_criterion,
                       resampling_fn,
+                      use_sgr=False,
                       verbosity=default_verbosity,):
     r"""Do the forward pass of an SMC sampler.
 
@@ -357,7 +365,7 @@ def _smc_forward_pass(key,
 
         # Resample particles.
         resampled_particles, ancestors, resampled_log_ws, should_resample = \
-            do_resample(subkey2, accumulated_log_ws, new_particles, resampling_criterion, resampling_fn)
+            do_resample(subkey2, accumulated_log_ws, new_particles, resampling_criterion, resampling_fn, use_sgr)
 
         return ((key, resampled_particles, resampled_log_ws),
                 (resampled_particles, accumulated_log_ws, should_resample, ancestors))
