@@ -312,6 +312,7 @@ def _smc_forward_pass(key,
     p_hats = jscipy.special.logsumexp(log_weights, axis=1) - jnp.log(num_particles)
 
     # Compute the log marginal likelihood.
+    # This needs to force the last accumulated incremental weight to be used.
     log_marginal_likelihood = jnp.sum(p_hats[:-1] * resampled[:-1]) + p_hats[-1]
 
     return filtering_particles, log_marginal_likelihood, ancestors
