@@ -16,156 +16,14 @@ from ssm.utils import Verbosity
 default_verbosity = Verbosity.DEBUG
 
 
-def always_resample_criterion(unused_log_weights, unused_t):
-    r"""A criterion that always resamples."""
-    return True
-
-
-def multinomial_resampling(key, log_weights, particles):
-    r"""Resample particles with multinomial resampling.
-
-    Args:
-
-      key: A JAX PRNG key.
-
-      log_weights: A [num_particles] ndarray, the log weights for each particle.
-
-      particles: A pytree of [num_particles, ...] ndarrays that will be resampled.
-
-
-    Returns:
-
-      resampled_particles: A pytree of [num_particles, ...] ndarrays resampled via multinomial sampling.
-
-    """
-    num_particles = log_weights.shape[0]
-    cat = tfd.Categorical(logits=log_weights)
-    parents = cat.sample(sample_shape=(num_particles,), seed=key)
-    return jax.tree_map(lambda item: item[parents], particles), parents
-
-
-def systematic_resampling(key, log_weights, particles):
-    r"""Resample particles with systematic resampling.
-
-    Args:
-
-      key: A JAX PRNG key.
-
-      log_weights: A [num_particles] ndarray, the log weights for each particle.
-
-      particles: A pytree of [num_particles, ...] ndarrays that will be resampled.
-
-
-    Returns:
-
-      resampled_particles: A pytree of [num_particles, ...] ndarrays resampled via systematic sampling.
-
-    """
-
-    # Grab the number of particles.
-    num_particles = log_weights.shape[0]
-
-    # Construct the bins.
-    alpha = np.max(log_weights)
-    zeroed_weights = np.exp(log_weights - alpha)
-    normalized_weights = zeroed_weights / np.sum(zeroed_weights)
-    cumsum_weights = np.cumsum(normalized_weights)
-    bins_weights = np.concatenate((np.asarray([0]), cumsum_weights))
-
-    # Force re-normalize.
-    bins_weights = bins_weights / bins_weights[-1]
-
-    # Construct the uniform vector.
-    u = jr.uniform(key, minval=0, maxval=(1.0 / num_particles))
-    uvec = u + np.linspace(0, (num_particles - 1) / num_particles, num_particles)
-
-    # Use digitize to grab bin occupancies.
-    # NOTE!  Finally found the problem, digitize treats everything to the left of
-    # the zeroth bin index as the zeroth bin (which is kind of wild) so we have
-    # to subtract one to make sure the indexing is correct as we never show it
-    # values < 0.0.
-    parents = np.digitize(uvec, bins_weights) - 1
-
-    # # Do some error checking.
-    # if np.min(parents) < 0:
-    #     print('Lower limit error.')
-    #     raise RuntimeError()
-    #
-    # if np.max(parents) >= num_particles:
-    #     print('Upper limit error.')
-    #     raise RuntimeError()
-
-    # Do the resampling using treemap.
-    return jax.tree_map(lambda item: item[parents], particles), parents
-
-
-def do_resample(key,
-                log_ws,
-                particles,
-                resampling_criterion=always_resample_criterion,
-                resampling_function=systematic_resampling,
-                num_particles=None,
-                use_stop_gradient_resampling=False):
-    r"""Do resampling.
-
-    Allows a resampling condition to be passed in and evaluated to trigger adaptive resampling.
-
-    If resampling occurs, then the returned incremental importance weights are zero.
-
-    Args:
-        key (JAX PRNG key):                     JAX PRNG key.
-
-        log_ws (np.array):                      Incremental importance weights of `particles`.
-
-        particles (np.array):                   Current particles.
-
-        resampling_criterion (fn):              Boolean function for whether to resample.
-
-        resampling_function (fn):               Resampling operation.
-
-        num_particles (int):                    Number of particles to resample (defaults to len(particles)).
-
-        use_stop_gradient_resampling (bool):    Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
-
-
-    :return: Tuple:
-        resampled_particles (np.array):         Resampled particles.
-
-        ancestors (np.array):                   Ancestor indices of resampled particles.
-
-        resampled_log_ws (np.array):            Incremental importance weights after any resampling.
-
-        should_resample (bool):                 Whether particles were resampled.
-
-    """
-
-    # If we have not specified a number of particles to resample, assume that we want
-    # the particle set to remain the same size.
-    if num_particles is None:
-        num_particles = len(log_ws)
-
-    should_resample = resampling_criterion(log_ws, 0)
-
-    resampled_particles, ancestors = jax.lax.cond(
-        should_resample,
-        lambda args: resampling_function(*args),
-        lambda args: (args[2], np.arange(num_particles)),
-        (key, log_ws, particles)
-    )
-
-    resampled_log_ws = (1. - should_resample) * log_ws
-
-    return resampled_particles, ancestors, resampled_log_ws, should_resample
-
-
 def smc(key,
         model,
         dataset,
         initialization_distribution=None,
         proposal=None,
         num_particles=50,
-        resampling_criterion=always_resample_criterion,
-        resampling_function=systematic_resampling,
+        resampling_criterion=None,
+        resampling_function=None,
         use_stop_gradient_resampling=False,
         verbosity=default_verbosity):
     r"""Recover posterior over latent state given potentially batch of observation traces
@@ -173,7 +31,7 @@ def smc(key,
 
     Assumes the model has the following methods:
 
-        - `.initial_distribution()`
+        - `.initial_distribution(()`
         - `.dynamics_distribution(state)`
         - `.emissions_distribution(state)`
 
@@ -184,42 +42,66 @@ def smc(key,
 
 
     Args:
-        key (JAX PRNG key):                     JAX PRNG key.
+        key (JAX PRNG key, No size):
+            JAX PRNG key.
 
-        model (SSM object):                     Defines the model.
+        model (SSM object, No size):
+            Defines the model.
 
-        dataset (np.array):                    Data to condition on.  If the dataset has three
-            dimensions then the leading dimension will be vmapped over.
+        dataset (np.array, (batch x time x state_dim) --or-- (time x state_dim)):
+            Data to condition on.  If the dataset has three dimensions then the leading dimension will be vmapped over.
 
-        initialization_distribution (??, optional): Allows a custom distribution to be used to
-            propose the initial states from.  Using default value of None means that the prior
-            is used as the proposal.
+        initialization_distribution (function, No size, default=model.initial_distribution):
+            Allows a custom distribution to be used to propose the initial states from.  Using default value of
+            None means that the prior is used as the proposal.
+            Function takes arguments of (dataset, model, ...), but doesn't have to make use of them.  Allows
+            more expressive initial proposals to be constructed.  The proposal must be a function that can be called
+            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be 
+            defined by closing over a proposal class as appropriate. 
 
-        proposal (??, option):                  Allows a custom proposal to be used to propose
-            transitions from.  Using default value of None means that the prior
-            is used as the proposal.
+        proposal (function, No size, default=model.dynamics_distribution):
+            Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
+            the prior is used as the proposal.
 
-        num_particles (int):                    Number of particles to use.
+        num_particles (int, No size, default=50):
+            Number of particles to use.
 
-        resampling_criterion (fn):              Boolean function for whether to resample.
+        resampling_criterion (function, No size, default=always_resample_criterion):
+            Boolean function for whether to resample.
 
-        resampling_function (fn):               Resampling operation.
+        resampling_function (function, No size, default=systematic_resampling):
+            Resampling function.
 
-        use_stop_gradient_resampling (bool):    Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
+        use_stop_gradient_resampling (bool, No size, default=False):
+            Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
 
-        verbosity (??):                         Level of text output.
-
+        verbosity (SSM.verbosity, No size, default=default_verbosity):
+            Level of text output.
 
 
     :return: Tuple:
-        particles (np.array):                   Resampled particles - either filtered or smoothed.
+        particles (np.array, (batch x time x num_particles x state_dim) -- or -- (time x num_particles x state_dim)):
+            Particles approximating the smoothing distribution.  May have a leading batch dimension if `dataset` also
+            has a leading batch dimension.
 
-        log_marginal_likelihood (np.float):     Log-normalizer estimated via SMC.
+        log_marginal_likelihood (np.array -- or -- np.float, (batch, ) -- or -- No size):
+            Log-normalizer estimated via SMC.  May have a leading batch dimension if `dataset` also
+            has a leading batch dimension.
 
-        ancestry (np.array):                    Full matrix of resampled ancestor indices.
+        ancestry (np.array, (batch x time x num_particles x state_dim) -- or -- (time x num_particles x state_dim)):
+            Full matrix of resampled ancestor indices.  May have a leading batch dimension if `dataset` also
+            has a leading batch dimension.
 
-        filtering_particles.
+        filtering_particles. (np.array, (batch x time x num_particles x state_dim) -- or -- (time x num_particles x state_dim)):
+            Particles approximating the filtering distribution.  May have a leading batch dimension if `dataset` also
+            has a leading batch dimension.
     """
+
+    if resampling_criterion is None:
+        resampling_criterion = always_resample_criterion
+
+    if resampling_function is None:
+        resampling_function = systematic_resampling
 
     # Close over the static arguments.
     single_smc_closed = lambda _k, _d: \
@@ -261,42 +143,55 @@ def _single_smc(key,
 
 
     Args:
-        key (JAX PRNG key):                     JAX PRNG key.
+        key (JAX PRNG key, No size):
+            JAX PRNG key.
 
-        model (SSM object):                     Defines the model.
+        model (SSM object, No size):
+            Defines the model.
 
-        dataset (np.array):                     Single data to condition on.
+        dataset (np.array, (time x state_dim)):
+            Single dataset to condition on.
 
-        initialization_distribution (??, optional): Allows a custom distribution to be used to
-            propose the initial states from.  Using default value of None means that the prior
-            is used as the proposal.
+        initialization_distribution (function, No size, default=model.initial_distribution):
+            Allows a custom distribution to be used to propose the initial states from.  Using default value of
+            None means that the prior is used as the proposal.
+            Function takes arguments of (dataset, model, ...), but doesn't have to make use of them.  Allows
+            more expressive initial proposals to be constructed.  The proposal must be a function that can be called
+            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be 
+            defined by closing over a proposal class as appropriate. 
 
-        proposal (??, option):                  Allows a custom proposal to be used to propose
-            transitions from.  Using default value of None means that the prior is used as the proposal.
+        proposal (function, No size, default=model.dynamics_distribution):
+            Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
+            the prior is used as the proposal.
 
-        num_particles (int):                    Number of particles to use.
+        num_particles (int, No size, default=50):
+            Number of particles to use.
 
-        smooth (bool):                          Return particles from the filtering distribution or
-            the smoothing distribution?
+        resampling_criterion (function, No size, default=always_resample_criterion):
+            Boolean function for whether to resample.
 
-        resampling_criterion (fn):              Boolean function for whether to resample.
+        resampling_function (function, No size, default=systematic_resampling):
+            Resampling function.
 
-        resampling_function (fn):               Resampling operation.
+        use_stop_gradient_resampling (bool, No size, default=False):
+            Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
 
-        use_stop_gradient_resampling (bool):    Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
-
-        verbosity (??):                         Level of text output.
-
+        verbosity (SSM.verbosity, No size, default=default_verbosity):
+            Level of text output.
 
 
     :return: Tuple:
-        particles (np.array):                   Resampled particles - either filtered or smoothed.
+        particles (np.array, (time x num_particles x state_dim)):
+            Particles approximating the smoothing distribution.
 
-        log_marginal_likelihood (np.float):     Log-normalizer estimated via SMC.
+        log_marginal_likelihood (np.float, No size):
+            Log-normalizer estimated via SMC.
 
-        ancestry (np.array):                    Full matrix of resampled ancestor indices.
+        ancestry (np.array, (time x num_particles x state_dim)):
+            Full matrix of resampled ancestor indices.
 
-        filtering_particles ():
+        filtering_particles. (np.array, (time x num_particles x state_dim)):
+            Particles approximating the filtering distribution.
     """
 
     # If no explicit proposal initial distribution is provided, default to prior.
@@ -311,7 +206,7 @@ def _single_smc(key,
     # More complex proposals allow multiple arguments to be input and are
     # filtered on the inside.
     if proposal is None:
-        proposal = lambda *args: model.dynamics_distribution(args[0])
+        proposal = lambda *args: model.dynamics_distribution(args[2])
 
     # Do the forward pass.
     filtering_particles, log_marginal_likelihood, ancestry = \
@@ -346,99 +241,125 @@ def _smc_forward_pass(key,
 
 
     Args:
-        key (JAX PRNG key):                 JAX PRNG key.
+        key (JAX PRNG key, No size):
+            JAX PRNG key.
 
-        model (SSM object):                 Defines the model.
+        model (SSM object, No size):
+            Defines the model.
 
-        dataset (np.array):                Single dataset to condition on.
+        dataset (np.array, (time x state_dim)):
+            Single dataset to condition on.
 
-        initialization_distribution (??, optional): Allows a custom distribution to be used to
-            propose the initial states from.  Using default value of None means that the prior
-            is used as the proposal.
+        initialization_distribution (function, No size):
+            Allows a custom distribution to be used to propose the initial states from.  Using default value of
+            None means that the prior is used as the proposal.
+            Function takes arguments of (dataset, model, ...), but doesn't have to make use of them.  Allows
+            more expressive initial proposals to be constructed.  The proposal must be a function that can be called
+            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be 
+            defined by closing over a proposal class as appropriate. 
 
-        proposal (??, optional):            Allows a custom proposal to be used to propose
-            transitions from.  Using default value of None means that the prior
-            is used as the proposal.
+        proposal (function, No size):
+            Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
+            the prior is used as the proposal.
+            Function takes arguments of (dataset, model, particles, time, ...), but doesn't have to make use of them.  
+            Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
+            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be 
+            defined by closing over a proposal class as appropriate.  
 
-        num_particles (int):                Number of particles to use.
+        num_particles (int, No size):
+            Number of particles to use.
 
-        resampling_criterion (fn):          Boolean function for whether to resample.
+        resampling_criterion (function, No size):
+            Boolean function for whether to resample.
 
-        resampling_function (fn):                 Resampling operation.
+        resampling_function (function, No size):
+            Resampling function.
 
-        verbosity (??):                     Level of text output.
+        use_stop_gradient_resampling (bool, No size, default=False):
+            Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
+
+        verbosity (SSM.verbosity, No size, default=default_verbosity):
+            Level of text output.
 
 
     :return: Tuple:
-        filtering_particles (np.array):     Matrix of particles approximating *filtering* distribution.
+        filtering_particles (np.array, (time x num_particles x state_dim)):
+            Particles approximating the filtering distribution.
 
-        log_marginal_likelihood (float):    Estimate of the log normalizer computed by SMC.
+        log_marginal_likelihood (np.float, No size):
+            Log-normalizer estimated via SMC.
 
-        ancestors (np.array):               Full matrix of ancestors in forward pass.
-
+        ancestors (np.array, (time x num_particles x state_dim)):
+            Full matrix of resampled ancestor indices.
     """
 
     # Generate the initial distribution.
-    initial_dist = initialization_distribution(dataset, )
+    initial_distribution = initialization_distribution(dataset, model)
 
     # Initialize the sweep using the initial distribution.
     key, subkey1, subkey2 = jr.split(key, num=3)
-    initial_particles = initial_dist.sample(seed=key, sample_shape=(num_particles, ), )
+    initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
 
     # Resample particles under the zeroth observation.
-    p_log_prob = model.initial_distribution().log_prob(initial_particles)
-    q_log_prob = initial_dist.log_prob(initial_particles)
-    y_log_prob = model.emissions_distribution(initial_particles).log_prob(dataset[0])
-    initial_incr_log_ws = p_log_prob - q_log_prob + y_log_prob
+    p_log_probability = model.initial_distribution().log_prob(initial_particles)
+    q_log_probability = initial_distribution.log_prob(initial_particles)
+    y_log_probability = model.emissions_distribution(initial_particles).log_prob(dataset[0])
+    initial_incremental_log_weights = y_log_probability + p_log_probability - q_log_probability
 
     # Do an initial resampling step.
-    initial_resampled_particles, _, accumulated_log_ws, initial_resampled = \
-        do_resample(subkey2, initial_incr_log_ws, initial_particles, resampling_criterion,
+    initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
+        do_resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
                     resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
 
-    # # Uncomment this to force not doing an initial resampling step.
+    # # Use this to no do an initial resampling step.
+    # initial_distribution = model.initial_distribution()
+    # key, subkey1, subkey2 = jr.split(key, num=3)
+    # initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
+    # y_log_probability = model.emissions_distribution(initial_particles).log_prob(dataset[0])
+    # initial_incremental_log_weights = y_log_probability
     # initial_resampled_particles = initial_particles
-    # accumulated_log_ws = initial_incr_log_ws
+    # accumulated_log_weights = initial_incremental_log_weights
     # initial_resampled = False
 
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
-        key, particles, accumulated_log_ws = carry
+        key, particles, accumulated_log_weights = carry
         key, subkey1, subkey2 = jr.split(key, num=3)
 
         # Propagate the particle particles.
-        q_dist = proposal(particles, dataset, t)
+        q_dist = proposal(dataset, model, particles, t)
 
         # Sample the new particles.
         new_particles = q_dist.sample(seed=subkey1)
 
         # Compute the incremental importance weight.
-        p_log_prob = model.dynamics_distribution(particles).log_prob(new_particles)
-        q_log_prob = q_dist.log_prob(new_particles)
-        y_log_prob = model.emissions_distribution(new_particles).log_prob(dataset[t])
-        incr_log_ws = p_log_prob - q_log_prob + y_log_prob
+        p_log_probability = model.dynamics_distribution(particles).log_prob(new_particles)
+        q_log_probability = q_dist.log_prob(new_particles)
+        y_log_probability = model.emissions_distribution(new_particles).log_prob(dataset[t])
+        incremental_log_weights = p_log_probability - q_log_probability + y_log_probability
 
         # Update the log weights.
-        accumulated_log_ws += incr_log_ws
+        accumulated_log_weights += incremental_log_weights
 
         # Resample particles.
-        resampled_particles, ancestors, resampled_log_ws, should_resample = \
-            do_resample(subkey2, accumulated_log_ws, new_particles, resampling_criterion,
+        resampled_particles, ancestors, resampled_log_weights, should_resample = \
+            do_resample(subkey2, accumulated_log_weights, new_particles, resampling_criterion,
                         resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
 
-        return ((key, resampled_particles, resampled_log_ws),
-                (resampled_particles, accumulated_log_ws, should_resample, ancestors))
+        return ((key, resampled_particles, resampled_log_weights),
+                (resampled_particles, accumulated_log_weights, should_resample, ancestors))
 
     # Scan over the dataset.
     _, (filtering_particles, log_weights, resampled, ancestors) = jax.lax.scan(
         smc_step,
-        (key, initial_resampled_particles, accumulated_log_ws),
+        (key, initial_resampled_particles, accumulated_log_weights),
         np.arange(1, len(dataset)))
 
     # Need to prepend the initial timestep.
     filtering_particles = np.concatenate((initial_resampled_particles[None, :], filtering_particles))
-    log_weights = np.concatenate((initial_incr_log_ws[None, :], log_weights))
+    log_weights = np.concatenate((initial_incremental_log_weights[None, :], log_weights))
     resampled = np.concatenate((np.asarray([initial_resampled]), resampled))
+    ancestors = np.concatenate((np.arange(num_particles)[None, :], ancestors))
 
     # Average over particle dimension.
     p_hats = spsp.logsumexp(log_weights, axis=1) - np.log(num_particles)
@@ -453,33 +374,39 @@ def _smc_forward_pass(key,
 def _smc_backward_pass(filtering_particles,
                        ancestors,
                        verbosity=default_verbosity):
-    r"""Do the backwards pass (pruning) given a forward pass.
+    r"""Do the backwards pass (pruning) given a SINGLE forward pass.
 
     TODO - Double check that the backwards pass code is correct.  I always get this wrong.
 
-
     Args:
-        filtering_particles (np.array):         Matrix of particles approximating *filtering* distribution.
 
-        ancestors (np.array):                   Full matrix of ancestors in forward pass.
+        filtering_particles (np.array, (time x num_particles x state_dim)):
+            Matrix of particles approximating *filtering* distribution.
 
-        verbosity (??):                         Level of textual output.
+        ancestors (np.array, (time x num_particles x state_dim)):
+            Full matrix of ancestors in forward pass.
+
+        verbosity (SSM.verbosity, No size, default=default_verbosity):
+            Level of text output.
 
 
-    :return: smoothing_particles (np.array):    Matrix of particles approximating *smoothing* distribution.
+    Returns:
+
+        smoothing_particles (np.array):
+            Matrix of particles approximating *smoothing* distribution.
 
     """
 
     def _backward_step(carry, t):
-        next_an = carry
+        ancestor = carry
 
         # Grab the ancestor state.
-        next_sp = jax.tree_map(lambda item: item[next_an], filtering_particles[t-1])
+        next_smoothing_particles = jax.tree_map(lambda item: item[ancestor], filtering_particles[t-1])
 
         # Update the ancestor indices according to the resampling.
-        next_an = jax.tree_map(lambda item: item[next_an], ancestors[t-1])
+        next_ancestor = jax.tree_map(lambda item: item[ancestor], ancestors[t-1])
 
-        return (next_an, ), (next_sp, )
+        return (next_ancestor, ), (next_smoothing_particles, )
 
     _, (smoothing_particles, ) = jax.lax.scan(
         _backward_step,
@@ -492,4 +419,165 @@ def _smc_backward_pass(filtering_particles,
     smoothing_particles = np.concatenate((smoothing_particles, filtering_particles[-1][np.newaxis]))
 
     return smoothing_particles
+
+
+def always_resample_criterion(unused_log_weights, unused_t):
+    r"""A criterion that always resamples."""
+    return True
+
+
+def multinomial_resampling(key, log_weights, particles):
+    r"""Resample particles with multinomial resampling.
+
+    Args:
+
+        key (JAX.PRNGKey, No size):
+            A JAX PRNG key.
+
+        log_weights (np.array, (num_particles x )):
+            A [num_particles] ndarray, the log weights for each particle.
+
+        particles (np.array, (num_particles x state_dim)):
+            A pytree of [num_particles, ...] ndarrays that will be resampled.
+
+
+    Returns:
+
+        resampled_particles (np.array, (num_particles x state_dim)):
+            A pytree of [num_particles, ...] ndarrays resampled via multinomial sampling.
+
+    """
+    num_particles = log_weights.shape[0]
+    cat = tfd.Categorical(logits=log_weights)
+    parents = cat.sample(sample_shape=(num_particles,), seed=key)
+    return jax.tree_map(lambda item: item[parents], particles), parents
+
+
+def systematic_resampling(key, log_weights, particles):
+    r"""Resample particles with systematic resampling.
+
+    Args:
+
+        key (JAX.PRNGKey, No size):
+            A JAX PRNG key.
+
+        log_weights (np.array, (num_particles x )):
+            A [num_particles] ndarray, the log weights for each particle.
+
+        particles (np.array, (num_particles x state_dim)):
+            A pytree of [num_particles, ...] ndarrays that will be resampled.
+
+
+    Returns:
+
+        resampled_particles (np.array, (num_particles x state_dim)):
+            A pytree of [num_particles, ...] ndarrays resampled via systematic sampling.
+
+    """
+
+    # Grab the number of particles.
+    num_particles = log_weights.shape[0]
+
+    # Construct the bins.
+    alpha = np.max(log_weights)
+    zeroed_weights = np.exp(log_weights - alpha)
+    normalized_weights = zeroed_weights / np.sum(zeroed_weights)
+    cumsum_weights = np.cumsum(normalized_weights)
+    bins_weights = np.concatenate((np.asarray([0]), cumsum_weights))
+
+    # Force re-normalize.
+    bins_weights = bins_weights / bins_weights[-1]
+
+    # Construct the uniform vector.
+    u = jr.uniform(key, minval=0, maxval=(1.0 / num_particles))
+    uvec = u + np.linspace(0, (num_particles - 1) / num_particles, num_particles)
+
+    # Use digitize to grab bin occupancies.
+    # NOTE!  Finally found the problem, digitize treats everything to the left of
+    # the zeroth bin index as the zeroth bin (which is kind of wild) so we have
+    # to subtract one to make sure the indexing is correct as we never show it
+    # values < 0.0.
+    parents = np.digitize(uvec, bins_weights) - 1
+
+    # # Do some error checking.
+    # if np.min(parents) < 0:
+    #     print('Lower limit error.')
+    #     raise RuntimeError()
+    #
+    # if np.max(parents) >= num_particles:
+    #     print('Upper limit error.')
+    #     raise RuntimeError()
+
+    # Do the resampling using treemap.
+    return jax.tree_map(lambda item: item[parents], particles), parents
+
+
+def do_resample(key,
+                log_weights,
+                particles,
+                resampling_criterion=always_resample_criterion,
+                resampling_function=systematic_resampling,
+                num_particles=None,
+                use_stop_gradient_resampling=False):
+    r"""Do resampling.
+
+    Allows a resampling condition to be passed in and evaluated to trigger adaptive resampling.
+
+    If resampling occurs, then the returned incremental importance weights are zero.
+
+    Args:
+        key (JAX PRNG key, No size):
+            JAX PRNG key.
+
+        log_weights (np.array, (num_particles, ):
+            Incremental importance weights of `particles`.
+
+        particles (np.array, (num_particles x state_dim):
+            Current particles.
+
+        resampling_criterion (function, No size, default=always_resample_criterion):
+            Boolean function for whether to resample.
+
+        resampling_function (function, No size, default=systematic_resampling):
+            Resampling function.
+
+        num_particles (int, No size, default=len(log_weights)):
+            Number of particles to resample.
+
+        use_stop_gradient_resampling (bool, No size, default=False):
+            Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
+
+
+    :return: Tuple:
+        resampled_particles (np.array, (num_particles x state_dim):
+            Resampled particles.
+
+        ancestors (np.array, (num_particles, ):
+            Ancestor indices of resampled particles.
+
+        resampled_log_weights (num_particles, ):
+            Incremental importance weights after any resampling -- resampling resets incremental importance weights.
+
+        should_resample (bool, No size, default=False):
+            Whether particles were resampled.
+
+    """
+
+    # If we have not specified a number of particles to resample, assume that we want
+    # the particle set to remain the same size.
+    if num_particles is None:
+        num_particles = len(log_weights)
+
+    should_resample = resampling_criterion(log_weights, 0)
+
+    resampled_particles, ancestors = jax.lax.cond(
+        should_resample,
+        lambda args: resampling_function(*args),
+        lambda args: (args[2], np.arange(num_particles)),
+        (key, log_weights, particles)
+    )
+
+    resampled_log_weights = (1. - should_resample) * log_weights
+
+    return resampled_particles, ancestors, resampled_log_weights, should_resample
 
