@@ -1,14 +1,14 @@
 from functools import partial
 import jax.numpy as np
-from jax import vmap, lax
 from jax.tree_util import tree_map, register_pytree_node_class
-from tensorflow_probability.substrates import jax as tfp
-from ssm.distributions.linreg import GaussianLinearRegression
+from jax import vmap
 
+from tensorflow_probability.substrates import jax as tfp
+
+tfd = tfp.distributions
+from ssm.distributions.linreg import GaussianLinearRegression, GaussianLinearRegressionPrior
 from ssm.factorial_hmm.emissions import FactorialEmissions
 from ssm.factorial_hmm.posterior import FactorialHMMPosterior
-import ssm.distributions as ssmd
-tfd = tfp.distributions
 
 
 @register_pytree_node_class
@@ -19,7 +19,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
                  weights: np.ndarray=None,
                  biases: np.ndarray=None,
                  scale_trils: np.ndarray=None,
-                 emissions_distribution_prior: ssmd.GaussianLinearRegressionPrior=None) -> None:
+                 emissions_distribution_prior: GaussianLinearRegressionPrior=None) -> None:
         r"""Emissions class for a Time-Warped Autoregressive HMM (TWAR-HMM).
 
         Note: We (currently) only support lag-1 AR-HMMs.
@@ -44,7 +44,8 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
                 of shape :math:`(\text{num\_discrete\_states}, \text{emissions\_dim}, \text{emissions\_dim})`.
                 Note: scale_trils are 1/\tau chol(Q) where Q are the covariance matrices.
                 Defaults to None.
-            emissions_distribution_prior (ssmd.MatrixNormalInverseWishart, optional): emissions prior distribution. Defaults to None.
+            emissions_distribution_prior (ssmd.MatrixNormalInverseWishart, optional):
+                emissions prior distribution. Defaults to None.
         """
         self.num_discrete_states = num_discrete_states
         self.time_constants = time_constants
@@ -53,22 +54,23 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         self._weights = weights
         self._biases = biases
         self._scale_trils = scale_trils
-        self._make_distribution()
         self._prior = emissions_distribution_prior
+        self._make_distribution()
         super(TimeWarpedAutoregressiveEmissions, self).__init__(num_states)
 
     def _make_distribution(self):
-        latent_dim = self._weights.shape[-1]
-        effective_weights = np.einsum('kde,i->kide', self._weights, 1/self._time_constants) + np.eye(latent_dim)
+        dim = self._weights.shape[-1]
+        effective_weights = np.einsum('kde,i->kide', self._weights, 1/self._time_constants) + np.eye(dim)
         effective_biases = np.einsum('kd,i->kid', self._biases, 1/self._time_constants)
         effective_scale_trils = np.einsum('kde,i->kide', self._scale_trils, 1/self._time_constants)
-        self._distribution = ssmd.GaussianLinearRegression(effective_weights, effective_biases, effective_scale_trils)
+        self._distribution = GaussianLinearRegression(
+            effective_weights, effective_biases, effective_scale_trils)
 
     @property
     def emissions_dim(self):
         return self._weights.shape[-1]
 
-    def distribution(self, state: int, covariates: np.ndarray=None) -> ssmd.GaussianLinearRegression:
+    def distribution(self, state: int, covariates: np.ndarray=None) -> GaussianLinearRegression:
         """Returns the emissions distribution conditioned on a given state.
 
         Args:
@@ -77,7 +79,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
                 Not yet supported. Defaults to None.
 
         Returns:
-            emissions_distribution (ssmd.GaussianLinearRegression): the emissions distribution
+            emissions_distribution (GaussianLinearRegression): the emissions distribution
         """
         return self._distribution[state]
 
@@ -141,16 +143,16 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         stats = tree_map(partial(np.sum, axis=0), vmap(_sum_stats_single)(dataset, posteriors))
 
         # Compute the conditional distribution over parameters and take the mode
-        conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
-        linreg = ssmd.GaussianLinearRegression.from_params(conditional.mode())
+        conditional = GaussianLinearRegression.compute_conditional_from_stats(stats)
+        linreg = GaussianLinearRegression.from_params(conditional.mode())
         self._weights = linreg.weights
         self._biases = linreg.bias
         self._scale_trils = linreg.scale_tril
         self._make_distribution()
 
     def tree_flatten(self):
-        children = (self._weights, self._biases, self._scale_trils, self._prior)
         aux_data = self.num_discrete_states, self.time_constants
+        children = self._weights, self._biases, self._scale_trils, self._prior
         return children, aux_data
 
     @classmethod
