@@ -1,136 +1,100 @@
 """
 Test code for SMC filtering/smoothing for SSMs.
 """
+import tensorflow_probability.substrates.jax as tfp
+from jax.interpreters import xla
+from jax import vmap
 import jax
-import warnings
-import jax.numpy as jnp
-from jax import jit, vmap
-from ssm.utils import Verbosity, format_dataset, ssm_pbar
+import jax.scipy.special as spsp
+import jax.random as jr
+import jax.numpy as np
+import pytest
 
-# Specific imports for here.
-import jax.scipy as jscipy
-from tensorflow_probability.substrates.jax import distributions as tfd
-from copy import deepcopy as dc
-import matplotlib.pyplot as plt
+from ssm.hmm import GaussianHMM
+from ssm.arhmm import GaussianARHMM
+from ssm.distributions.glm import GaussianLinearRegression
+from ssm.lds import GaussianLDS
 
-from ssm.inference.smc import *
-from ssm.lds.models import GaussianLDS
+from ssm.inference.smc import smc
 
 
-disable_jit = True
-from contextlib import contextmanager, ExitStack
-@contextmanager
-def nothing():
-    yield
-possibly_disabled = jax.disable_jit if disable_jit else nothing
+LML_RTOL = 0.2  # Allowable deviation of ML ratio from 1.0.
+LML_DISCARD = 1  # The number of high and low ratios that can be discarded
+
+NUM_ROUNDS = 10
+NUM_TRIALS = 5
+NUM_TIMESTEPS = 200
+LATENT_DIM = 3
+EMISSIONS_DIM = 10
+NUM_PARTICLES = 5000
+
+NUM_TRIALS_SWEEP = range(1, 202, 100)
+NUM_TIMESTEPS_SWEEP = range(10, 20011, 10000)
+LATENT_DIM_SWEEP = range(2, 13, 2)
+EMISSIONS_DIM_SWEEP = range(2, 13, 2)
 
 
-# Define the standard plotting colours.
-color_names = [
-    "tab:blue",
-    "tab:orange",
-    "tab:green",
-    "tab:red",
-    "tab:purple"
-]
+@pytest.fixture(autouse=True)
+def cleanup():
+    """Clears XLA cache after every test."""
+    yield  # run the test
+    # clear XLA cache to prevent OOM
+    print("\nclearing XLA cache")
+    xla._xla_callable.cache_clear()
 
 
-def plot_single_sweep(particles, true_states, tag=''):
+def single_test(key, model_family, num_trials, num_timesteps, num_particles, latent_dim, emissions_dim):
 
-    gen_label = lambda _k, _s: _s if _k == 0 else None
+    # Define the model.
+    key, subkey = jr.split(key)
+    model = model_family(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey)
 
-    single_sweep_median = jnp.median(particles, axis=1)
-    single_sweep_lsd = jnp.quantile(particles, 0.17, axis=1)
-    single_sweep_usd = jnp.quantile(particles, 0.83, axis=1)
-
-    ts = jnp.arange(len(true_states))
-
-    plt.figure()
-
-    for _i, _c in zip(range(single_sweep_median.shape[1]), color_names):
-        plt.plot(ts, single_sweep_median[:, _i], c=_c, label=gen_label(_i, 'Predicted'))
-        plt.fill_between(ts, single_sweep_lsd[:, _i], single_sweep_usd[:, _i], color=_c, alpha=0.1)
-
-        plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
-
-    plt.title(tag)
-    plt.grid(True)
-    plt.tight_layout()
-    # plt.xlim(0, 5)
-    plt.legend()
-    plt.pause(0.1)
-
-
-def test_smc(key):
-    r"""
-    Script for deploying and inspecting SMC code.
-    :return:
-    """
-
-    # Set up true model and draw some data.
-    latent_dim = 2
-    emissions_dim = 3
-    num_trials = 5
-    num_timesteps = 10
-    num_particles = 100
-
-    key, subkey = jax.random.split(key)
-    model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey, emission_scale_tril=0.25**2 * jnp.eye(emissions_dim))
-
-    key, subkey = jax.random.split(key)
+    # Sample the data.
+    key, subkey = jr.split(key)
     true_states, data = model.sample(key=subkey, num_steps=num_timesteps, num_samples=num_trials)
 
-    # _do_plot(true_states, data)
-
     # Test against EM (which for the LDS is exact.
-    em_posterior = jax.vmap(model.infer_posterior)(data)
+    em_posterior = vmap(model.infer_posterior)(data)
     em_log_marginal_likelihood = model.marginal_likelihood(data, posterior=em_posterior)
 
-    # Do the SMC filtering sweep using BPF.
-    with possibly_disabled():
-        repeat_smc = lambda _k: smc(_k, model, data, proposal=None, num_particles=num_particles)
-        n_reps = 1
+    # Close over a single SMC sweep.
+    repeat_smc = lambda _k: smc(_k, model, data, proposal=None, num_particles=num_particles)
+    vmapped = vmap(repeat_smc)
 
-        key, subkey = jax.random.split(key)
-        smoothing_particles, log_marginal_likelihood, ancestry, filtering_particles = jax.vmap(repeat_smc)(jax.random.split(subkey, num=n_reps))
+    # Run all the sweeps.
+    key, subkey = jr.split(key)
+    _, smc_log_marginal_likelihood, _, _ = vmapped(jr.split(subkey, num=NUM_ROUNDS))
 
-        # Print the estimated marginals.
-        for _smc, _em in zip(log_marginal_likelihood.T, em_log_marginal_likelihood):
-            for __smc in _smc:
-                print('SMC/EM LML: \t {: >6.4f} \t {: >6.4f}'.format(__smc, _em))
-            print()
+    # Compute the expected LML using SMC.
+    expected_smc_lml = spsp.logsumexp(smc_log_marginal_likelihood, axis=0) - len(smc_log_marginal_likelihood)
 
-    # # Plot the results.
-    rep = 0
-    dset = 0
-    sweep_filtering = filtering_particles[rep, dset]
-    sweep_smoothing = smoothing_particles[rep, dset]
-    sweep_em_mean = em_posterior.mean()[dset]
-    sweep_em_sds = jnp.sqrt(jnp.asarray([[jnp.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset]
-    sweep_true = true_states[dset]
+    # Compute the fractional difference.
+    lml_diff = expected_smc_lml - em_log_marginal_likelihood
+    ml_diff = np.exp(lml_diff)
 
-    # SMC.
-    plot_single_sweep(sweep_filtering, sweep_true, tag='SMC filtering')
-    plot_single_sweep(sweep_smoothing, sweep_true, tag='SMC smoothing')
+    # Discard the outliers.
+    for _ in range(LML_DISCARD):
+        ml_diff = np.delete(ml_diff, ml_diff.argmin())
+        ml_diff = np.delete(ml_diff, ml_diff.argmax())
 
-    # Now plot the EM results.
-    x = range(sweep_true.shape[0])
-    plt.figure()
-    for _idx, _c in zip(range(len(sweep_em_mean.T)), color_names):
-        plt.plot(x, sweep_em_mean[:, _idx], c=_c)
-        plt.fill_between(x, sweep_em_mean[:, _idx] - sweep_em_sds[:, _idx], sweep_em_mean[:, _idx] + sweep_em_sds[:, _idx], color=_c, alpha=0.1)
-        plt.plot(x, sweep_true[:, _idx], c=_c, linestyle='--')
-    plt.grid(True)
-    plt.title('EM Smoothing')
-    plt.pause(0.001)
+    # Compute the mean.
+    mml_diff = np.mean(ml_diff)
+
+    # Test if this is within the tolerance.
+    passed = (1.0 - LML_RTOL) < mml_diff < (1.0 + LML_RTOL)
+
+    return passed
+
+
+def test_smc_lds():
+
+    closed_single_test = lambda _k, _trials, _timesteps, _particles, _latent_dim, _emissions_dim: \
+        single_test(_k, GaussianLDS, _trials, _timesteps, _particles, _latent_dim, _emissions_dim)
+
+    key = jr.PRNGKey(0)
+    assert closed_single_test(key, NUM_TRIALS, NUM_TIMESTEPS, NUM_PARTICLES, LATENT_DIM, EMISSIONS_DIM)
+
+
     p = 0
 
-
-if __name__ == '__main__':
-    print('Test SMC code.')
-    _key = jax.random.PRNGKey(1)
-    test_smc(_key)
-
-    plt.waitforbuttonpress()
-
-    print('Done testing.')
+test_smc_lds()
