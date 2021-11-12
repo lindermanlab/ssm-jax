@@ -21,8 +21,8 @@ class GRU(DeterministicRNN):
         seed=None,
     ):
         if rnn_params is None:
-            rng_1, rng_2 = jr.split(seed, 2)
             assert seed is not None, "must provide a random seed"
+            rng_1, rng_2, seed = jr.split(seed, 3)
             carry = nn.GRUCell().initialize_carry(
                 rng_1, batch_dims=tuple(), size=num_latent_dims
             )
@@ -30,7 +30,9 @@ class GRU(DeterministicRNN):
             rnn_params = nn.GRUCell().init(rng_2, carry, dummy_data)
 
         if initial_state is None:
-            initial_state = np.zeros((num_latent_dims,))
+            assert seed is not None, "must provide a random seed"
+            rng_1, seed = jr.split(seed, 2)
+            initial_state = jr.normal(rng_1, shape=(num_latent_dims,))
         super(GRU, self).__init__(rnn_params, initial_state)
 
     def dynamics_distribution(self, state, covariates):
