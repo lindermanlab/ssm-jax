@@ -148,24 +148,30 @@ class SSM(object):
         """
 
         def _sample(key, covariates=None, initial_state=None):
+            
+            if covariates is not None:
+                assert covariates.shape[-2] == num_steps, \
+                "covariates time axis must match number of steps"
+                        
             if initial_state is None:
                 key1, key = jr.split(key, 2)
                 initial_state = self.initial_distribution().sample(seed=key1)
 
-            def _step(state, key):
+            def _step(state, key_and_covariates):
+                key, covariates = key_and_covariates
                 key1, key2 = jr.split(key, 2)
                 emission = self.emissions_distribution(state).sample(seed=key1)
-                next_state = self.dynamics_distribution(state).sample(seed=key2)
+                next_state = self.dynamics_distribution(state, covariates).sample(seed=key2)
                 return next_state, (state, emission)
 
             keys = jr.split(key, num_steps)
-            _, (states, emissions) = lax.scan(_step, initial_state, keys)
+            _, (states, emissions) = lax.scan(_step, initial_state, (keys, covariates))
             return states, emissions
 
         if num_samples > 1:
             batch_keys = jr.split(key, num_samples)
             states, emissions = vmap(_sample)(batch_keys, covariates, initial_state)
         else:
-            states, emissions = _sample(key)
+            states, emissions = _sample(key, covariates, initial_state)
 
         return states, emissions

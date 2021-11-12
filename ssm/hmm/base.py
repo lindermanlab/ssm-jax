@@ -73,10 +73,10 @@ class HMM(SSM):
     def initial_distribution(self):
         return self._initial_condition.distribution()
 
-    def dynamics_distribution(self, state):
+    def dynamics_distribution(self, state, covariates=None):
         return self._transitions.distribution(state)
 
-    def emissions_distribution(self, state):
+    def emissions_distribution(self, state, covariates=None):
         return self._emissions.distribution(state)
 
 
