@@ -10,6 +10,7 @@ tfd = tfp.distributions
 
 from ssm.arhmm.base import AutoregressiveHMM
 from ssm.distributions.linreg import GaussianLinearRegressionPrior
+from ssm.factorial_hmm.base import FactorialHMM
 from ssm.factorial_hmm.initial import FactorialInitialCondition
 from ssm.factorial_hmm.transitions import FactorialTransitions
 from ssm.hmm.transitions import StationaryTransitions, SimpleStickyTransitions
@@ -17,14 +18,14 @@ from ssm.twarhmm.emissions import TimeWarpedAutoregressiveEmissions
 
 
 @register_pytree_node_class
-class GaussianTWARHMM(AutoregressiveHMM):
+class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
     def __init__(self,
                  num_discrete_states: int,
                  time_constants: np.ndarray,
                  num_emission_dims: int=None,
                  initial_state_probs: tuple=None,
                  discrete_state_transition_matrix: np.ndarray=None,
-                 time_constant_stay_probability: float=0.9,
+                 time_constant_stay_probability: float=0.98,
                  emission_weights: np.ndarray=None,
                  emission_biases: np.ndarray=None,
                  emission_covariances: np.ndarray=None,
@@ -67,7 +68,7 @@ class GaussianTWARHMM(AutoregressiveHMM):
             this_seed, seed = jr.split(seed, 2)
             emission_weights = tfd.Normal(0, 0.1).sample(
                 seed=this_seed,
-                sample_shape=(num_states, num_emission_dims, num_emission_dims))
+                sample_shape=(num_discrete_states, num_emission_dims, num_emission_dims))
 
         if emission_biases is None:
             assert seed is not None and num_emission_dims is not None, \
@@ -76,13 +77,13 @@ class GaussianTWARHMM(AutoregressiveHMM):
             this_seed, seed = jr.split(seed, 2)
             emission_biases = tfd.Normal(0, .1).sample(
                 seed=this_seed,
-                sample_shape=(num_states, num_emission_dims))
+                sample_shape=(num_discrete_states, num_emission_dims))
 
         if emission_covariances is None:
             assert num_emission_dims is not None, \
                 "You must either specify the emission_covariances or give a dimension "\
                 "so that they can be initialized."
-            emission_covariances = np.tile(np.eye(num_emission_dims), (num_states, 1, 1))
+            emission_covariances = np.tile(np.eye(num_emission_dims), (num_discrete_states, 1, 1))
 
         emissions = TimeWarpedAutoregressiveEmissions(
             num_discrete_states,
@@ -93,6 +94,14 @@ class GaussianTWARHMM(AutoregressiveHMM):
             emissions_distribution_prior=emission_prior)
 
         super().__init__(num_states, initial_condition, transitions, emissions)
+
+    @property
+    def num_discrete_states(self):
+        return self.num_states[0]
+
+    @property
+    def num_time_constants(self):
+        return self.num_states[1]
 
     @property
     def emission_weights(self):

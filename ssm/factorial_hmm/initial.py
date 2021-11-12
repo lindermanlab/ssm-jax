@@ -15,14 +15,15 @@ class FactorialInitialCondition(InitialCondition):
                  initial_probs: (tuple or list)=None,
                  initial_condition_objects: (tuple or list)=None) -> None:
 
-        self.num_groups = len(initial_condition_objects)
         if initial_probs is not None:
             initial_condition_objects = \
-                tuple(StandardInitialCondition(probs) for probs in initial_probs)
+                tuple(StandardInitialCondition(len(probs), probs) for probs in initial_probs)
         else:
             assert initial_condition_objects is not None, \
                 "Must specify either `initial_probs` or `initial_condition_objects`"
+
         self._initial_conditions = initial_condition_objects
+        self.num_groups = len(initial_condition_objects)
         num_states = tuple(ic.num_states for ic in initial_condition_objects)
         super(FactorialInitialCondition, self).__init__(num_states)
 
@@ -33,7 +34,7 @@ class FactorialInitialCondition(InitialCondition):
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        return cls(children)
+        return cls(initial_condition_objects=children)
 
     def log_probs(self, data):
         return tuple(ic.log_probs(data) for ic in self._initial_conditions)

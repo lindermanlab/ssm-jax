@@ -48,7 +48,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
                 emissions prior distribution. Defaults to None.
         """
         self.num_discrete_states = num_discrete_states
-        self.time_constants = time_constants
+        self._time_constants = time_constants
         num_time_constants = len(time_constants)
         num_states = (num_discrete_states, num_time_constants)
         self._weights = weights
@@ -67,8 +67,12 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
             effective_weights, effective_biases, effective_scale_trils)
 
     @property
-    def emissions_dim(self):
-        return self._weights.shape[-1]
+    def emissions_shape(self):
+        return (self._weights.shape[-1],)
+
+    @property
+    def time_constants(self):
+        return self._time_constants
 
     def distribution(self, state: int, covariates: np.ndarray=None) -> GaussianLinearRegression:
         """Returns the emissions distribution conditioned on a given state.
@@ -131,7 +135,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
             stats = vmap(f)(self.time_constants)
             # compute the expected sufficient statistics by summing over time constants
             # weighted by Pr(z=k, tau=c) for each discrete state k
-            return tree_map(lambda s: np.einsum('kc,c...->k...', expected_states, stats))
+            return tree_map(lambda s: np.einsum('kc,c...->k...', expected_states, s), stats)
 
         # Collect the sum of statistics for a single trial
         def _sum_stats_single(data, posterior):
@@ -149,12 +153,13 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         self._biases = linreg.bias
         self._scale_trils = linreg.scale_tril
         self._make_distribution()
+        return self
 
     def tree_flatten(self):
-        aux_data = self.num_discrete_states, self.time_constants
-        children = self._weights, self._biases, self._scale_trils, self._prior
+        aux_data = self.num_discrete_states
+        children = self.time_constants, self._weights, self._biases, self._scale_trils, self._prior
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        return cls(*aux_data, *children)
+        return cls(aux_data, *children)

@@ -1,4 +1,3 @@
-from ssm.hmm.base import HMM
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
@@ -6,32 +5,12 @@ from jax.tree_util import register_pytree_node_class
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
 
-from ssm.factorial_hmm.posterior import FactorialHMMPosterior
+from ssm.factorial_hmm.base import FactorialHMM
 from ssm.factorial_hmm.initial import FactorialInitialCondition
 from ssm.factorial_hmm.transitions import FactorialTransitions
-from ssm.factorial_hmm.emissions import FactorialEmissions, NormalFactorialEmissions
-from ssm.hmm.base import HMM
+from ssm.factorial_hmm.emissions import NormalFactorialEmissions
 from ssm.hmm.transitions import StationaryTransitions
 from ssm.hmm.initial import StandardInitialCondition
-from ssm.utils import format_dataset
-
-
-class FactorialHMM(HMM):
-
-    def __init__(self, num_states: (tuple or list),
-                 initial_condition: FactorialInitialCondition,
-                 transitions: FactorialTransitions,
-                 emissions: FactorialEmissions):
-        super().__init__(num_states, initial_condition, transitions, emissions)
-
-    @format_dataset
-    def initialize(self, dataset: np.ndarray, key: jr.PRNGKey, method: str="kmeans") -> None:
-        pass
-
-    def infer_posterior(self, data):
-        return FactorialHMMPosterior.infer(self._initial_condition.log_probs(data),
-                                           self._emissions.log_probs(data),
-                                           self._transitions.log_probs(data))
 
 
 @register_pytree_node_class
@@ -100,10 +79,10 @@ class NormalFactorialHMM(FactorialHMM):
             for K in num_states:
                 this_seed, seed = jr.split(seed, 2)
                 emission_means.append(tfd.Normal(0, 1).sample(seed=this_seed, sample_shape=K))
-                
+
 
         factorial_initial_condition = FactorialInitialCondition(initial_conditions)
-        factorial_transitions = FactorialTransitions(transitions)    
+        factorial_transitions = FactorialTransitions(transitions)
         factorial_emissions = NormalFactorialEmissions(
             num_states, means=emission_means, log_scale=np.log(np.sqrt(emission_variance)))
         super(NormalFactorialHMM, self).__init__(

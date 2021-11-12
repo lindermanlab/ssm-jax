@@ -155,14 +155,14 @@ class SimpleStickyTransitions(Transitions):
         self._prior = transition_distribution_prior
 
     def tree_flatten(self):
-        children = (self._distribution, self._prior)
-        aux_data = (self.num_states, self.stay_probability)
+        children = (self.stay_probability, self._distribution, self._prior)
+        aux_data = self.num_states
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        num_states, stay_probability = aux_data
-        distribution, prior = children
+        num_states = aux_data
+        stay_probability, distribution, prior = children
         return cls(num_states, stay_probability,
                    transition_distribution=distribution,
                    transition_distribution_prior=prior)
