@@ -1,6 +1,8 @@
 """
 Model classes for time warped ARHMMs.
 """
+from collections import namedtuple
+
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
@@ -15,6 +17,7 @@ from ssm.factorial_hmm.initial import FactorialInitialCondition
 from ssm.factorial_hmm.transitions import FactorialTransitions
 from ssm.hmm.transitions import StationaryTransitions, SimpleStickyTransitions
 from ssm.twarhmm.emissions import TimeWarpedAutoregressiveEmissions
+from ssm.utils import format_dataset
 
 
 @register_pytree_node_class
@@ -35,6 +38,7 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
 
         assert time_constants.ndim == 1
         assert time_constants.min() > 0
+        self.time_constants = time_constants
 
         num_time_constants = len(time_constants)
         num_states = (num_discrete_states, num_time_constants)
@@ -114,6 +118,48 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
     @property
     def emission_scale_trils(self):
         return self._emissions._scale_trils
+
+    @format_dataset
+    def initialize(self, dataset: np.ndarray, key: jr.PRNGKey, method: str="kmeans") -> None:
+        r"""Initialize the model parameters by performing an M-step with state assignments
+        determined by the specified method (random or kmeans).
+
+        Args:
+            dataset (np.ndarray): array of observed data
+                of shape :math:`(\text{batch} , \text{num\_timesteps} , \text{emissions\_dim})`
+            key (jr.PRNGKey): random seed
+            method (str, optional): state assignment method.
+                One of "random" or "kmeans". Defaults to "kmeans".
+
+        Raises:
+            ValueError: when initialize method is not recognized
+        """
+        num_batches, num_timesteps = dataset.shape[:2]
+
+        # initialize assignments and perform one M-step
+        if method.lower() == "kmeans":
+            # cluster the data with kmeans
+            # print("initializing with kmeans")
+            from sklearn.cluster import KMeans
+            km = KMeans(self.num_discrete_states)
+            flat_dataset = dataset.reshape(num_batches * num_timesteps, -1)
+            assignments = km.fit_predict(flat_dataset).reshape(num_batches, num_timesteps)
+
+        else:
+            raise ValueError(f"Invalid initialize method: {method}.")
+
+        # Make a dummy posterior that just exposes expected_states
+        default_time_const = np.argmin((self.time_constants - 1.0)**2)
+        expected_states = np.zeros((num_batches, num_timesteps) + self.num_states)
+        for i, batch_assignments in enumerate(assignments):
+            expected_states = expected_states.at[
+                i, np.arange(num_timesteps), batch_assignments, default_time_const].set(1)
+
+        DummyPosterior = namedtuple("DummyPosterior", ["expected_states"])
+        dummy_posteriors = DummyPosterior(expected_states)
+
+        # Do one m-step with the dummy posteriors
+        self._emissions = self._emissions.m_step(dataset, dummy_posteriors)
 
     def tree_flatten(self):
         children = (self._initial_condition,
