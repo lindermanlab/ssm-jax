@@ -4,18 +4,26 @@ from jax.tree_util import register_pytree_node_class
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
 
-from ssm.hmm.initial import InitialCondition
+from ssm.hmm.initial import InitialCondition, StandardInitialCondition
 
 @register_pytree_node_class
 class FactorialInitialCondition(InitialCondition):
     """
     Initial distribution for several indpendent discrete states.
     """
-    def __init__(self, initial_conditions) -> None:
+    def __init__(self,
+                 initial_probs: (tuple or list)=None,
+                 initial_condition_objects: (tuple or list)=None) -> None:
 
-        self.num_groups = len(initial_conditions)
-        self._initial_conditions = initial_conditions
-        num_states = tuple(ic.num_states for ic in initial_conditions)
+        self.num_groups = len(initial_condition_objects)
+        if initial_probs is not None:
+            initial_condition_objects = \
+                tuple(StandardInitialCondition(probs) for probs in initial_probs)
+        else:
+            assert initial_condition_objects is not None, \
+                "Must specify either `initial_probs` or `initial_condition_objects`"
+        self._initial_conditions = initial_condition_objects
+        num_states = tuple(ic.num_states for ic in initial_condition_objects)
         super(FactorialInitialCondition, self).__init__(num_states)
 
     def tree_flatten(self):
