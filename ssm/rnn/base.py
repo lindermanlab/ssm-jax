@@ -20,11 +20,6 @@ class DeterministicRNN(SSM):
         children = (self._rnn_params, self._initial_state)
         aux_data = None
         return (children, aux_data)
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        rnn_params, init_state = children
-        return cls(rnn_params=rnn_params, initial_state=init_state)
     
     @classmethod
     def tree_unflatten(cls, aux_data, children):
