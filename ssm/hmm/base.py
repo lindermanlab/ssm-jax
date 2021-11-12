@@ -52,8 +52,8 @@ class HMM(SSM):
         return self._num_states
 
     @property
-    def emissions_dim(self):
-        return self._emissions.emissions_dim
+    def emissions_shape(self):
+        return self._emissions.emissions_shape
 
     def tree_flatten(self):
         children = (self._initial_condition,
@@ -70,14 +70,14 @@ class HMM(SSM):
         HMM.__init__(obj, aux_data, *children)
         return obj
 
-    def initial_distribution(self):
-        return self._initial_condition.distribution()
+    def initial_distribution(self, covariates=None, metadata=None):
+        return self._initial_condition.distribution(covariates=covariates, metadata=metadata)
 
-    def dynamics_distribution(self, state):
-        return self._transitions.distribution(state)
+    def dynamics_distribution(self, state: float, covariates=None, metadata=None):
+        return self._transitions.distribution(state, covariates=covariates, metadata=metadata)
 
-    def emissions_distribution(self, state):
-        return self._emissions.distribution(state)
+    def emissions_distribution(self, state: float, covariates=None, metadata=None):
+        return self._emissions.distribution(state, covariates=covariates, metadata=metadata)
 
 
     ### Methods for posterior inference
@@ -122,27 +122,30 @@ class HMM(SSM):
         # Do one m-step with the dummy posteriors
         self._emissions.m_step(dataset, dummy_posteriors)
 
-    def infer_posterior(self, data):
-        return StationaryHMMPosterior.infer(self._initial_condition.log_probs(data),
-                                            self._emissions.log_probs(data),
-                                            self._transitions.log_probs(data))
+    def infer_posterior(self, data, covariates=None, metadata=None):
+        return StationaryHMMPosterior.infer(
+            self._initial_condition.log_initial_probs(data, covariates=covariates, metadata=metadata),
+            self._emissions.log_likelihoods(data, covariates=covariates, metadata=metadata),
+            self._transitions.log_transition_matrices(data, covariates=covariates, metadata=metadata))
 
-    def marginal_likelihood(self, data, posterior=None):
+    def marginal_likelihood(self, data, posterior=None, covariates=None, metadata=None):
         if posterior is None:
-            posterior = self.infer_posterior(data)
+            posterior = self.infer_posterior(data, covariates=covariates, metadata=metadata)
 
         # dummy_states = np.zeros(data.shape[0], dtype=int)
         # return self.log_probability(dummy_states, data) - posterior.log_prob(dummy_states)
         return posterior.log_normalizer
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
-    def m_step(self, dataset, posteriors):
-        self._initial_condition.m_step(dataset, posteriors)
-        self._transitions.m_step(dataset, posteriors)
-        self._emissions.m_step(dataset, posteriors)
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+        self._initial_condition.m_step(dataset, posteriors, covariates=covariates, metadata=metadata)
+        self._transitions.m_step(dataset, posteriors, covariates=covariates, metadata=metadata)
+        self._emissions.m_step(dataset, posteriors, covariates=covariates, metadata=metadata)
 
     @format_dataset
     def fit(self, dataset: np.ndarray,
+            covariates=None, 
+            metadata=None,
             method: str="em",
             num_iters: int=100,
             tol: float=1e-4,
@@ -176,7 +179,6 @@ class HMM(SSM):
             posteriors (StationaryHMMPosterior): the fitted posteriors
         """
         model = self
-        kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
 
         if initialization_method is not None:
             if verbosity >= Verbosity.LOUD : print("Initializing...")
@@ -184,7 +186,11 @@ class HMM(SSM):
             if verbosity >= Verbosity.LOUD: print("Done.", flush=True)
 
         if method == "em":
-            log_probs, model, posteriors = em(model, dataset, **kwargs)
+            log_probs, model, posteriors = em(
+                model, dataset, num_iters=num_iters, tol=tol, verbosity=verbosity, 
+                covariates=covariates, metadata=metadata
+            )
+            
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
@@ -192,4 +198,4 @@ class HMM(SSM):
 
     def __repr__(self):
         return f"<ssm.hmm.{type(self).__name__} num_states={self.num_states} " \
-               f"emissions_dim={self.emissions_dim}>"
+               f"emissions_dim={self.emissions_shape}>"

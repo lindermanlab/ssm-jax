@@ -35,24 +35,17 @@ class Verbosity(IntEnum):
     DEBUG = 3
 
 
-def sum_tuples(a, b):
-    """
-    Utility function to sum tuples in an element-wise fashion.
+def tree_get(tree, idx):
+    """Idx the leaves of the PyTree.
 
     Args:
-        a (tuple): A length ``n`` tuple
-        b (tuple): A length ``n`` tuple
+        tree ([type]): [description]
+        idx ([type]): [description]
 
     Returns:
-        c (tuple): The element-wise sum of ``a`` and ``b``.
+        [type]: [description]
     """
-    assert a or b
-    if a is None:
-        return b
-    elif b is None:
-        return a
-    else:
-        return tuple(ai + bi for ai, bi in zip(a, b))
+    return tree_map(lambda x: x[idx], tree)
 
 
 def ssm_pbar(num_iters, verbose, description, *args):

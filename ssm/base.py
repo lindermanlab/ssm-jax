@@ -12,14 +12,14 @@ from jax.tree_util import tree_map
 
 import tensorflow_probability.substrates.jax as tfp
 
-from ssm.utils import format_dataset
+from ssm.utils import format_dataset, tree_get
 
 
 class SSM(object):
     """
     A generic state-space model base class.
     """
-    def initial_distribution(self) -> tfp.distributions.Distribution:
+    def initial_distribution(self, covariates=None, metadata=None) -> tfp.distributions.Distribution:
         """
         The distribution over the initial state of the SSM.
 
@@ -32,7 +32,7 @@ class SSM(object):
         """
         raise NotImplementedError
 
-    def dynamics_distribution(self, state: float) -> tfp.distributions.Distribution:
+    def dynamics_distribution(self, state: float, covariates=None, metadata=None) -> tfp.distributions.Distribution:
         """
         The dynamics (or state-transition) distribution conditioned on the current state.
 
@@ -48,7 +48,7 @@ class SSM(object):
         """
         raise NotImplementedError
 
-    def emissions_distribution(self, state: float) -> tfp.distributions.Distribution:
+    def emissions_distribution(self, state: float, covariates=None, metadata=None) -> tfp.distributions.Distribution:
         """
         The emissions (or observation) distribution conditioned on the current state.
 
@@ -64,7 +64,7 @@ class SSM(object):
         """
         raise NotImplementedError
 
-    def log_probability(self, states, data):
+    def log_probability(self, states, data, covariates=None, metadata=None):
         r"""
         Computes the log joint probability of a set of states and data (observations).
 
@@ -107,7 +107,7 @@ class SSM(object):
         return lp
 
     @format_dataset
-    def elbo(self, rng, dataset, posteriors, num_samples=1):
+    def elbo(self, rng, dataset, posteriors, covariates=None, metadata=None, num_samples=1):
         """
         Compute an _evidence lower bound_ (ELBO) using the joint probability and an
         approximate posterior :math:`q(x) \\approx p(x | y)`:
@@ -124,7 +124,7 @@ class SSM(object):
         elbos = vmap(_elbo_single)(state_samples)
         return np.mean(elbos)
 
-    def sample(self, key: jr.PRNGKey, num_steps: int, covariates=None, initial_state=None, num_samples: int=1):
+    def sample(self, key: jr.PRNGKey, num_steps: int, initial_state=None, covariates=None, metadata=None, num_samples: int=1):
         r"""
         Sample from the joint distribution defined by the state space model.
 
@@ -148,24 +148,26 @@ class SSM(object):
         """
 
         def _sample(key, covariates=None, initial_state=None):
+                                    
             if initial_state is None:
                 key1, key = jr.split(key, 2)
-                initial_state = self.initial_distribution().sample(seed=key1)
+                initial_state = self.initial_distribution(covariates=tree_get(covariates, 0), metadata=metadata).sample(seed=key1)
 
-            def _step(state, key):
+            def _step(state, key_and_covariates):
+                key, covariates = key_and_covariates
                 key1, key2 = jr.split(key, 2)
-                emission = self.emissions_distribution(state).sample(seed=key1)
-                next_state = self.dynamics_distribution(state).sample(seed=key2)
+                emission = self.emissions_distribution(state, covariates=covariates, metadata=metadata).sample(seed=key1)
+                next_state = self.dynamics_distribution(state, covariates=covariates, metadata=metadata).sample(seed=key2)
                 return next_state, (state, emission)
 
             keys = jr.split(key, num_steps)
-            _, (states, emissions) = lax.scan(_step, initial_state, keys)
+            _, (states, emissions) = lax.scan(_step, initial_state, (keys, covariates))
             return states, emissions
 
         if num_samples > 1:
             batch_keys = jr.split(key, num_samples)
             states, emissions = vmap(_sample)(batch_keys, covariates, initial_state)
         else:
-            states, emissions = _sample(key)
+            states, emissions = _sample(key, covariates, initial_state)
 
         return states, emissions
