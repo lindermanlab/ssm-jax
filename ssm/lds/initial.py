@@ -4,8 +4,6 @@ from jax import tree_util, vmap
 from jax.tree_util import register_pytree_node_class
 
 import ssm.distributions as ssmd
-from ssm.utils import sum_tuples
-
 
 class InitialCondition:
     """
@@ -19,19 +17,13 @@ class InitialCondition:
     def __init__(self):
         pass
 
-    def distribution(self):
+    def distribution(self, covariates=None, metadata=None):
         """
         Return the distribution of z_1
         """
         raise NotImplementedError
 
-    def log_probs(self, data):
-        """
-        Return [log Pr(z_1 = k) for k in range(num_states)]
-        """
-        return self.distribution().log_prob(np.arange(self.num_states))
-
-    def m_step(self, dataset, posteriors):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
         # TODO: implement generic m-step
         raise NotImplementedError
 
@@ -76,10 +68,10 @@ class StandardInitialCondition(InitialCondition):
     def mean(self):
         return self._distribution.loc
 
-    def distribution(self):
+    def distribution(self, covariates=None, metadata=None):
        return self._distribution
 
-    def m_step(self, dataset, posteriors, prior=None):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
 
         def compute_stats_and_counts(data, posterior):
             Ex = posterior.expected_states[0]

@@ -39,8 +39,8 @@ class LDS(SSM):
         return self._emissions.weights.shape[-1]
 
     @property
-    def emissions_dim(self):
-        return self._emissions.weights.shape[-2]
+    def emissions_shape(self):
+        return (self._emissions.weights.shape[-2],)
 
     @property
     def initial_mean(self):
@@ -82,32 +82,37 @@ class LDS(SSM):
     def tree_unflatten(cls, aux_data, children):
         return cls(aux_data, *children)
 
-    def initial_distribution(self):
-        return self._initial_condition.distribution()
+    def initial_distribution(self, covariates=None, metadata=None):
+        return self._initial_condition.distribution(covariates=covariates, metadata=metadata)
 
-    def dynamics_distribution(self, state):
-        return self._dynamics.distribution(state)
+    def dynamics_distribution(self, state, covariates=None, metadata=None):
+        return self._dynamics.distribution(state, covariates=covariates, metadata=metadata)
 
-    def emissions_distribution(self, state):
-        return self._emissions.distribution(state)
+    def emissions_distribution(self, state, covariates=None, metadata=None):
+        return self._emissions.distribution(state, covariates=covariates, metadata=metadata)
 
     ### Methods for posterior inference
-    def initialize(self, dataset, key, method):
+    def initialize(self, dataset, covariates=None, metadata=None, key=None, method=None):
         """Initialize the LDS parameters.
         NOTE: Not yet implemented.
         """
         raise NotImplementedError
 
-    def approximate_posterior(self, data, initial_states=None):
+    def approximate_posterior(self, data,
+                              covariates=None,
+                              metadata=None,
+                              initial_states=None):
         return laplace_approximation(self, data, initial_states)
 
-    def m_step(self, dataset, posteriors, rng=None):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None, rng=None):
         # self._initial_condition.m_step(dataset, posteriors)  # TODO initial dist needs prior
         self._dynamics.m_step(dataset, posteriors)
         self._emissions.m_step(dataset, posteriors, rng=rng)
 
     @format_dataset
     def fit(self, dataset:np.ndarray,
+            covariates=None,
+            metadata=None,
             method: str="laplace_em",
             rng: jr.PRNGKey=None,
             num_iters: int=100,
@@ -150,4 +155,4 @@ class LDS(SSM):
 
     def __repr__(self):
         return f"<ssm.lds.{type(self).__name__} latent_dim={self.latent_dim} "\
-            f"emissions_dim={self.emissions_dim}>"
+            f"emissions_shape={self.emissions_shape}>"

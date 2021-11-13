@@ -108,7 +108,7 @@ class GaussianLDS(LDS):
         return R_sqrt @ R_sqrt.T
 
     # Methods for inference
-    def infer_posterior(self, data):
+    def infer_posterior(self, data, covariates=None, metadata=None):
         """
         Compute the exact posterior by extracting the natural parameters
         of the LDS, namely the block tridiagonal precision matrix (J) and
@@ -144,7 +144,7 @@ class GaussianLDS(LDS):
 
         return LDSPosterior.infer(J_diag, J_lower_diag, h)
 
-    def marginal_likelihood(self, data, posterior=None):
+    def marginal_likelihood(self, data, posterior=None, covariates=None, metadata=None):
         """The exact marginal likelihood of the observed data.
 
             For a Gaussian LDS, we can compute the exact marginal likelihood of
@@ -174,7 +174,7 @@ class GaussianLDS(LDS):
         return lps
 
     @format_dataset
-    def fit(self, dataset, method="em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
+    def fit(self, dataset, covariates=None, metadata=None, method="em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
         r"""Fit the GaussianLDS to a dataset using the specified method.
 
         Note: because the observations are Gaussian, we can perform exact EM for a GaussianEM
