@@ -12,7 +12,7 @@ from enum import IntEnum
 from tqdm.auto import trange
 from scipy.optimize import linear_sum_assignment
 from typing import Sequence, Optional
-from functools import wraps
+from functools import wraps, partial
 import copy
 
 
@@ -46,6 +46,19 @@ def tree_get(tree, idx):
         [type]: [description]
     """
     return tree_map(lambda x: x[idx], tree)
+
+def tree_concatenate(tree1, tree2, axis=0):
+    """Concatenate leaves of two pytrees along specified axis.
+
+    Args:
+        tree1 ([type]): [description]
+        tree2 ([type]): [description]
+        axis ([type]): [description]
+
+    Returns:
+        [type]: [description]
+    """
+    return tree_map(lambda x, y: np.concatenate((x, y), axis=axis), tree1, tree2)
 
 
 def ssm_pbar(num_iters, verbose, description, *args):
@@ -257,7 +270,7 @@ CEND = "\033[0m"
 
 def test_and_find_inequality(obj_a, obj_b, check_name="shape", mode="input", sig=None):
     """Iterates through zipped components of obj_a and obj_b to find inequality.
-    
+
     Prints a message and returns the indices of unequal components in obj_a and obj_b.
 
     Args:
@@ -281,8 +294,8 @@ def test_and_find_inequality(obj_a, obj_b, check_name="shape", mode="input", sig
                 print(f"prev={a}\ncurr={b}", CEND)
                 inequality_idxs.append(i)
     return inequality_idxs
-    
-                
+
+
 
 
 def check_pytree_structure_match(obj_a, obj_b, mode="input", sig=None):
@@ -330,7 +343,7 @@ def check_pytree_shape_match(obj_a, obj_b, mode="input", sig=None):
 def check_pytree_weak_type_match(obj_a, obj_b, mode="input", sig=None):
     """Checks whether pytrees A and B have the same weak_typing.
     Used for debugging re-jit problems (see debug_rejit decorator).
-    """    
+    """
     shape_a = [x.weak_type for x in tree_leaves(obj_a)]
     shape_b = [x.weak_type for x in tree_leaves(obj_b)]
     idxs = test_and_find_inequality(
@@ -340,7 +353,7 @@ def check_pytree_weak_type_match(obj_a, obj_b, mode="input", sig=None):
         print(f"{CRED}[{mode} pytree leaf [{i}]]")
         print("prev=", repr(tree_leaves(obj_a)[i]))
         print("curr=", repr(tree_leaves(obj_b)[i]), CEND)
-    
+
 def check_pytree_dtype_match(obj_a, obj_b, mode="input", sig=None):
     """Checks whether pytrees A and B have the same dtype.
     Used for debugging re-jit problems (see debug_rejit decorator).
@@ -361,7 +374,7 @@ def check_pytree_match(
 ):
     """Checks whether pytrees A and B are the same by checking shape, structure,
     weak_typing, and dtype.
-    
+
     Used for debugging re-jit problems (see debug_rejit decorator).
 
     Args:
