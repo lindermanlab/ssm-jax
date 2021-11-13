@@ -8,7 +8,6 @@ respectively.
 import jax.numpy as np
 import jax.random as jr
 from jax import lax, vmap
-from jax.tree_util import tree_map
 
 import tensorflow_probability.substrates.jax as tfp
 
@@ -19,7 +18,9 @@ class SSM(object):
     """
     A generic state-space model base class.
     """
-    def initial_distribution(self, covariates=None, metadata=None) -> tfp.distributions.Distribution:
+    def initial_distribution(self,
+                             covariates=None,
+                             metadata=None) -> tfp.distributions.Distribution:
         """
         The distribution over the initial state of the SSM.
 
@@ -32,7 +33,10 @@ class SSM(object):
         """
         raise NotImplementedError
 
-    def dynamics_distribution(self, state: float, covariates=None, metadata=None) -> tfp.distributions.Distribution:
+    def dynamics_distribution(self,
+                              state: float,
+                              covariates=None,
+                              metadata=None) -> tfp.distributions.Distribution:
         """
         The dynamics (or state-transition) distribution conditioned on the current state.
 
@@ -48,7 +52,10 @@ class SSM(object):
         """
         raise NotImplementedError
 
-    def emissions_distribution(self, state: float, covariates=None, metadata=None) -> tfp.distributions.Distribution:
+    def emissions_distribution(self,
+                               state: float,
+                               covariates=None,
+                               metadata=None) -> tfp.distributions.Distribution:
         """
         The emissions (or observation) distribution conditioned on the current state.
 
@@ -64,7 +71,12 @@ class SSM(object):
         """
         raise NotImplementedError
 
-    def log_probability(self, states, data, covariates=None, metadata=None):
+    @format_dataset
+    def log_probability(self,
+                        states,
+                        data,
+                        covariates=None,
+                        metadata=None):
         r"""
         Computes the log joint probability of a set of states and data (observations).
 
@@ -82,46 +94,40 @@ class SSM(object):
                 of shape :math:`(\text{batch]},)`
         """
 
-        def _log_probability_single(_states, _data, _covariates):
-            lp = 0
+        lp = 0
 
-            # Get the first timestep probability
-            initial_state = tree_get(_states, 0)
-            initial_data = tree_get(_data, 0)
-            initial_covariates = tree_get(_covariates, 0)
+        # Get the first timestep probability
+        initial_state = tree_get(states, 0)
+        initial_data = tree_get(data, 0)
+        initial_covariates = tree_get(covariates, 0)
 
-            lp += self.initial_distribution(initial_covariates,
-                                            metadata).log_prob(initial_state)
-            lp += self.emissions_distribution(initial_state,
-                                              covariates=initial_covariates,
-                                              metadata=metadata).log_prob(initial_data)
+        lp += self.initial_distribution(
+            covariates=initial_covariates, metadata=metadata).log_prob(initial_state)
+        lp += self.emissions_distribution(
+            initial_state, covariates=initial_covariates, metadata=metadata).log_prob(initial_data)
 
-            def _step(carry, args):
-                prev_state, lp = carry
-                state, emission, covariates = args
-                lp += self.dynamics_distribution(prev_state,
-                                                 covariates=covariates,
-                                                 metadata=metadata).log_prob(state)
-                lp += self.emissions_distribution(state,
-                                                  covariates=covariates,
-                                                  metadata=metadata).log_prob(emission)
-                return (state, lp), None
+        def _step(carry, args):
+            prev_state, lp = carry
+            state, emission, covariates = args
+            lp += self.dynamics_distribution(
+                prev_state, covariates=covariates, metadata=metadata).log_prob(state)
+            lp += self.emissions_distribution(
+                state, covariates=covariates, metadata=metadata).log_prob(emission)
+            return (state, lp), None
 
-            (_, lp), _ = lax.scan(_step, (initial_state, lp),
-                                  (tree_get(_states, slice(1, None)),
-                                   tree_get(_data, slice(1, None)),
-                                   tree_get(_covariates, slice(1, None))))
-            return lp
-
-        if data.ndim > 2:
-            lp = vmap(_log_probability_single)(states, data, covariates)
-        else:
-            lp = _log_probability_single(states, data, covariates)
-
+        (_, lp), _ = lax.scan(_step, (initial_state, lp),
+                                (tree_get(states, slice(1, None)),
+                                tree_get(data, slice(1, None)),
+                                tree_get(covariates, slice(1, None))))
         return lp
 
-    @format_dataset
-    def elbo(self, rng, dataset, posteriors, covariates=None, metadata=None, num_samples=1):
+    def elbo(self,
+             key,
+             data,
+             posterior,
+             covariates=None,
+             metadata=None,
+             num_samples=1):
         """
         Compute an _evidence lower bound_ (ELBO) using the joint probability and an
         approximate posterior :math:`q(x) \\approx p(x | y)`:
@@ -132,13 +138,20 @@ class SSM(object):
         While in some cases the expectation can be computed in closed form, in
         general we will approximate it with ordinary Monte Carlo.
         """
-        state_samples = posteriors.sample(seed=rng, sample_shape=(num_samples,))
-        _elbo_single = lambda sample: \
-            np.sum(self.log_probability(sample, dataset) - posteriors.log_prob(sample))
-        elbos = vmap(_elbo_single)(state_samples)
+        def _elbo_single(_key):
+            sample = posterior.sample(seed=_key)
+            return self.log_probability(sample, data, covariates, metadata) - posterior.log_prob(sample)
+
+        elbos = vmap(_elbo_single)(jr.split(key, num_samples))
         return np.mean(elbos)
 
-    def sample(self, key: jr.PRNGKey, num_steps: int, initial_state=None, covariates=None, metadata=None, num_samples: int=1):
+    def sample(self,
+               key: jr.PRNGKey,
+               num_steps: int,
+               initial_state=None,
+               covariates=None,
+               metadata=None,
+               num_samples: int=1):
         r"""
         Sample from the joint distribution defined by the state space model.
 
