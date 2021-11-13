@@ -20,19 +20,19 @@ class InitialCondition:
     def num_states(self):
         return self._num_states
 
-    def distribution(self):
+    def distribution(self, covariates=None, metadata=None):
         """
         Return the distribution of z_1
         """
         raise NotImplementedError
 
-    def log_probs(self, data):
+    def log_initial_probs(self, data, covariates=None, metadata=None):
         """
         Return [log Pr(z_1 = k) for k in range(num_states)]
         """
-        return self.distribution().log_prob(np.arange(self.num_states))
+        return self.distribution(covariates=covariates, metadata=metadata).log_prob(np.arange(self.num_states))
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
         # TODO: implement generic m-step
         raise NotImplementedError
 
@@ -73,17 +73,17 @@ class StandardInitialCondition(InitialCondition):
                    initial_distribution=distribution,
                    initial_distribution_prior=prior)
 
-    def distribution(self):
+    def distribution(self, covariates=None, metadata=None):
        return self._distribution
 
-    def initial_log_probs(self, data):
+    def log_initial_probs(self, data, covariates=None, metadata=None):
         """
         Return [log Pr(z_1 = k) for k in range(num_states)]
         """
         lps = self._distribution.logits_parameter()
         return lps - spsp.logsumexp(lps)
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
         stats = np.sum(posteriors.expected_states[:, 0, :], axis=0)
         stats += self._distribution_prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)

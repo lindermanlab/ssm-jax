@@ -10,6 +10,8 @@ from ssm.utils import Verbosity, format_dataset, ssm_pbar
 @format_dataset
 def em(model,
        dataset,
+       covariates=None,
+       metadata=None,
        num_iters=100,
        tol=1e-4,
        verbosity=Verbosity.DEBUG,
@@ -37,9 +39,9 @@ def em(model,
 
     @jit
     def update(model):
-        posteriors = vmap(model.infer_posterior)(dataset)
-        lp = vmap(model.marginal_likelihood)(dataset, posteriors).sum()
-        model.m_step(dataset, posteriors)
+        posteriors = vmap(model.infer_posterior)(dataset, covariates=covariates, metadata=metadata)
+        lp = vmap(model.marginal_likelihood)(dataset, posteriors, covariates=covariates, metadata=metadata).sum()
+        model.m_step(dataset, posteriors, covariates=covariates, metadata=metadata)
         return model, posteriors, lp
 
     # Run the EM algorithm to convergence
