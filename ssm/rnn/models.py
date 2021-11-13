@@ -35,6 +35,6 @@ class GRU(DeterministicRNN):
             initial_state = jr.normal(rng_1, shape=(num_latent_dims,))
         super(GRU, self).__init__(rnn_params, initial_state)
 
-    def dynamics_distribution(self, state, covariates):
+    def dynamics_distribution(self, state, covariates=None, metadata=None):
         _, new_state = nn.GRUCell().apply(self._rnn_params, state, covariates)
         return tfd.Deterministic(new_state)

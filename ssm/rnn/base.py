@@ -30,11 +30,11 @@ class DeterministicRNN(SSM):
         DeterministicRNN.__init__(obj, rnn_params, initial_state)
         return obj
 
-    def initial_distribution(self):
+    def initial_distribution(self, covariates=None, metadata=None):
         return tfd.Deterministic(self._initial_state)
 
-    def dynamics_distribution(self, state, covariates):
+    def dynamics_distribution(self, state, covariates=None, metadata=None):
         return NotImplementedError
 
-    def emissions_distribution(self, state):
+    def emissions_distribution(self, state, covariates=None, metadata=None):
         return tfd.Deterministic(state)
