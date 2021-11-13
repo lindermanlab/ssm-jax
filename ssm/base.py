@@ -82,27 +82,41 @@ class SSM(object):
                 of shape :math:`(\text{batch]},)`
         """
 
-        def _log_probability_single(_states, _data):
+        def _log_probability_single(_states, _data, _covariates):
             lp = 0
+
             # Get the first timestep probability
-            initial_state, initial_data = _states[0], _data[0]
-            lp += self.initial_distribution().log_prob(initial_state)
-            lp += self.emissions_distribution(initial_state).log_prob(initial_data)
+            initial_state = tree_get(_states, 0)
+            initial_data = tree_get(_data, 0)
+            initial_covariates = tree_get(_covariates, 0)
+
+            lp += self.initial_distribution(initial_covariates,
+                                            metadata).log_prob(initial_state)
+            lp += self.emissions_distribution(initial_state,
+                                              covariates=initial_covariates,
+                                              metadata=metadata).log_prob(initial_data)
 
             def _step(carry, args):
                 prev_state, lp = carry
-                state, emission = args
-                lp += self.dynamics_distribution(prev_state).log_prob(state)
-                lp += self.emissions_distribution(state).log_prob(emission)
+                state, emission, covariates = args
+                lp += self.dynamics_distribution(prev_state,
+                                                 covariates=covariates,
+                                                 metadata=metadata).log_prob(state)
+                lp += self.emissions_distribution(state,
+                                                  covariates=covariates,
+                                                  metadata=metadata).log_prob(emission)
                 return (state, lp), None
 
-            (_, lp), _ = lax.scan(_step, (initial_state, lp), (_states[1:], _data[1:]))
+            (_, lp), _ = lax.scan(_step, (initial_state, lp),
+                                  (tree_get(_states, slice(1, None)),
+                                   tree_get(_data, slice(1, None)),
+                                   tree_get(_covariates, slice(1, None))))
             return lp
 
         if data.ndim > 2:
-            lp = vmap(_log_probability_single)(states, data)
+            lp = vmap(_log_probability_single)(states, data, covariates)
         else:
-            lp = _log_probability_single(states, data)
+            lp = _log_probability_single(states, data, covariates)
 
         return lp
 
@@ -148,16 +162,22 @@ class SSM(object):
         """
 
         def _sample(key, covariates=None, initial_state=None):
-                                    
+
             if initial_state is None:
                 key1, key = jr.split(key, 2)
-                initial_state = self.initial_distribution(covariates=tree_get(covariates, 0), metadata=metadata).sample(seed=key1)
+                initial_covariates = tree_get(covariates, 0)
+                initial_state = self.initial_distribution(covariates=initial_covariates,
+                                                          metadata=metadata).sample(seed=key1)
 
             def _step(state, key_and_covariates):
                 key, covariates = key_and_covariates
                 key1, key2 = jr.split(key, 2)
-                emission = self.emissions_distribution(state, covariates=covariates, metadata=metadata).sample(seed=key1)
-                next_state = self.dynamics_distribution(state, covariates=covariates, metadata=metadata).sample(seed=key2)
+                emission = self.emissions_distribution(state,
+                                                       covariates=covariates,
+                                                       metadata=metadata).sample(seed=key1)
+                next_state = self.dynamics_distribution(state,
+                                                        covariates=covariates,
+                                                        metadata=metadata).sample(seed=key2)
                 return next_state, (state, emission)
 
             keys = jr.split(key, num_steps)
