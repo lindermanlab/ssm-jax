@@ -11,7 +11,7 @@ from jax import lax, vmap
 
 import tensorflow_probability.substrates.jax as tfp
 
-from ssm.utils import format_dataset, tree_get
+from ssm.utils import format_dataset, tree_get, auto_batch
 
 
 class SSM(object):
@@ -71,7 +71,17 @@ class SSM(object):
         """
         raise NotImplementedError
 
-    @format_dataset
+    @property
+    def emissions_shape(self):
+        """
+        Returns the shape of a single emission, :math:`y_t`.
+
+        Returns:
+            A tuple or tree of tuples giving the emission shape(s).
+        """
+        raise NotImplementedError
+
+    @auto_batch(batched_args=("states", "data", "covariates", "metadata"))
     def log_probability(self,
                         states,
                         data,
@@ -121,6 +131,7 @@ class SSM(object):
                                 tree_get(covariates, slice(1, None))))
         return lp
 
+    @auto_batch(batched_args=("key", "data", "posterior", "covariates", "metadata"))
     def elbo(self,
              key,
              data,

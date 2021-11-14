@@ -5,6 +5,7 @@ Useful utility functions.
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
+from jax import vmap
 from jax.tree_util import tree_map, tree_structure, tree_leaves
 
 import inspect
@@ -232,6 +233,54 @@ def format_dataset(f):
         return f(*bound_args.args, **bound_args.kwargs)
 
     return wrapper
+
+
+def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "states"), model_arg="self"):
+    def auto_batch_decorator(f):
+        sig = inspect.signature(f)
+
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            bound_args = sig.bind(*args, **kwargs)
+            bound_args.apply_defaults()
+
+            assert "data" in batched_args and "data" in bound_args.arguments,\
+                "`data` must be an argument in order to use the `auto_batch` decorator."
+
+            assert model_arg in bound_args.arguments, \
+                "`model_arg` must be an argument in order to use the `auto_batch` decorator."
+
+            # Determine the batch dimension from the shape of the data and the model.
+            # Naively assume that if data is batched, so are the other batched args.
+            given_shape = tree_map(lambda x: np.array(x.shape), bound_args.arguments["data"])
+            emissions_shape = bound_args.arguments[model_arg].emissions_shape
+
+            # First check that the trailing shapes are correct.
+            leaf_is_valid = lambda shp, shp_suffix: \
+                len(shp) > len(shp_suffix) and np.all(shp[-len(shp_suffix):] == shp_suffix)
+            assert all(tree_leaves(tree_map(leaf_is_valid, given_shape, emissions_shape)))
+
+            # Assume a leaf is batched if it has two extra dimensions (batch and num_timesteps).
+            leaf_is_batched = lambda shp, shp_suffix: len(shp) == len(shp_suffix) + 2
+            is_batched = all(tree_leaves(tree_map(leaf_is_batched, given_shape, emissions_shape)))
+
+            # If not batched, just apply the function as usual.
+            if not is_batched:
+                return f(*args, **kwargs)
+
+            # Otherwise, separate out the fixed args from those with a batch dimension
+            # and call vmap.
+            fixed_kwargs, batch_kwargs = {}, {}
+            for arg, val in bound_args.arguments.items():
+                if arg in batched_args:
+                    batch_kwargs[arg] = val
+                else:
+                    fixed_kwargs[arg] = val
+
+            return vmap(partial(f, **fixed_kwargs))(**batch_kwargs)
+
+        return wrapper
+    return auto_batch_decorator
 
 
 def one_hot(z, K):

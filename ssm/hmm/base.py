@@ -8,7 +8,7 @@ from jax.tree_util import register_pytree_node_class
 
 from ssm.base import SSM
 from ssm.inference.em import em
-from ssm.utils import Verbosity, format_dataset, one_hot
+from ssm.utils import Verbosity, format_dataset, one_hot, auto_batch
 
 import ssm.hmm.initial as initial
 import ssm.hmm.transitions as transitions
@@ -144,7 +144,7 @@ class HMM(SSM):
 
     @format_dataset
     def fit(self, dataset: np.ndarray,
-            covariates=None, 
+            covariates=None,
             metadata=None,
             method: str="em",
             num_iters: int=100,
@@ -187,10 +187,10 @@ class HMM(SSM):
 
         if method == "em":
             log_probs, model, posteriors = em(
-                model, dataset, num_iters=num_iters, tol=tol, verbosity=verbosity, 
+                model, dataset, num_iters=num_iters, tol=tol, verbosity=verbosity,
                 covariates=covariates, metadata=metadata
             )
-            
+
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
