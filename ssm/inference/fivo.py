@@ -229,7 +229,7 @@ def main():
     key, subkey = jr.split(key)
     proposal_params = proposal.init(subkey)
 
-    def do_fivo_sweep(_key, _param_vals):
+    def do_fivo_sweep(_key, _param_vals, _num_particles):
         # Reconstruct the model, inscribing the new parameter values.
         _model = rebuild_model(model, _param_vals[0])
 
@@ -237,7 +237,7 @@ def main():
         _proposal = define_proposal_structure(PROPOSAL_STRUCTURE, proposal, _param_vals)
 
         # Do the sweep.
-        _smooth, _lmls, _, _ = smc(_key, _model, dataset, proposal=_proposal, num_particles=num_particles)
+        _smooth, _lmls, _, _ = smc(_key, _model, dataset, proposal=_proposal, num_particles=_num_particles)
 
         # Compute the log of the expected marginal.
         _lml = lexp(_lmls)
@@ -268,7 +268,7 @@ def main():
 
     # Build up the optimizer and jit everything.
     opt = define_optimizer(p_params, proposal_params)
-    do_fivo_sweep = jax.jit(do_fivo_sweep)
+    do_fivo_sweep = jax.jit(do_fivo_sweep, static_argnums=2)
 
     # Test the models.
     key, subkey = jr.split(key)
@@ -277,23 +277,22 @@ def main():
     plot_single_sweep(true_sweep[0], true_states[0], tag='True Smoothing.')
     initial_params = dc(get_params(opt))
     key, subkey = jr.split(key)
-    initial_lml, initial_sweep = do_fivo_sweep(subkey, get_params(opt))
-    plot_single_sweep(initial_sweep[0], true_states[0], tag='Initial Smoothing.')
+    initial_lml, initial_sweep = do_fivo_sweep(subkey, get_params(opt), _num_particles=5000)
+    sweep_fig = plot_single_sweep(initial_sweep[0], true_states[0], tag='Initial Smoothing.')
     do_print(0, initial_lml, true_model, true_lml, opt)
 
     for _step in range(opt_steps):
 
         key, subkey = jr.split(key)
-        (lml, smooth), grad = jax.value_and_grad(do_fivo_sweep, argnums=1, has_aux=True)(subkey, get_params(opt))
+        (lml, smooth), grad = jax.value_and_grad(do_fivo_sweep, argnums=1, has_aux=True)(subkey, get_params(opt), num_particles)
 
         # print(lml)
         opt = apply_gradient(grad, opt, )
 
         if _step % 1000 == 0:
-            plt.close('all')
             key, subkey = jr.split(key)
-            pred_lml, pred_sweep = do_fivo_sweep(subkey, get_params(opt))
-            plot_single_sweep(pred_sweep[0], true_states[0], tag='{} Smoothing.'.format(_step))
+            pred_lml, pred_sweep = do_fivo_sweep(subkey, get_params(opt), _num_particles=5000)
+            plot_single_sweep(pred_sweep[0], true_states[0], tag='{} Smoothing.'.format(_step), fig=sweep_fig)
             do_print(_step, pred_lml, true_model, true_lml, opt)
         p = 0
 
