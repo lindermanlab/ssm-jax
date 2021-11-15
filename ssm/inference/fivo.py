@@ -26,7 +26,7 @@ default_verbosity = Verbosity.DEBUG
 
 
 def get_params(_opt):
-    return tuple(_o.target for _o in _opt)
+    return tuple((_o.target if _o is not None else None) for _o in _opt)
 
 
 def lexp(_lmls):
@@ -43,8 +43,10 @@ def do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_likelih
     print(_str)
     print('True: dynamics:  ', '  '.join(['{: >9.5f}'.format(_s) for _s in true_model.dynamics_matrix.flatten()]))
     print('Pred: dynamics:  ', '  '.join(['{: >9.5f}'.format(_s) for _s in opt[0].target[0].flatten()]))
-    print('True: log-var:   ', '  '.join(['{: >9.5f}'.format(_s) for _s in np.log(np.diagonal(true_model.dynamics_noise_covariance))]))
-    print('Pred: q log-var: ', '  '.join(['{: >9.5f}'.format(_s) for _s in opt[1].target._asdict()['head_log_var_fn'].W.flatten()]))
+
+    if opt[1] is not None:
+        print('True: log-var:   ', '  '.join(['{: >9.5f}'.format(_s) for _s in np.log(np.diagonal(true_model.dynamics_noise_covariance))]))
+        print('Pred: q log-var: ', '  '.join(['{: >9.5f}'.format(_s) for _s in opt[1].target._asdict()['head_log_var_fn'].W.flatten()]))
     print()
 
 
@@ -59,7 +61,7 @@ def apply_gradient(full_loss_grad, optimizer, env=None, t=None):
     return new_optimizer
 
 
-def define_optimizer(p_params, q_params):
+def define_optimizer(p_params, q_params=None, r_params=None):
     """
     Build out the appropriate optimizer.
 
@@ -80,7 +82,13 @@ def define_optimizer(p_params, q_params):
     else:
         q_opt = None
 
-    opt = [p_opt, q_opt]
+    if r_params is not None:
+        r_opt_def = optim.Adam(learning_rate=0.01)
+        r_opt = r_opt_def.create(r_params)
+    else:
+        r_opt = None
+
+    opt = [p_opt, q_opt, r_opt]
     return opt
 
 
