@@ -190,9 +190,9 @@ def main():
     # Set up true model and draw some data.
     latent_dim = 3
     emissions_dim = 5
-    num_trials = 10
-    num_timesteps = 50
-    num_particles = 100
+    num_trials = 20
+    num_timesteps = 100
+    num_particles = 200
     opt_steps = 100000
 
     # Create a more reasonable emission scale.
@@ -292,19 +292,12 @@ def main():
         if _step % 1000 == 0:
             key, subkey = jr.split(key)
             pred_lml, pred_sweep = do_fivo_sweep(subkey, get_params(opt), _num_particles=5000)
-            plot_single_sweep(pred_sweep[0], true_states[0], tag='{} Smoothing.'.format(_step), fig=sweep_fig)
+            sweep_fig = plot_single_sweep(pred_sweep[0], true_states[0], tag='{} Smoothing.'.format(_step),
+                                          fig=sweep_fig)
             do_print(_step, pred_lml, true_model, true_lml, opt)
         p = 0
 
-
-
-
-
-
     print('Done')
-
-
-
 
 if __name__ == '__main__':
     main()

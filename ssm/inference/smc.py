@@ -623,7 +623,7 @@ def plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=No
     if fig is not None:
         plt.close(fig)
 
-    fig = plt.figure(figsize=(10, 8))
+    fig = plt.figure(figsize=(14, 6))
 
     for _i, _c in zip(range(single_sweep_median.shape[1]), color_names):
         plt.plot(ts, single_sweep_median[:, _i], c=_c, label=gen_label(_i, 'Predicted'))
