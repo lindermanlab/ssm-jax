@@ -16,6 +16,16 @@ from ssm.utils import Verbosity
 default_verbosity = Verbosity.DEBUG
 
 
+# Define the standard plotting colours.
+color_names = [
+    "tab:blue",
+    "tab:orange",
+    "tab:green",
+    "tab:red",
+    "tab:purple"
+]
+
+
 def smc(key,
         model,
         dataset,
@@ -62,6 +72,12 @@ def smc(key,
         proposal (function, No size, default=model.dynamics_distribution):
             Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
             the prior is used as the proposal.
+            Function takes arguments of (dataset, model, particles, time, p_dist, ...), but doesn't have to make
+            use of
+            them.
+            Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
+            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be
+            defined by closing over a proposal class as appropriate.
 
         num_particles (int, No size, default=50):
             Number of particles to use.
@@ -163,6 +179,11 @@ def _single_smc(key,
         proposal (function, No size, default=model.dynamics_distribution):
             Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
             the prior is used as the proposal.
+            Function takes arguments of (dataset, parameters, particles, time, p_dist, ...), but doesn't have to make
+            use of them.
+            Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
+            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be
+            defined by closing over a proposal class as appropriate.
 
         num_particles (int, No size, default=50):
             Number of particles to use.
@@ -200,6 +221,8 @@ def _single_smc(key,
     # filtered on the inside.
     if initialization_distribution is None:
         initialization_distribution = lambda *args: model.initial_distribution()
+    else:
+        raise NotImplementedError()
 
     # If no explicit proposal is provided, default to BPF.
     # The default BPF implementation uses just the current particles as inputs.
@@ -261,10 +284,10 @@ def _smc_forward_pass(key,
         proposal (function, No size):
             Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
             the prior is used as the proposal.
-            Function takes arguments of (dataset, model, particles, time, ...), but doesn't have to make use of them.  
-            Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
-            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be 
-            defined by closing over a proposal class as appropriate.  
+            Function takes arguments of (dataset, model, particles, time, p_dist, ...), but doesn't have to make
+            use of them.  Allows more expressive proposals to be constructed.  The proposal must be a function that
+            can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may
+            need to be defined by closing over a proposal class as appropriate.
 
         num_particles (int, No size):
             Number of particles to use.
@@ -326,14 +349,15 @@ def _smc_forward_pass(key,
         key, particles, accumulated_log_weights = carry
         key, subkey1, subkey2 = jr.split(key, num=3)
 
-        # Propagate the particle particles.
-        q_dist = proposal(dataset, model, particles, t)
+        # Compute the p and q distributions.
+        p_dist = model.dynamics_distribution(particles)
+        q_dist = proposal(dataset, model, particles, t, p_dist)
 
         # Sample the new particles.
         new_particles = q_dist.sample(seed=subkey1)
 
         # Compute the incremental importance weight.
-        p_log_probability = model.dynamics_distribution(particles).log_prob(new_particles)
+        p_log_probability = p_dist.log_prob(new_particles)
         q_log_probability = q_dist.log_prob(new_particles)
         y_log_probability = model.emissions_distribution(new_particles).log_prob(dataset[t])
         incremental_log_weights = p_log_probability - q_log_probability + y_log_probability
@@ -581,3 +605,32 @@ def do_resample(key,
 
     return resampled_particles, ancestors, resampled_log_weights, should_resample
 
+
+def plot_single_sweep(particles, true_states, tag='', preprocessed=False):
+    gen_label = lambda _k, _s: _s if _k == 0 else None
+
+    if not preprocessed:
+        single_sweep_median = jnp.median(particles, axis=1)
+        single_sweep_lsd = jnp.quantile(particles, 0.17, axis=1)
+        single_sweep_usd = jnp.quantile(particles, 0.83, axis=1)
+    else:
+        single_sweep_median = particles[0]
+        single_sweep_lsd = particles[1]
+        single_sweep_usd = particles[2]
+
+    ts = jnp.arange(len(true_states))
+
+    plt.figure(figsize=(10, 8))
+
+    for _i, _c in zip(range(single_sweep_median.shape[1]), color_names):
+        plt.plot(ts, single_sweep_median[:, _i], c=_c, label=gen_label(_i, 'Predicted'))
+        plt.fill_between(ts, single_sweep_lsd[:, _i], single_sweep_usd[:, _i], color=_c, alpha=0.1)
+
+        plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
+
+    plt.title(tag)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.legend()
+    # plt.xlim(-0.5, 3.5)
+    plt.pause(0.1)
