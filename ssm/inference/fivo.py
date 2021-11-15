@@ -17,13 +17,8 @@ from ssm.utils import Verbosity, random_rotation
 from ssm.inference.smc import smc, plot_single_sweep
 from ssm.inference.em import em
 import ssm.distributions as ssmd
-
-# Import some networks.
 from ssm.inference.snaxplicit import IndependentGaussianGenerator
 import ssm.snax.snax as snax
-
-
-# Import some models to test with.
 from ssm.lds.models import GaussianLDS
 
 # Set the default verbosity.
@@ -42,22 +37,7 @@ def apply_gradient(full_loss_grad, optimizer, env=None, t=None):
     :param optimizer:
     :return:
     """
-
-    # If we did not specify env, assume that the whole pytree is learnable.
-    loss_grad = full_loss_grad
-
-    new_optimizer = []
-
-    if optimizer[0] is not None:
-        new_optimizer.append(optimizer[0].apply_gradient(loss_grad[0]))
-    else:
-        new_optimizer.append(None)
-
-    if optimizer[1] is not None:
-        new_optimizer.append(optimizer[1].apply_gradient(loss_grad[1]))
-    else:
-        new_optimizer.append(None)
-
+    new_optimizer = [(_o.apply_gradient(_g) if _o is not None else None) for _o, _g in zip(optimizer, full_loss_grad)]
     return new_optimizer
 
 
@@ -77,7 +57,7 @@ def define_optimizer(p_params, q_params):
         p_opt = None
 
     if q_params is not None:
-        q_opt_def = optim.Adam(learning_rate=0.001)
+        q_opt_def = optim.Adam(learning_rate=0.01)
         q_opt = q_opt_def.create(q_params)
     else:
         q_opt = None
@@ -105,29 +85,6 @@ def independent_gaussian_proposal(n_proposals, dummy_input, dummy_output,
         return proposal.get_output_dims()
 
     return snax.Module(init, apply, get_output_dims)
-
-
-# def time_static_proposal(n_proposals, dummy_input, dummy_output):
-#
-#     proposal = IndependentGaussianGenerator(dummy_input, dummy_output, )
-#
-#     def init(key):
-#
-#         if n_proposals > 1:
-#             params = jax.vmap(proposal.init)(jr.split(key, n_proposals))
-#         else:
-#             params = proposal.init(key)
-#
-#         return proposal.init(key)
-#
-#     def apply(params, inputs):
-#         if n_proposals
-#         return proposal(params, inputs)
-#
-#     def get_output_dims(input_dims=None):
-#         return proposal.get_output_dims()
-#
-#     return snax.Module(init, apply, get_output_dims)
 
 
 def define_proposal(n_proposals, dummy_input, dummy_output):
@@ -164,8 +121,9 @@ def define_proposal_structure(PROPOSAL_STRUCTURE, proposal, _param_vals):
     elif PROPOSAL_STRUCTURE == 'RESQ':
 
         def _proposal(*_input):
+            p_dist = _input[4]
             q_dist = proposal.apply(_param_vals[1], _input)
-            z_dist = tfd.MultivariateNormalFullCovariance(loc=_input[4].mean() + q_dist.mean(),
+            z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist.mean() + q_dist.mean(),
                                                           covariance_matrix=q_dist.covariance())
             return z_dist
     else:
@@ -174,8 +132,13 @@ def define_proposal_structure(PROPOSAL_STRUCTURE, proposal, _param_vals):
     return _proposal
 
 
-def do_print(_step, pred_lml, true_model, true_lml, opt):
-    print('Step: ', _step, 'True LML:', true_lml, 'Pred LML:', pred_lml)
+def do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_likelihood=None):
+
+    _str = 'Step: {: >5d},  True Neg-LML: {: >8.3f},  Pred Neg-LML: {: >8.3f}'.format(_step, true_lml, pred_lml)
+    if em_log_marginal_likelihood is not None:
+        _str += '  EM Neg-LML: {: >8.3f}'.format(em_log_marginal_likelihood)
+
+    print(_str)
     print('True: dynamics:  ', '  '.join(['{: >9.5f}'.format(_s) for _s in true_model.dynamics_matrix.flatten()]))
     print('Pred: dynamics:  ', '  '.join(['{: >9.5f}'.format(_s) for _s in opt[0].target[0].flatten()]))
     print('True: log-var:   ', '  '.join(['{: >9.5f}'.format(_s) for _s in np.log(np.diagonal(true_model.dynamics_noise_covariance))]))
@@ -190,9 +153,9 @@ def main():
     # Set up true model and draw some data.
     latent_dim = 3
     emissions_dim = 5
-    num_trials = 20
+    num_trials = 10
     num_timesteps = 100
-    num_particles = 200
+    num_particles = 100
     opt_steps = 100000
 
     # Create a more reasonable emission scale.
@@ -271,15 +234,29 @@ def main():
     do_fivo_sweep = jax.jit(do_fivo_sweep, static_argnums=2)
 
     # Test the models.
-    key, subkey = jr.split(key)
-    true_sweep, true_lml, _, _ = smc(subkey, true_model, dataset, num_particles=5000)
-    true_lml = - lexp(true_lml)
-    plot_single_sweep(true_sweep[0], true_states[0], tag='True Smoothing.')
-    initial_params = dc(get_params(opt))
-    key, subkey = jr.split(key)
-    initial_lml, initial_sweep = do_fivo_sweep(subkey, get_params(opt), _num_particles=5000)
-    sweep_fig = plot_single_sweep(initial_sweep[0], true_states[0], tag='Initial Smoothing.')
-    do_print(0, initial_lml, true_model, true_lml, opt)
+    if True:
+        # Test against EM (which for the LDS is exact).
+        em_posterior = jax.vmap(true_model.infer_posterior)(dataset)
+        em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
+        em_log_marginal_likelihood = - lexp(em_log_marginal_likelihood)
+        sweep_em_mean = em_posterior.mean()[0]
+        sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[0]
+        sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
+        plot_single_sweep(sweep_em_statistics, true_states[0], tag='EM smoothing', preprocessed=True)
+
+        # Test SMC in the true model..
+        key, subkey = jr.split(key)
+        true_sweep, true_lml, _, _ = smc(subkey, true_model, dataset, num_particles=5000)
+        true_lml = - lexp(true_lml)
+        plot_single_sweep(true_sweep[0], true_states[0], tag='True Smoothing.')
+
+        # Test SMC in the initial model.
+        initial_params = dc(get_params(opt))
+        key, subkey = jr.split(key)
+        initial_lml, initial_sweep = do_fivo_sweep(subkey, get_params(opt), _num_particles=5000)
+        sweep_fig = plot_single_sweep(initial_sweep[0], true_states[0], tag='Initial Smoothing.')
+        do_print(0, initial_lml, true_model, true_lml, opt, em_log_marginal_likelihood)
+
 
     for _step in range(opt_steps):
 
@@ -294,7 +271,7 @@ def main():
             pred_lml, pred_sweep = do_fivo_sweep(subkey, get_params(opt), _num_particles=5000)
             sweep_fig = plot_single_sweep(pred_sweep[0], true_states[0], tag='{} Smoothing.'.format(_step),
                                           fig=sweep_fig)
-            do_print(_step, pred_lml, true_model, true_lml, opt)
+            do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_likelihood)
         p = 0
 
     print('Done')
