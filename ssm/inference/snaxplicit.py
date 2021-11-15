@@ -24,9 +24,9 @@ from ssm.snax.snax.nn import MLP, Affine, Identity
 
 
 class GaussianGeneratorParams(NamedTuple):
-    trunk: Any
-    head_mean: Any
-    head_variance: Any
+    trunk_fn: Any
+    head_mean_fn: Any
+    head_log_var_fn: Any
 
 
 def IndependentGaussianGenerator(dummy_input, dummy_output,
@@ -74,14 +74,14 @@ def IndependentGaussianGenerator(dummy_input, dummy_output,
         inputs_flat = np.reshape(inputs, (-1, ))
 
         # Apply the trunk.
-        trunk_output = trunk_fn.apply(params.trunk, inputs_flat)
+        trunk_output = trunk_fn.apply(params.trunk_fn, inputs_flat)
 
         # Get the mean.
-        mean_output_flat = head_mean_fn.apply(params.head_mean, trunk_output)
+        mean_output_flat = head_mean_fn.apply(params.head_mean_fn, trunk_output)
         mean_output = mean_output_flat
 
         # Get the variance output and reshape it.
-        var_output_flat = head_log_var_fn.apply(params.head_variance, trunk_output)
+        var_output_flat = head_log_var_fn.apply(params.head_log_var_fn, trunk_output)
         var_output = np.exp(var_output_flat)
 
         return mean_output, var_output

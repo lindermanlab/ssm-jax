@@ -174,10 +174,12 @@ def define_proposal_structure(PROPOSAL_STRUCTURE, proposal, _param_vals):
     return _proposal
 
 
-def do_print(_step, pred_lml, true_model, opt):
-    print(_step, pred_lml)
-    print('True: dynamics: ', '  '.join(['{: >8.3f}'.format(_s) for _s in true_model.dynamics_matrix.flatten()]))
-    print('Pred: dynamics: ', '  '.join(['{: >8.3f}'.format(_s) for _s in opt[0].target[0].flatten()]))
+def do_print(_step, pred_lml, true_model, true_lml, opt):
+    print('Step: ', _step, 'True LML:', true_lml, 'Pred LML:', pred_lml)
+    print('True: dynamics:  ', '  '.join(['{: >9.5f}'.format(_s) for _s in true_model.dynamics_matrix.flatten()]))
+    print('Pred: dynamics:  ', '  '.join(['{: >9.5f}'.format(_s) for _s in opt[0].target[0].flatten()]))
+    print('True: log-var:   ', '  '.join(['{: >9.5f}'.format(_s) for _s in np.log(np.diagonal(true_model.dynamics_noise_covariance))]))
+    print('Pred: q log-var: ', '  '.join(['{: >9.5f}'.format(_s) for _s in opt[1].target._asdict()['head_log_var_fn'].W.flatten()]))
     print()
 
 
@@ -194,12 +196,14 @@ def main():
     opt_steps = 100000
 
     # Create a more reasonable emission scale.
-    emission_scale_tril = (1.0**2) * np.eye(emissions_dim)
+    transition_scale_tril = 0.1 * np.eye(latent_dim)
+    emission_scale_tril = 1.0 * np.eye(emissions_dim)
 
     # Create the true model.
     key, subkey = jr.split(key)
     true_dynamics_weights = random_rotation(subkey, latent_dim, theta=np.pi / 10)
     true_model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey,
+                             dynamics_scale_tril=transition_scale_tril,
                              dynamics_weights=true_dynamics_weights,
                              emission_scale_tril=emission_scale_tril)
 
@@ -210,6 +214,7 @@ def main():
     # Now define a network to test.
     key, subkey = jax.random.split(key)
     model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey,
+                        dynamics_scale_tril=transition_scale_tril,
                         emission_weights=true_model.emissions_matrix,
                         emission_scale_tril=emission_scale_tril)
 
@@ -268,17 +273,13 @@ def main():
     # Test the models.
     key, subkey = jr.split(key)
     true_sweep, true_lml, _, _ = smc(subkey, true_model, dataset, num_particles=5000)
+    true_lml = - lexp(true_lml)
     plot_single_sweep(true_sweep[0], true_states[0], tag='True Smoothing.')
     initial_params = dc(get_params(opt))
     key, subkey = jr.split(key)
     initial_lml, initial_sweep = do_fivo_sweep(subkey, get_params(opt))
     plot_single_sweep(initial_sweep[0], true_states[0], tag='Initial Smoothing.')
-    print()
-    print('True LML:', lexp(true_lml))
-    print('Pred LML:', initial_lml)
-    print('True:', str(true_model.dynamics_matrix).replace('\n', ''))
-    print('Pred:', str(opt[0].target[0]).replace('\n', ''))
-    print()
+    do_print(0, initial_lml, true_model, true_lml, opt)
 
     for _step in range(opt_steps):
 
@@ -293,7 +294,7 @@ def main():
             key, subkey = jr.split(key)
             pred_lml, pred_sweep = do_fivo_sweep(subkey, get_params(opt))
             plot_single_sweep(pred_sweep[0], true_states[0], tag='{} Smoothing.'.format(_step))
-            do_print(_step, pred_lml, true_model, opt)
+            do_print(_step, pred_lml, true_model, true_lml, opt)
         p = 0
 
 

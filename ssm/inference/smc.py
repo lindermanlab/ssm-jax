@@ -618,7 +618,7 @@ def plot_single_sweep(particles, true_states, tag='', preprocessed=False):
         single_sweep_lsd = particles[1]
         single_sweep_usd = particles[2]
 
-    ts = jnp.arange(len(true_states))
+    ts = np.arange(len(true_states))
 
     plt.figure(figsize=(10, 8))
 
