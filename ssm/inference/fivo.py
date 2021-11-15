@@ -25,9 +25,27 @@ from ssm.lds.models import GaussianLDS
 default_verbosity = Verbosity.DEBUG
 
 
+def get_params(_opt):
+    return tuple(_o.target for _o in _opt)
+
+
 def lexp(_lmls):
     _lml = spsp.logsumexp(_lmls) - len(_lmls)
     return _lml
+
+
+def do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_likelihood=None):
+
+    _str = 'Step: {: >5d},  True Neg-LML: {: >8.3f},  Pred Neg-LML: {: >8.3f}'.format(_step, true_lml, pred_lml)
+    if em_log_marginal_likelihood is not None:
+        _str += '  EM Neg-LML: {: >8.3f}'.format(em_log_marginal_likelihood)
+
+    print(_str)
+    print('True: dynamics:  ', '  '.join(['{: >9.5f}'.format(_s) for _s in true_model.dynamics_matrix.flatten()]))
+    print('Pred: dynamics:  ', '  '.join(['{: >9.5f}'.format(_s) for _s in opt[0].target[0].flatten()]))
+    print('True: log-var:   ', '  '.join(['{: >9.5f}'.format(_s) for _s in np.log(np.diagonal(true_model.dynamics_noise_covariance))]))
+    print('Pred: q log-var: ', '  '.join(['{: >9.5f}'.format(_s) for _s in opt[1].target._asdict()['head_log_var_fn'].W.flatten()]))
+    print()
 
 
 def apply_gradient(full_loss_grad, optimizer, env=None, t=None):
@@ -64,6 +82,32 @@ def define_optimizer(p_params, q_params):
 
     opt = [p_opt, q_opt]
     return opt
+
+
+def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_sweep_jitted):
+    # Test against EM (which for the LDS is exact).
+    em_posterior = jax.vmap(true_model.infer_posterior)(dataset)
+    em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
+    em_log_marginal_likelihood = - lexp(em_log_marginal_likelihood)
+    sweep_em_mean = em_posterior.mean()[0]
+    sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[0]
+    sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
+    plot_single_sweep(sweep_em_statistics, true_states[0], tag='EM smoothing', preprocessed=True)
+
+    # Test SMC in the true model..
+    key, subkey = jr.split(key)
+    true_sweep, true_lml, _, _ = smc(subkey, true_model, dataset, num_particles=5000)
+    true_lml = - lexp(true_lml)
+    plot_single_sweep(true_sweep[0], true_states[0], tag='True Smoothing.')
+
+    # Test SMC in the initial model.
+    initial_params = dc(get_params(opt))
+    key, subkey = jr.split(key)
+    initial_lml, initial_sweep = _do_fivo_sweep_jitted(subkey, get_params(opt), _num_particles=5000)
+    sweep_fig = plot_single_sweep(initial_sweep[0], true_states[0], tag='Initial Smoothing.')
+    do_print(0, initial_lml, true_model, true_lml, opt, em_log_marginal_likelihood)
+
+    return true_lml, em_log_marginal_likelihood, sweep_fig
 
 
 def independent_gaussian_proposal(n_proposals, dummy_input, dummy_output,
@@ -132,18 +176,25 @@ def define_proposal_structure(PROPOSAL_STRUCTURE, proposal, _param_vals):
     return _proposal
 
 
-def do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_likelihood=None):
+def rebuild_model(_model, _param_vals, _p_params_accessors):
+    for _v, _a in zip(_param_vals, _p_params_accessors):
+        _model = _a(_model, _v)
+    return _model
 
-    _str = 'Step: {: >5d},  True Neg-LML: {: >8.3f},  Pred Neg-LML: {: >8.3f}'.format(_step, true_lml, pred_lml)
-    if em_log_marginal_likelihood is not None:
-        _str += '  EM Neg-LML: {: >8.3f}'.format(em_log_marginal_likelihood)
 
-    print(_str)
-    print('True: dynamics:  ', '  '.join(['{: >9.5f}'.format(_s) for _s in true_model.dynamics_matrix.flatten()]))
-    print('Pred: dynamics:  ', '  '.join(['{: >9.5f}'.format(_s) for _s in opt[0].target[0].flatten()]))
-    print('True: log-var:   ', '  '.join(['{: >9.5f}'.format(_s) for _s in np.log(np.diagonal(true_model.dynamics_noise_covariance))]))
-    print('Pred: q log-var: ', '  '.join(['{: >9.5f}'.format(_s) for _s in opt[1].target._asdict()['head_log_var_fn'].W.flatten()]))
-    print()
+def do_fivo_sweep(_key, _model, _proposal, _param_vals, _p_params_accessors, _dataset, _num_particles, _prop_structure):
+    # Reconstruct the model, inscribing the new parameter values.
+    _model = rebuild_model(_model, _param_vals[0], _p_params_accessors)
+
+    # Reconstruct the proposal function.
+    _proposal = define_proposal_structure(_prop_structure, _proposal, _param_vals)
+
+    # Do the sweep.
+    _smooth, _lmls, _, _ = smc(_key, _model, _dataset, proposal=_proposal, num_particles=_num_particles)
+
+    # Compute the log of the expected marginal.
+    _lml = lexp(_lmls)
+    return - _lml, _smooth
 
 
 def main():
@@ -192,30 +243,8 @@ def main():
     key, subkey = jr.split(key)
     proposal_params = proposal.init(subkey)
 
-    def do_fivo_sweep(_key, _param_vals, _num_particles):
-        # Reconstruct the model, inscribing the new parameter values.
-        _model = rebuild_model(model, _param_vals[0])
-
-        # Reconstruct the proposal function.
-        _proposal = define_proposal_structure(PROPOSAL_STRUCTURE, proposal, _param_vals)
-
-        # Do the sweep.
-        _smooth, _lmls, _, _ = smc(_key, _model, dataset, proposal=_proposal, num_particles=_num_particles)
-
-        # Compute the log of the expected marginal.
-        _lml = lexp(_lmls)
-        return - _lml, _smooth
-
-    def get_params(_opt):
-        return tuple(_o.target for _o in _opt)
-
 
     # TODO - KILL ME NOW.
-    def rebuild_model(_model, _param_vals):
-        for _v, _a in zip(_param_vals, p_params_accessors):
-            _model = _a(_model, _v)
-        return _model
-
     def accessor_0(_model, _param=None):
         if _param is None:
             return _model._dynamics._distribution.weights
@@ -229,52 +258,37 @@ def main():
     p_params = tuple(_a(model) for _a in p_params_accessors)
     # TODO - END KILL ME NOW.
 
-    # Build up the optimizer and jit everything.
+    # Build up the optimizer.
     opt = define_optimizer(p_params, proposal_params)
-    do_fivo_sweep = jax.jit(do_fivo_sweep, static_argnums=2)
 
-    # Test the models.
-    if True:
-        # Test against EM (which for the LDS is exact).
-        em_posterior = jax.vmap(true_model.infer_posterior)(dataset)
-        em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
-        em_log_marginal_likelihood = - lexp(em_log_marginal_likelihood)
-        sweep_em_mean = em_posterior.mean()[0]
-        sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[0]
-        sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
-        plot_single_sweep(sweep_em_statistics, true_states[0], tag='EM smoothing', preprocessed=True)
+    # Close over constant parameters.
+    do_fivo_sweep_closed = lambda _k, _p, _num_particles: \
+        do_fivo_sweep(_k, model, proposal, _p, p_params_accessors, dataset, _num_particles, PROPOSAL_STRUCTURE)
 
-        # Test SMC in the true model..
-        key, subkey = jr.split(key)
-        true_sweep, true_lml, _, _ = smc(subkey, true_model, dataset, num_particles=5000)
-        true_lml = - lexp(true_lml)
-        plot_single_sweep(true_sweep[0], true_states[0], tag='True Smoothing.')
+    # Jit this badboy.
+    do_fivo_sweep_jitted = jax.jit(do_fivo_sweep_closed, static_argnums=2)
 
-        # Test SMC in the initial model.
-        initial_params = dc(get_params(opt))
-        key, subkey = jr.split(key)
-        initial_lml, initial_sweep = do_fivo_sweep(subkey, get_params(opt), _num_particles=5000)
-        sweep_fig = plot_single_sweep(initial_sweep[0], true_states[0], tag='Initial Smoothing.')
-        do_print(0, initial_lml, true_model, true_lml, opt, em_log_marginal_likelihood)
-
+    # Test the initial models.
+    true_lml, em_log_marginal_likelihood, sweep_fig = \
+        initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted)
 
     for _step in range(opt_steps):
 
         key, subkey = jr.split(key)
-        (lml, smooth), grad = jax.value_and_grad(do_fivo_sweep, argnums=1, has_aux=True)(subkey, get_params(opt), num_particles)
-
-        # print(lml)
+        do_fivo_sweep_val_and_grad = jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
+        (lml, smooth), grad = do_fivo_sweep_val_and_grad(subkey, get_params(opt), num_particles)
         opt = apply_gradient(grad, opt, )
 
         if _step % 1000 == 0:
             key, subkey = jr.split(key)
-            pred_lml, pred_sweep = do_fivo_sweep(subkey, get_params(opt), _num_particles=5000)
+            pred_lml, pred_sweep = do_fivo_sweep_jitted(subkey, get_params(opt), _num_particles=5000)
             sweep_fig = plot_single_sweep(pred_sweep[0], true_states[0], tag='{} Smoothing.'.format(_step),
                                           fig=sweep_fig)
             do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_likelihood)
         p = 0
 
     print('Done')
+
 
 if __name__ == '__main__':
     main()
