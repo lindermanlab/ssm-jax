@@ -174,6 +174,13 @@ def define_proposal_structure(PROPOSAL_STRUCTURE, proposal, _param_vals):
     return _proposal
 
 
+def do_print(_step, pred_lml, true_model, opt):
+    print(_step, pred_lml)
+    print('True: dynamics: ', '  '.join(['{: >8.3f}'.format(_s) for _s in true_model.dynamics_matrix.flatten()]))
+    print('Pred: dynamics: ', '  '.join(['{: >8.3f}'.format(_s) for _s in opt[0].target[0].flatten()]))
+    print()
+
+
 def main():
 
     key = jr.PRNGKey(2)
@@ -286,12 +293,7 @@ def main():
             key, subkey = jr.split(key)
             pred_lml, pred_sweep = do_fivo_sweep(subkey, get_params(opt))
             plot_single_sweep(pred_sweep[0], true_states[0], tag='{} Smoothing.'.format(_step))
-
-            print(_step, pred_lml)
-            print('True:', '  '.join(['{: >8.3f}'.format(_s) for _s in true_model.dynamics_matrix.flatten()]))
-            print('Pred:', '  '.join(['{: >8.3f}'.format(_s) for _s in opt[0].target[0].flatten()]))
-            print()
-
+            do_print(_step, pred_lml, true_model, opt)
         p = 0
 
 
