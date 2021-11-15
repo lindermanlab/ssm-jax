@@ -268,6 +268,9 @@ def main():
     # Jit this badboy.
     do_fivo_sweep_jitted = jax.jit(do_fivo_sweep_closed, static_argnums=2)
 
+    # Convert into value and grad.
+    do_fivo_sweep_val_and_grad = jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
+
     # Test the initial models.
     true_lml, em_log_marginal_likelihood, sweep_fig = \
         initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted)
@@ -275,7 +278,6 @@ def main():
     for _step in range(opt_steps):
 
         key, subkey = jr.split(key)
-        do_fivo_sweep_val_and_grad = jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
         (lml, smooth), grad = do_fivo_sweep_val_and_grad(subkey, get_params(opt), num_particles)
         opt = apply_gradient(grad, opt, )
 
