@@ -7,6 +7,8 @@ Refactoring the SSM code base to use Jax.
 
 # Example
 
+A quick demonstration of some of the most basic elements of SSM. Check out the [example notebooks](https://github.com/lindermanlab/ssm-jax-refactor/tree/main/notebooks) for more!
+
 ```python
 from ssm.hmm import GaussianHMM
 import jax.random as jr
