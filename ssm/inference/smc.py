@@ -16,16 +16,6 @@ from ssm.utils import Verbosity
 default_verbosity = Verbosity.DEBUG
 
 
-# Define the standard plotting colours.
-color_names = [
-    "tab:blue",
-    "tab:orange",
-    "tab:green",
-    "tab:red",
-    "tab:purple"
-]
-
-
 def smc(key,
         model,
         dataset,
@@ -607,6 +597,25 @@ def do_resample(key,
 
 
 def plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=None):
+    """
+    Some stock code for plotting the results of an SMC sweep.
+
+    :param particles:
+    :param true_states: 
+    :param tag:
+    :param preprocessed:
+    :param fig:
+    :return:
+    """
+    # Define the standard plotting colours.
+    color_names = [
+        "tab:blue",
+        "tab:orange",
+        "tab:green",
+        "tab:red",
+        "tab:purple"
+    ]
+
     gen_label = lambda _k, _s: _s if _k == 0 else None
 
     if not preprocessed:
