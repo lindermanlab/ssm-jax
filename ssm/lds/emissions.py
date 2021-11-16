@@ -11,7 +11,6 @@ import ssm.distributions as ssmd
 from ssm.distributions import GaussianLinearRegression, glm
 
 
-@register_pytree_node_class
 class Emissions:
     """
     Base class of emission distribution of an LDS
@@ -21,6 +20,27 @@ class Emissions:
 
     where u_t are optional covariates.
     """
+    def distribution(self, state, covariates=None, metadata=None):
+        """
+        Return the conditional distribution of emission y_t
+        given state x_t and (optionally) covariates u_t.
+        """
+        raise NotImplementedError
+
+    def m_step(self,
+               data,
+               posterior,
+               covariates=None,
+               metadata=None,
+               num_samples=1,
+               key=None):
+        # TODO: Implement generic m-step using samples of the posterior
+        raise NotImplementedError
+
+
+@register_pytree_node_class
+class GaussianEmissions(Emissions):
+
     def __init__(self,
                  weights=None,
                  bias=None,
@@ -65,7 +85,7 @@ class Emissions:
     def scale_tril(self):
         return self._distribution.scale_tril
 
-    def distribution(self, state, covariates=None):
+    def distribution(self, state, covariates=None, metadata=None):
         """
         Return the conditional distribution of emission y_t
         given state x_t and (optionally) covariates u_t.
@@ -73,68 +93,48 @@ class Emissions:
         Note: covariates aren't supported yet.
         """
         if covariates is not None:
-            # TODO: handle extra covariates
-            raise NotImplementedError
-        return self._distribution.predict(covariates=state)
-
-    def m_step(self, dataset, posteriors, num_samples=1, rng=None):
-        if rng is None:
-            raise ValueError("PRNGKey needed for generic m-step")
-
-        # Draw samples of the latent states
-        state_samples = posteriors.sample(seed=rng, sample_shape=(num_samples,))
-
-        # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
-        flat_emissions_distribution, unravel = ravel_pytree(self._distribution)
-
-        def _objective(flat_emissions_distribution):
-            # TODO: Consider proximal gradient descent to counter sampling noise
-            emissions_distribution = unravel(flat_emissions_distribution)
-            _lp_single = lambda sample: emissions_distribution.predict(sample).log_prob(dataset) / dataset.size
-            return -1 * np.mean(vmap(_lp_single)(state_samples))
-
-        optimize_results = jax.scipy.optimize.minimize(
-            _objective,
-            flat_emissions_distribution,
-            method="BFGS"  # TODO: consider L-BFGS?
-        )
-
-        self._distribution = unravel(optimize_results.x)
+            return self._distribution.predict(np.concatenate([state, covariates]))
+        else:
+            return self._distribution.predict(state)
 
 
-@register_pytree_node_class
-class GaussianEmissions(Emissions):
-    def __init__(self,
-                 weights=None,
-                 bias=None,
-                 scale_tril=None,
-                 emissions_distribution: GaussianLinearRegression=None,
-                 emissions_distribution_prior: tfd.Distribution=None) -> None:
-        super(GaussianEmissions, self).__init__(
-            weights, bias, scale_tril,
-            emissions_distribution,
-            emissions_distribution_prior
-        )
-
-    def m_step(self, dataset, posteriors, rng=None):
+    def m_step(self,
+               data,
+               posterior,
+               covariates=None,
+               metadata=None,
+               key=None):
         """If we have the right posterior, we can perform an exact update here.
         """
         def compute_stats_and_counts(data, posterior):
             # Extract expected sufficient statistics from posterior
             Ex = posterior.expected_states
             ExxT = posterior.expected_states_squared
+            Ey = data
+            EyxT = np.einsum('ti,tj->tij', data, Ex)
+            EyyT = np.einsum('ti,tj->tij', data, data)
+
+            # Concatenate with the covariates
+            if covariates is not None:
+                u = covariates
+                Ex = np.column_stack((Ex, u))
+                ExxT = vmap(lambda xi, xixiT, ui: \
+                    np.block([[xixiT,            np.outer(xi, ui)],
+                              [np.outer(ui, xi), np.outer(ui, ui)]]))(Ex, ExxT, u)
+                EyxT = vmap(lambda yi, yixiT, ui: \
+                    np.block([yixiT, np.outer(yi, ui)]))(Ey, EyxT, u)
 
             # Sum over time
             sum_x = Ex.sum(axis=0)
-            sum_y = data.sum(axis=0)
+            sum_y = Ey.sum(axis=0)
             sum_xxT = ExxT.sum(axis=0)
-            sum_yxT = data.T.dot(Ex)
-            sum_yyT = data.T.dot(data)
+            sum_yxT = EyxT.sum(axis=0)
+            sum_yyT = EyyT.sum(axis=0)
             T = len(data)
             stats = (T, sum_xxT, sum_x, T, sum_yxT, sum_y, sum_yyT)
             return stats
 
-        stats = vmap(compute_stats_and_counts)(dataset, posteriors)
+        stats = vmap(compute_stats_and_counts)(data, posterior)
         stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
 
         if self._prior is not None:
@@ -184,14 +184,47 @@ class PoissonEmissions(Emissions):
     def bias(self):
         return self._distribution.bias
 
-    def distribution(self, state, covariates=None):
+    def distribution(self, state, covariates=None, metadata=None):
         """
         Return the conditional distribution of emission y_t
         given state x_t and (optionally) covariates u_t.
-
-        Note: covariates aren't supported yet.
         """
         if covariates is not None:
-            # TODO: handle extra covariates
-            raise NotImplementedError
-        return self._distribution.predict(covariates=state)
+            return self._distribution.predict(np.concatenate([state, covariates]))
+        else:
+            return self._distribution.predict(state)
+
+    def m_step(self,
+               data,
+               posterior,
+               covariates=None,
+               metadata=None,
+               num_samples=1,
+               key=None):
+        if key is None:
+            raise ValueError("PRNGKey needed for generic m-step")
+
+        # Draw samples of the latent states
+        state_samples = posterior.sample(seed=key, sample_shape=(num_samples,))
+
+        # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
+        flat_emissions_distribution, unravel = ravel_pytree(self._distribution)
+
+        def _objective(flat_emissions_distribution):
+            # TODO: Consider proximal gradient descent to counter sampling noise
+            emissions_distribution = unravel(flat_emissions_distribution)
+
+            def _lp_single(sample):
+                if covariates is not None:
+                    sample = np.concatenate([sample, covariates], axis=-1)
+                return emissions_distribution.predict(sample).log_prob(data) / data.size
+
+            return -1 * np.mean(vmap(_lp_single)(state_samples))
+
+        optimize_results = jax.scipy.optimize.minimize(
+            _objective,
+            flat_emissions_distribution,
+            method="BFGS"  # TODO: consider L-BFGS?
+        )
+
+        self._distribution = unravel(optimize_results.x)
