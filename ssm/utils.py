@@ -5,7 +5,7 @@ Useful utility functions.
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
-from jax import vmap
+from jax import vmap, lax
 from jax.tree_util import tree_map, tree_structure, tree_leaves
 
 import inspect
@@ -180,59 +180,49 @@ def random_rotation(seed, n, theta=None):
     return q.dot(out).dot(q.T)
 
 
-def format_dataset(f):
-    sig = inspect.signature(f)
+def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metadata"),
+                         model_arg="self"):
+    def ensure_has_batch_dim_decorator(f):
+        sig = inspect.signature(f)
 
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        # Get the `dataset` argument
-        bound_args = sig.bind(*args, **kwargs)
-        bound_args.apply_defaults()
-        dataset = bound_args.arguments["dataset"]
-        if "self" in bound_args.arguments:
-            model = bound_args.arguments["self"]
-        elif "model" in bound_args.arguments:
-            model = bound_args.arguments["model"]
-        else:
-            raise Exception(
-                "Expected function to have either `self` or `model` as an argument."
-            )
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            bound_args = sig.bind(*args, **kwargs)
+            bound_args.apply_defaults()
 
-        # Make sure dataset is a pytree whose leave nodes have a batch dimension
-        def _ensure_batch_dim(arr, shp):
-            ndim = len(shp)
-            if ndim > 0:
-                assert arr.shape[-ndim:] == shp
-            if arr.ndim == ndim + 2:
-                return arr
-            elif arr.ndim == ndim + 1:
-                return arr[None, ...]
-            else:
-                raise Exception(
-                    "dataset must consist of arrays of shape "
-                    "((batch, timesteps) + event_shape) or ((timesteps,) + event_shape)"
-                )
+            assert "data" in batched_args and "data" in bound_args.arguments,\
+                "`data` must be an argument in order to use the `ensure_has_batch_dim` decorator."
 
-        dataset = tree_map(_ensure_batch_dim, dataset, model.emissions_shape)
+            assert model_arg in bound_args.arguments, \
+                "`model_arg` must be an argument in order to use the `auto_batch` decorator."
 
-        # if isinstance(dataset, (list, tuple)):
-        #     assert all([isinstance(d, dict) and "data" in d for d in dataset])
-        # elif isinstance(dataset, dict):
-        #     assert "data" in dataset
-        #     dataset = [dataset]
-        # elif isinstance(dataset, np.ndarray):
-        #     dataset = [dict(data=dataset)]
-        # else:
-        #     raise Exception("Expected `dataset` to be a numpy array, a dictionary, or a "
-        #                     "list of dictionaries.  See help(ssm.HMM) for more details.")
+            # Determine the batch dimension from the shape of the data and the model.
+            # Naively assume that if data needs a batch, so do the other batched args.
+            given_shape = tree_map(lambda x: np.array(x.shape), bound_args.arguments["data"])
+            emissions_shape = bound_args.arguments[model_arg].emissions_shape
 
-        # Update the bound arguments
-        bound_args.arguments["dataset"] = dataset
+            # First check that the trailing shapes are correct.
+            # leaf_is_valid = lambda shp, shp_suffix: \
+            #     len(shp) > len(shp_suffix) \
+            #         and len(shp) <=  len(shp_suffix) + 2 and \
+            #             np.all(shp[-len(shp_suffix):] == shp_suffix)
+            # assert all(tree_leaves(tree_map(leaf_is_valid, given_shape, emissions_shape)))
 
-        # Call the function
-        return f(*bound_args.args, **bound_args.kwargs)
+            # A leaf needs a batch dim if it only has one extra dimension (num_timesteps).
+            leaf_needs_batch = lambda shp, shp_suffix: len(shp) == len(shp_suffix) + 1
+            needs_batch = all(tree_leaves(tree_map(leaf_needs_batch, given_shape, emissions_shape)))
 
-    return wrapper
+            # If data needs a batch, assume the other args do too
+            if needs_batch:
+                for key in batched_args:
+                    if key in bound_args.arguments and bound_args.arguments[key] is not None:
+                        bound_args.arguments[key] = \
+                            tree_map(lambda x: x[None, ...], bound_args.arguments[key])
+
+            return f(**bound_args.arguments)
+
+        return wrapper
+    return ensure_has_batch_dim_decorator
 
 
 def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "states"), model_arg="self"):
@@ -256,28 +246,28 @@ def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "sta
             emissions_shape = bound_args.arguments[model_arg].emissions_shape
 
             # First check that the trailing shapes are correct.
-            leaf_is_valid = lambda shp, shp_suffix: \
-                len(shp) > len(shp_suffix) and np.all(shp[-len(shp_suffix):] == shp_suffix)
-            assert all(tree_leaves(tree_map(leaf_is_valid, given_shape, emissions_shape)))
+            # leaf_is_valid = lambda shp, shp_suffix: \
+            #     len(shp) > len(shp_suffix) \
+            #         and len(shp) <=  len(shp_suffix) + 2 and \
+            #             np.all(shp[-len(shp_suffix):] == shp_suffix)
+            # assert all(tree_leaves(tree_map(leaf_is_valid, given_shape, emissions_shape)))
 
             # Assume a leaf is batched if it has two extra dimensions (batch and num_timesteps).
             leaf_is_batched = lambda shp, shp_suffix: len(shp) == len(shp_suffix) + 2
             is_batched = all(tree_leaves(tree_map(leaf_is_batched, given_shape, emissions_shape)))
 
-            # If not batched, just apply the function as usual.
             if not is_batched:
                 return f(*args, **kwargs)
 
-            # Otherwise, separate out the fixed args from those with a batch dimension
-            # and call vmap.
-            fixed_kwargs, batch_kwargs = {}, {}
-            for arg, val in bound_args.arguments.items():
-                if arg in batched_args:
-                    batch_kwargs[arg] = val
-                else:
-                    fixed_kwargs[arg] = val
-
-            return vmap(partial(f, **fixed_kwargs))(**batch_kwargs)
+            else:
+                # Otherwise, separate out the fixed args from those with a batch dimension and call vmap.
+                fixed_kwargs, batch_kwargs = {}, {}
+                for arg, val in bound_args.arguments.items():
+                    if arg in batched_args:
+                        batch_kwargs[arg] = val
+                    else:
+                        fixed_kwargs[arg] = val
+                return vmap(partial(f, **fixed_kwargs))(**batch_kwargs)
 
         return wrapper
     return auto_batch_decorator

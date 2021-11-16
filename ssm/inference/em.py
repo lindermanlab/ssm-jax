@@ -4,12 +4,12 @@ General EM routines
 import warnings
 import jax.numpy as np
 from jax import jit, vmap
-from ssm.utils import Verbosity, format_dataset, ssm_pbar
+from ssm.utils import Verbosity, ensure_has_batch_dim, ssm_pbar
 
 
-@format_dataset
+@ensure_has_batch_dim(model_arg="model")
 def em(model,
-       dataset,
+       data,
        covariates=None,
        metadata=None,
        num_iters=100,
@@ -17,9 +17,9 @@ def em(model,
        verbosity=Verbosity.DEBUG,
     ):
     """Fit a model using EM.
-    
+
     Assumes the model has the following methods for EM:
-    
+
         - `.infer_posterior(data)` (i.e. E-step)
         - `.marginal_likelihood(data, posterior)`
         - `.m_step(dataset, posteriors)`
@@ -39,10 +39,10 @@ def em(model,
 
     @jit
     def update(model):
-        posteriors = vmap(model.infer_posterior)(dataset, covariates=covariates, metadata=metadata)
-        lp = vmap(model.marginal_likelihood)(dataset, posteriors, covariates=covariates, metadata=metadata).sum()
-        model.m_step(dataset, posteriors, covariates=covariates, metadata=metadata)
-        return model, posteriors, lp
+        posterior = model.e_step(data, covariates=covariates, metadata=metadata)
+        lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
+        model.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        return model, posterior, lp
 
     # Run the EM algorithm to convergence
     log_probs = []

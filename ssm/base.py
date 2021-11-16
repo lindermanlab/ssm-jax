@@ -11,7 +11,7 @@ from jax import lax, vmap
 
 import tensorflow_probability.substrates.jax as tfp
 
-from ssm.utils import format_dataset, tree_get, auto_batch
+from ssm.utils import tree_get, auto_batch
 
 
 class SSM(object):
