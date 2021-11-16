@@ -22,7 +22,16 @@ class InitialCondition:
 
     def distribution(self, covariates=None, metadata=None):
         """
-        Return the distribution of z_1
+        Return the distribution of z_1.
+        
+        Args: 
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+                
+        Returns:
+            distribution (tfd.Distribution): distributoin of z_1
         """
         raise NotImplementedError
 

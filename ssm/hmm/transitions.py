@@ -25,6 +25,16 @@ class Transitions:
     def distribution(self, state, covariates=None, metadata=None):
         """
         Return the conditional distribution of z_t given state z_{t-1}
+        
+        Args:
+            state (int): state z_{t-1}
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+                
+        Returns:
+            distribution (tfd.Distribution): conditional distribution of z_t given state z_{t-1}.
         """
         raise NotImplementedError
 
@@ -52,7 +62,20 @@ class Transitions:
         # return vmap(lambda i: self.distribution(i, covariates=covariates, metadata=metadata).log_prob(inds))(inds)
         raise NotImplementedError
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> None:
+        """Update the transition parameters in an M step given posteriors
+        over the latent states. 
+        
+        Update is performed in place.
+
+        Args:
+            dataset (np.ndarray): the observed dataset with shape (B, T, D)
+            posteriors (HMMPosterior): posteriors over the latent states with leaf shape (B, ...)
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+        """
         # TODO: implement generic m-step
         raise NotImplementedError
 
@@ -99,7 +122,7 @@ class StationaryTransitions(Transitions):
         return self._distribution.probs_parameter()
 
     def distribution(self, state, covariates=None, metadata=None):
-       return self._distribution[state]
+        return self._distribution[state]
 
     def log_transition_matrices(self, data, covariates=None, metadata=None):
         log_P = self._distribution.logits_parameter()

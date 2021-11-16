@@ -26,7 +26,11 @@ def em(model,
 
     Args:
         model (ssm.base.SSM): the model to be fit
-        dataset ([np.ndarray]): the dataset with shape (B, T, D).
+        data (PyTree): the observed data with leaf shape (B, T, D).
+        covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+            Defaults to None.
+        metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+            Defaults to None.
         num_iters (int, optional): number of iterations of EM fit. Defaults to 100.
         tol (float, optional): tolerance in marginal lp to declare convergence. Defaults to 1e-4.
         verbosity (ssm.utils.Verbosity, optional): verbosity of fit. Defaults to Verbosity.DEBUG.

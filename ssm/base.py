@@ -29,6 +29,12 @@ class SSM(object):
         .. math::
             p(x_1)
 
+        Args:
+            covariates (PyTree, optional): optional covariates with leaf shape [B, T, ...].
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape [B, ...].
+                Defaults to None.
+
         Returns:
             initial_distribution (tfp.distributions.Distribution):
                 A distribution over initial states in the SSM.
@@ -100,6 +106,10 @@ class SSM(object):
                 of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{latent\_dim})`
             data: observed data :math:`y_{1:T}`
                 of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{emissions\_dim})`
+            covariates (PyTree, optional): optional covariates with leaf shape [B, T, ...].
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape [B, ...].
+                Defaults to None.
 
         Returns:
             lp: log joint probability :math:`\log p(x, y)`
@@ -150,6 +160,19 @@ class SSM(object):
 
         While in some cases the expectation can be computed in closed form, in
         general we will approximate it with ordinary Monte Carlo.
+        
+        Args:
+            key (jr.PRNGKey): random seed
+            data (PyTree): observed data with leaf shape ([B, T, D])
+            covariates (PyTree, optional): optional covariates with leaf shape ([B, T, ...]).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape ([B, ...]).
+                Defaults to None.
+            num_samples (int): number of samples to evaluate the ELBO
+    
+        Returns:
+            elbo: the evidence lower bound of shape ([B,])
+        
         """
         def _elbo_single(_key):
             sample = posterior.sample(seed=_key)
@@ -174,11 +197,13 @@ class SSM(object):
         Args:
             key (jr.PRNGKey): A JAX pseudorandom number generator key.
             num_steps (int): Number of steps for which to sample.
-            covariates: Optional covariates that may be needed for sampling.
-                Default is None.
             initial_state: Optional state on which to condition the sampled trajectory.
                 Default is None which samples the intial state from the initial distribution.
-            num_samples (int): Number of indepedent samples (defines a batch dimension).
+            covariates (PyTree, optional): optional covariates with leaf shape ([B, T, ...]).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape ([B, ...]).
+                Defaults to None.
+            num_samples (int): Number of indepedent samples (defines the batch dimension).
 
         Returns:
             states: an array of latent states across time :math:`x_{1:T}`

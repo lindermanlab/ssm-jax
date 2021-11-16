@@ -92,8 +92,10 @@ class ExponentialFamilyEmissions(Emissions):
 
         Args:
             state (int): discrete state
-            covariates (np.ndarray, optional): optional covariates.
-                Not yet supported. Defaults to None.
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
 
         Returns:
             emissions distribution (tfd.MultivariateNormalLinearOperator):

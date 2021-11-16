@@ -92,9 +92,13 @@ class HMM(SSM):
         determined by the specified method (random or kmeans).
 
         Args:
-            dataset (np.ndarray): array of observed data
-                of shape :math:`(\text{batch} , \text{num\_timesteps} , \text{emissions\_dim})`
             key (jr.PRNGKey): random seed
+            data (np.ndarray): array of observed data
+                of shape :math:`(\text{batch} , \text{num\_timesteps} , \text{emissions\_dim})`
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
             method (str, optional): state assignment method.
                 One of "random" or "kmeans". Defaults to "kmeans".
 
@@ -162,8 +166,12 @@ class HMM(SSM):
         r"""Fit the HMM to a dataset using the specified method and initialization.
 
         Args:
-            dataset (np.ndarray): observed data
+            data (np.ndarray): observed data
                 of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{emissions\_dim})`
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
             method (str, optional): model fit method.
                 Must be one of ["em"]. Defaults to "em".
             num_iters (int, optional): number of fit iterations.
