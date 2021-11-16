@@ -85,8 +85,8 @@ class HMM(SSM):
     def initialize(self,
                    key: jr.PRNGKey,
                    data: np.ndarray,
-                   covariates: np.ndarray=None,
-                   metadata: np.ndarray=None,
+                   covariates=None,
+                   metadata=None,
                    method: str="kmeans") -> None:
         r"""Initialize the model parameters by performing an M-step with state assignments
         determined by the specified method (random or kmeans).

@@ -4,6 +4,8 @@ Base state-space model class.
 In SSM-JAX, a state-space model is represented as a class with methods defining
 the ``initial_distribution``, ``dynamics_distribution``, and ``emissions_distribution``
 respectively.
+
+The base ``SSM`` object provides template functionality for a state space model.
 """
 import jax.numpy as np
 import jax.random as jr

@@ -65,7 +65,7 @@ class AutoregressiveHMM(HMM):
         """
 
         if history is None:
-            history = np.zeros((self.num_lags, self.emission_dim))
+            history = np.zeros((self.num_lags, *self.emissions_shape))
 
         lp = 0
 
@@ -148,7 +148,7 @@ class AutoregressiveHMM(HMM):
                 state = initial_state
 
             if history is None:
-                history = np.zeros((self.num_lags, self.emission_dim))
+                history = np.zeros((self.num_lags, *self.emissions_shape))
             else:
                 history = history
 
