@@ -9,7 +9,7 @@ from ssm.lds.base import LDS
 from ssm.lds.initial import StandardInitialCondition
 from ssm.lds.dynamics import StationaryDynamics
 from ssm.lds.emissions import GaussianEmissions, PoissonEmissions
-from ssm.utils import Verbosity, format_dataset, random_rotation
+from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, random_rotation
 
 LDSPosterior = MultivariateNormalBlockTridiag
 
@@ -108,7 +108,8 @@ class GaussianLDS(LDS):
         return R_sqrt @ R_sqrt.T
 
     # Methods for inference
-    def infer_posterior(self, data, covariates=None, metadata=None):
+    @auto_batch(batched_args=("data", "covariates", "metadata"))
+    def e_step(self, data, covariates=None, metadata=None):
         """
         Compute the exact posterior by extracting the natural parameters
         of the LDS, namely the block tridiagonal precision matrix (J) and
@@ -144,7 +145,12 @@ class GaussianLDS(LDS):
 
         return LDSPosterior.infer(J_diag, J_lower_diag, h)
 
-    def marginal_likelihood(self, data, posterior=None, covariates=None, metadata=None):
+    @auto_batch(batched_args=("data", "posterior", "covariates", "metadata"))
+    def marginal_likelihood(self,
+                            data,
+                            posterior=None,
+                            covariates=None,
+                            metadata=None):
         """The exact marginal likelihood of the observed data.
 
             For a Gaussian LDS, we can compute the exact marginal likelihood of
@@ -173,8 +179,16 @@ class GaussianLDS(LDS):
         lps = self.log_probability(states, data) - posterior.log_prob(states)
         return lps
 
-    @format_dataset
-    def fit(self, dataset, covariates=None, metadata=None, method="em", rng=None, num_iters=100, tol=1e-4, verbosity=Verbosity.DEBUG):
+    @ensure_has_batch_dim()
+    def fit(self,
+            data,
+            covariates=None,
+            metadata=None,
+            method="em",
+            key=None,
+            num_iters=100,
+            tol=1e-4,
+            verbosity=Verbosity.DEBUG):
         r"""Fit the GaussianLDS to a dataset using the specified method.
 
         Note: because the observations are Gaussian, we can perform exact EM for a GaussianEM
@@ -206,11 +220,11 @@ class GaussianLDS(LDS):
         kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
 
         if method == "em":
-            elbos, lds, posteriors = em(model, dataset, **kwargs)
+            elbos, lds, posteriors = em(model, data, **kwargs)
         elif method == "laplace_em":
-            if rng is None:
+            if key is None:
                 raise ValueError("Laplace EM requires a PRNGKey. Please provide an rng to fit.")
-            elbos, lds, posteriors = laplace_em(rng, model, dataset, **kwargs)
+            elbos, lds, posteriors = laplace_em(key, model, data, **kwargs)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 

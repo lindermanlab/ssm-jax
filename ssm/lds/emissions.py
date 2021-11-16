@@ -27,7 +27,13 @@ class Emissions:
         """
         raise NotImplementedError
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None, num_samples=1, rng=None):
+    def m_step(self,
+               data,
+               posterior,
+               covariates=None,
+               metadata=None,
+               num_samples=1,
+               key=None):
         # TODO: Implement generic m-step using samples of the posterior
         raise NotImplementedError
 
@@ -92,7 +98,12 @@ class GaussianEmissions(Emissions):
             return self._distribution.predict(state)
 
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None, rng=None):
+    def m_step(self,
+               data,
+               posterior,
+               covariates=None,
+               metadata=None,
+               key=None):
         """If we have the right posterior, we can perform an exact update here.
         """
         def compute_stats_and_counts(data, posterior):
@@ -123,7 +134,7 @@ class GaussianEmissions(Emissions):
             stats = (T, sum_xxT, sum_x, T, sum_yxT, sum_y, sum_yyT)
             return stats
 
-        stats = vmap(compute_stats_and_counts)(dataset, posteriors)
+        stats = vmap(compute_stats_and_counts)(data, posterior)
         stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
 
         if self._prior is not None:
@@ -183,12 +194,18 @@ class PoissonEmissions(Emissions):
         else:
             return self._distribution.predict(state)
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None, num_samples=1, rng=None):
-        if rng is None:
+    def m_step(self,
+               data,
+               posterior,
+               covariates=None,
+               metadata=None,
+               num_samples=1,
+               key=None):
+        if key is None:
             raise ValueError("PRNGKey needed for generic m-step")
 
         # Draw samples of the latent states
-        state_samples = posteriors.sample(seed=rng, sample_shape=(num_samples,))
+        state_samples = posterior.sample(seed=key, sample_shape=(num_samples,))
 
         # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
         flat_emissions_distribution, unravel = ravel_pytree(self._distribution)
@@ -200,7 +217,7 @@ class PoissonEmissions(Emissions):
             def _lp_single(sample):
                 if covariates is not None:
                     sample = np.concatenate([sample, covariates], axis=-1)
-                return emissions_distribution.predict(sample).log_prob(dataset) / dataset.size
+                return emissions_distribution.predict(sample).log_prob(data) / data.size
 
             return -1 * np.mean(vmap(_lp_single)(state_samples))
 

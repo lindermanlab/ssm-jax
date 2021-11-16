@@ -1,14 +1,15 @@
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
-from ssm.inference.laplace_em import laplace_approximation, laplace_em
+from jax import lax
+
 from ssm.base import SSM
-
-from ssm.utils import Verbosity, format_dataset
-
+from ssm.inference.laplace_em import laplace_approximation, laplace_em
 import ssm.lds.initial as initial
 import ssm.lds.dynamics as dynamics
 import ssm.lds.emissions as emissions
+from ssm.utils import Verbosity, auto_batch, ensure_has_batch_dim
+
 
 
 
@@ -98,19 +99,29 @@ class LDS(SSM):
         """
         raise NotImplementedError
 
-    def approximate_posterior(self, data,
+    @auto_batch(batched_args=("data", "covariates", "metadata", "initial_states"),
+                map_function=lax.map)
+    def approximate_posterior(self,
+                              data,
                               covariates=None,
                               metadata=None,
                               initial_states=None):
         return laplace_approximation(self, data, initial_states)
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None, rng=None):
+    @ensure_has_batch_dim()
+    def m_step(self,
+               data,
+               posterior,
+               covariates=None,
+               metadata=None,
+               key=None):
         # self._initial_condition.m_step(dataset, posteriors)  # TODO initial dist needs prior
-        self._dynamics.m_step(dataset, posteriors)
-        self._emissions.m_step(dataset, posteriors, rng=rng)
+        self._dynamics.m_step(data, posterior)
+        self._emissions.m_step(data, posterior, key=key)
 
-    @format_dataset
-    def fit(self, dataset:np.ndarray,
+    @ensure_has_batch_dim()
+    def fit(self,
+            data:np.ndarray,
             covariates=None,
             metadata=None,
             method: str="laplace_em",
@@ -147,7 +158,7 @@ class LDS(SSM):
         """
         model = self
         if method == "laplace_em":
-            elbos, lds, posteriors = laplace_em(rng, model, dataset, num_iters=num_iters, tol=tol)
+            elbos, lds, posteriors = laplace_em(rng, model, data, num_iters=num_iters, tol=tol)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 

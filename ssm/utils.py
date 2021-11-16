@@ -225,7 +225,8 @@ def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metad
     return ensure_has_batch_dim_decorator
 
 
-def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "states"), model_arg="self"):
+def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "states"),
+               model_arg="self", map_function=vmap):
     def auto_batch_decorator(f):
         sig = inspect.signature(f)
 
@@ -267,7 +268,7 @@ def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "sta
                         batch_kwargs[arg] = val
                     else:
                         fixed_kwargs[arg] = val
-                return vmap(partial(f, **fixed_kwargs))(**batch_kwargs)
+                return map_function(partial(f, **fixed_kwargs))(**batch_kwargs)
 
         return wrapper
     return auto_batch_decorator

@@ -20,9 +20,9 @@ def em(model,
 
     Assumes the model has the following methods for EM:
 
-        - `.infer_posterior(data)` (i.e. E-step)
-        - `.marginal_likelihood(data, posterior)`
-        - `.m_step(dataset, posteriors)`
+        - `model.e_step(data)` (i.e. E-step)
+        - `model.m_step(dataset, posteriors)`
+        - `model.marginal_likelihood(data, posterior)`
 
     Args:
         model (ssm.base.SSM): the model to be fit

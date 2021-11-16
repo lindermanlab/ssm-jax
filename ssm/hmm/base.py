@@ -1,7 +1,6 @@
 """Module defining base model behavior for Hidden Markov Models (HMMs).
 """
 from dataclasses import dataclass
-from enum import auto
 
 import jax.numpy as np
 import jax.random as jr
@@ -150,7 +149,8 @@ class HMM(SSM):
         self._emissions.m_step(data, posterior, covariates=covariates, metadata=metadata)
 
     @ensure_has_batch_dim()
-    def fit(self, data: np.ndarray,
+    def fit(self,
+            data: np.ndarray,
             covariates=None,
             metadata=None,
             method: str="em",
