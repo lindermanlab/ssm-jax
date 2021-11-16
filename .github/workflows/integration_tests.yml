@@ -1,4 +1,4 @@
-name: Tests
+name: Integration Tests
 
 # sets workflow to be manual-run only
 on:
