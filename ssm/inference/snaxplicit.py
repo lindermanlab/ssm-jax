@@ -13,14 +13,13 @@ from tensorflow_probability.substrates.jax import distributions as tfd
 from ssm.utils import Verbosity
 from typing import NamedTuple, Any
 
+
+import ssm.snax.snax as snax
+# from flax import linen
+
+
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
-
-
-# Linen stuff.
-from tensorflow_probability.substrates.jax import distributions as tfd
-import ssm.snax.snax as snax
-from ssm.snax.snax.nn import MLP, Affine, Identity
 
 
 class GaussianGeneratorParams(NamedTuple):
@@ -60,18 +59,26 @@ def IndependentGaussianGenerator(dummy_input, dummy_output,
         k1, k2, k3 = jr.split(key, num=3)
 
         # Initialize the trunk.
-        trunk_output_size, trunk_fn_params = trunk_fn.init(k1, input_dim)
+        head_input_size, trunk_fn_params = trunk_fn.init(k1, input_dim)
 
         # Initialize the two head networks.
-        _, head_mean_fn_params = head_mean_fn.init(k2, trunk_output_size)
-        _, head_log_var_fn_params = head_log_var_fn.init(k3, trunk_output_size)
+        _, head_mean_fn_params = head_mean_fn.init(k2, head_input_size)
+        _, head_log_var_fn_params = head_log_var_fn.init(k3, head_input_size)
 
         return GaussianGeneratorParams(trunk_fn_params, head_mean_fn_params, head_log_var_fn_params)
+
+    def get_output_dims(input_shape=None):
+        return output_dim
+
+    def apply(params, inputs):
+        params = generate_distribution_parameters(params, inputs)
+        dist = tfd.MultivariateNormalDiag(loc=params[0], scale_diag=np.sqrt(params[1]))
+        return dist
 
     def _call_single(params, inputs):
 
         # Flatten the input.
-        inputs_flat = np.reshape(inputs, (-1, ))
+        inputs_flat = snax.vectorize_pytree(inputs)
 
         # Apply the trunk.
         trunk_output = trunk_fn.apply(params.trunk_fn, inputs_flat)
@@ -86,23 +93,17 @@ def IndependentGaussianGenerator(dummy_input, dummy_output,
 
         return mean_output, var_output
 
-    def apply(params, inputs):
-        params = generate_distribution_parameters(params, inputs)
-        dist = tfd.MultivariateNormalDiag(loc=params[0], scale_diag=np.sqrt(params[1]))
-        return dist
-
-    def get_output_dims(input_shape=None):
-        return output_dim
-
-    def generate_distribution_parameters(params, inputs):
+    def generate_distribution_parameters(params, inputs):  # , _is_batched=None):
 
         # If the shape is equal to the input dimensions then there is no batch dimension
         # and we can call the forward function as is.  Otherwise we need to do a vmap
         # over the batch dimension.
-        if inputs.shape == input_dim:
-            return _call_single(params, inputs)
-        else:
+        is_batched = (snax.vectorize_pytree(inputs[0]).shape[0] != input_dim)
+
+        if is_batched:
             return vmap(_call_single, in_axes=(None, 0))(params, inputs)
+        else:
+            return _call_single(params, inputs)
 
     return snax.Module(init, apply, get_output_dims, generate_distribution_parameters)
 

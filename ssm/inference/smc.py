@@ -54,17 +54,17 @@ def smc(key,
         initialization_distribution (function, No size, default=model.initial_distribution):
             Allows a custom distribution to be used to propose the initial states from.  Using default value of
             None means that the prior is used as the proposal.
-            Function takes arguments of (dataset, model, ...), but doesn't have to make use of them.  Allows
-            more expressive initial proposals to be constructed.  The proposal must be a function that can be called
-            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be 
-            defined by closing over a proposal class as appropriate. 
+            Function takes arguments of (dataset, model, particles, time, p_dist, , q_state ...), but doesn't have to
+            make use of them.  Allows more expressive initial proposals to be constructed.  The proposal must be a
+            function that can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal
+            function may need to be  defined by closing over a proposal class as appropriate.
 
         proposal (function, No size, default=model.dynamics_distribution):
             Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
             the prior is used as the proposal.
-            Function takes arguments of (dataset, model, particles, time, p_dist, ...), but doesn't have to make
-            use of
-            them.
+            Function takes arguments of (dataset, model, particles, time, p_dist, , q_state ...), but doesn't have to
+            make use of them.
+
             Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
             as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be
             defined by closing over a proposal class as appropriate.
@@ -161,15 +161,16 @@ def _single_smc(key,
         initialization_distribution (function, No size, default=model.initial_distribution):
             Allows a custom distribution to be used to propose the initial states from.  Using default value of
             None means that the prior is used as the proposal.
-            Function takes arguments of (dataset, model, ...), but doesn't have to make use of them.  Allows
-            more expressive initial proposals to be constructed.  The proposal must be a function that can be called
-            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be 
-            defined by closing over a proposal class as appropriate. 
+            Function takes arguments of (dataset, model, particles, time, p_dist, , q_state, ...), but doesn't have to
+            make use of them.  Allows more expressive initial proposals to be constructed.  The proposal must be a
+            function that can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal
+            function may need to be  defined by closing over a proposal class as appropriate.
 
         proposal (function, No size, default=model.dynamics_distribution):
             Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
             the prior is used as the proposal.
-            Function takes arguments of (dataset, parameters, particles, time, p_dist, ...), but doesn't have to make
+            Function takes arguments of (dataset, parameters, particles, time, p_dist, q_state, ...), but doesn't
+            have to make
             use of them.
             Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
             as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be
@@ -209,8 +210,10 @@ def _single_smc(key,
     # The default initial implementation uses no inputs.
     # More complex proposals allow multiple arguments to be input and are
     # filtered on the inside.
+    # This function also returns the initial state of the proposal, and so there is no
+    # initial proposal state if we are using p.
     if initialization_distribution is None:
-        initialization_distribution = lambda *args: model.initial_distribution()
+        initialization_distribution = lambda *args: (model.initial_distribution(), None)
     else:
         raise NotImplementedError()
 
@@ -218,8 +221,10 @@ def _single_smc(key,
     # The default BPF implementation uses just the current particles as inputs.
     # More complex proposals allow multiple arguments to be input and are
     # filtered on the inside.
+    # This function also returns the iterated state of the proposal, and so there is no
+    # initial proposal state if we are using p.
     if proposal is None:
-        proposal = lambda *args: model.dynamics_distribution(args[2])
+        proposal = lambda *args: (model.dynamics_distribution(args[2]), None)
 
     # Do the forward pass.
     filtering_particles, log_marginal_likelihood, ancestry = \
@@ -266,16 +271,16 @@ def _smc_forward_pass(key,
         initialization_distribution (function, No size):
             Allows a custom distribution to be used to propose the initial states from.  Using default value of
             None means that the prior is used as the proposal.
-            Function takes arguments of (dataset, model, ...), but doesn't have to make use of them.  Allows
-            more expressive initial proposals to be constructed.  The proposal must be a function that can be called
-            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be 
-            defined by closing over a proposal class as appropriate. 
+            Function takes arguments of (dataset, model, particles, time, p_dist, q_state, ...), but doesn't have to
+            make use of them.  Allows more expressive initial proposals to be constructed.  The proposal must be a
+            function that can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal
+            function may need to be  defined by closing over a proposal class as appropriate.
 
         proposal (function, No size):
             Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
             the prior is used as the proposal.
-            Function takes arguments of (dataset, model, particles, time, p_dist, ...), but doesn't have to make
-            use of them.  Allows more expressive proposals to be constructed.  The proposal must be a function that
+            Function takes arguments of (dataset, model, particles, time, p_dist, q_state, ...), but doesn't have to
+            make use of them.  Allows more expressive proposals to be constructed.  The proposal must be a function that
             can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may
             need to be defined by closing over a proposal class as appropriate.
 
@@ -307,7 +312,7 @@ def _smc_forward_pass(key,
     """
 
     # Generate the initial distribution.
-    initial_distribution = initialization_distribution(dataset, model)
+    initial_distribution, initial_q_state = initialization_distribution(dataset, model)
 
     # Initialize the sweep using the initial distribution.
     key, subkey1, subkey2 = jr.split(key, num=3)
@@ -336,12 +341,12 @@ def _smc_forward_pass(key,
 
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
-        key, particles, accumulated_log_weights = carry
+        key, particles, accumulated_log_weights, q_state = carry
         key, subkey1, subkey2 = jr.split(key, num=3)
 
         # Compute the p and q distributions.
         p_dist = model.dynamics_distribution(particles)
-        q_dist = proposal(dataset, model, particles, t, p_dist)
+        q_dist, q_state = proposal(dataset, model, particles, t, p_dist, q_state)
 
         # Sample the new particles.
         new_particles = q_dist.sample(seed=subkey1)
@@ -360,13 +365,13 @@ def _smc_forward_pass(key,
             do_resample(subkey2, accumulated_log_weights, new_particles, resampling_criterion,
                         resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
 
-        return ((key, resampled_particles, resampled_log_weights),
-                (resampled_particles, accumulated_log_weights, should_resample, ancestors))
+        return ((key, resampled_particles, resampled_log_weights, q_state),
+                (resampled_particles, accumulated_log_weights, should_resample, ancestors, q_state))
 
     # Scan over the dataset.
-    _, (filtering_particles, log_weights, resampled, ancestors) = jax.lax.scan(
+    _, (filtering_particles, log_weights, resampled, ancestors, q_states) = jax.lax.scan(
         smc_step,
-        (key, initial_resampled_particles, accumulated_log_weights),
+        (key, initial_resampled_particles, accumulated_log_weights, initial_q_state),
         np.arange(1, len(dataset)))
 
     # Need to prepend the initial timestep.
@@ -374,6 +379,7 @@ def _smc_forward_pass(key,
     log_weights = np.concatenate((initial_incremental_log_weights[None, :], log_weights))
     resampled = np.concatenate((np.asarray([initial_resampled]), resampled))
     ancestors = np.concatenate((np.arange(num_particles)[None, :], ancestors))
+    q_states = np.concatenate((np.asarray([initial_q_state]), q_states))
 
     # Average over particle dimension.
     p_hats = spsp.logsumexp(log_weights, axis=1) - np.log(num_particles)
@@ -601,7 +607,7 @@ def plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=No
     Some stock code for plotting the results of an SMC sweep.
 
     :param particles:
-    :param true_states: 
+    :param true_states:
     :param tag:
     :param preprocessed:
     :param fig:
