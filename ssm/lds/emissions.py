@@ -24,6 +24,17 @@ class Emissions:
         """
         Return the conditional distribution of emission y_t
         given state x_t and (optionally) covariates u_t.
+
+        Args:
+            state (float): continuous state
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+
+        Returns:
+            emissions distribution (tfd.MultivariateNormalLinearOperator):
+                emissions distribution at given state
         """
         raise NotImplementedError
 
@@ -34,6 +45,20 @@ class Emissions:
                metadata=None,
                num_samples=1,
                key=None):
+        """Update the emissions distribution in-place using an M-step.
+
+        Operates over a batch of data (posterior must have the same batch dim).
+
+        Args:
+            dataset (np.ndarray): the observed dataset
+            posteriors (LDSPosterior): the HMM posteriors
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+            num_samples (int): number of samples from posterior to use in a generic update
+            key (jr.PRNGKey): random seed
+        """
         # TODO: Implement generic m-step using samples of the posterior
         raise NotImplementedError
 
@@ -90,7 +115,16 @@ class GaussianEmissions(Emissions):
         Return the conditional distribution of emission y_t
         given state x_t and (optionally) covariates u_t.
 
-        Note: covariates aren't supported yet.
+        Args:
+            state (float): continuous state
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+
+        Returns:
+            emissions distribution (tfd.MultivariateNormalLinearOperator):
+                emissions distribution at given state
         """
         if covariates is not None:
             return self._distribution.predict(np.concatenate([state, covariates]))
@@ -104,7 +138,19 @@ class GaussianEmissions(Emissions):
                covariates=None,
                metadata=None,
                key=None):
-        """If we have the right posterior, we can perform an exact update here.
+        """Update the emissions distribution in-place using an exact M-step.
+
+        Operates over a batch of data (posterior must have the same batch dim).
+
+        Args:
+            dataset (np.ndarray): the observed dataset
+            posteriors (LDSPosterior): the HMM posteriors
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+            num_samples (int): number of samples from posterior to use in a generic update
+            key (jr.PRNGKey): random seed
         """
         def compute_stats_and_counts(data, posterior):
             # Extract expected sufficient statistics from posterior
@@ -185,10 +231,6 @@ class PoissonEmissions(Emissions):
         return self._distribution.bias
 
     def distribution(self, state, covariates=None, metadata=None):
-        """
-        Return the conditional distribution of emission y_t
-        given state x_t and (optionally) covariates u_t.
-        """
         if covariates is not None:
             return self._distribution.predict(np.concatenate([state, covariates]))
         else:

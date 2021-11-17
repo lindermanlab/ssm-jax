@@ -19,7 +19,16 @@ class InitialCondition:
 
     def distribution(self, covariates=None, metadata=None):
         """
-        Return the distribution of z_1
+        Return the distribution of x_1 (potentially given covariates u_t)
+        
+        Args: 
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+                
+        Returns:
+            distribution (tfd.Distribution): distribution of z_1
         """
         raise NotImplementedError
 
@@ -69,10 +78,33 @@ class StandardInitialCondition(InitialCondition):
         return self._distribution.loc
 
     def distribution(self, covariates=None, metadata=None):
-       return self._distribution
+        """
+        Return the distribution of x_1.
+        
+        Args: 
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+                
+        Returns:
+            distribution (tfd.Distribution): distribution of z_1
+        """
+        return self._distribution
 
     def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+        """Update the initial distribution in an M step given posteriors over the latent states. 
+        
+        Update is performed in place.
 
+        Args:
+            dataset (np.ndarray): the observed dataset with shape (B, T, D)
+            posteriors (HMMPosterior): posteriors over the latent states with leaf shape (B, ...)
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+        """
         def compute_stats_and_counts(data, posterior):
             Ex = posterior.expected_states[0]
             ExxT = posterior.expected_states_squared[0]

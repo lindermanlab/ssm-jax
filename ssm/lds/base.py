@@ -10,8 +10,8 @@ import ssm.lds.dynamics as dynamics
 import ssm.lds.emissions as emissions
 from ssm.utils import Verbosity, auto_batch, ensure_has_batch_dim
 
-
-
+from ssm.distributions import MultivariateNormalBlockTridiag
+LDSPosterior = MultivariateNormalBlockTridiag
 
 @register_pytree_node_class
 class LDS(SSM):
@@ -61,7 +61,7 @@ class LDS(SSM):
 
     @property
     def dynamics_noise_covariance(self):
-        Q_sqrt = self._dynamics.scale_tril
+        Q_sqrt = self._dynamics.scale_tril  # TODO: this should be a property in dynamics
         return Q_sqrt @ Q_sqrt.T
 
     @property
@@ -110,11 +110,24 @@ class LDS(SSM):
 
     @ensure_has_batch_dim()
     def m_step(self,
-               data,
-               posterior,
+               data: np.ndarray,
+               posterior: LDSPosterior,
                covariates=None,
                metadata=None,
-               key=None):
+               key: jr.PRNGKey=None):
+        """Update the model in a (potentially approximate) M step.
+        
+        Updates the model in place.
+
+        Args:
+            data (np.ndarray): observed data with shape (B, T, D)  
+            posterior (LDSPosterior): LDS posterior object with leaf shapes (B, ...).
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+            key (jr.PRNGKey, optional): random seed. Defaults to None.
+        """
         # self._initial_condition.m_step(dataset, posteriors)  # TODO initial dist needs prior
         self._dynamics.m_step(data, posterior)
         self._emissions.m_step(data, posterior, key=key)
@@ -135,8 +148,12 @@ class LDS(SSM):
         However, for an LDS with generalized linear model (GLM) emissions, we can perform Laplace EM.
 
         Args:
-            dataset (np.ndarray): observed data
+            data (np.ndarray): observed data
                 of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{emissions\_dim})`
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
             method (str, optional): model fit method.
                 Must be one of ["laplace_em"]. Defaults to "laplace_em".
             rng (jr.PRNGKey, optional): Random seed.

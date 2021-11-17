@@ -19,11 +19,34 @@ class Dynamics:
 
     def distribution(self, state, covariates=None, metadata=None):
         """
-        Return the conditional distribution of z_t given state z_{t-1}
+        Return the conditional distribution of x_t given state x_{t-1}
+        
+        Args:
+            state (float): state x_{t-1}
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+                
+        Returns:
+            distribution (tfd.Distribution): conditional distribution of x_t given state x_{t-1}.
         """
         raise NotImplementedError
 
     def m_step(self, dataset, posteriors):
+        """Update the transition parameters in an M step given posteriors
+        over the latent states. 
+        
+        Update is performed in place.
+
+        Args:
+            dataset (np.ndarray): the observed dataset with shape (B, T, D)
+            posteriors (HMMPosterior): posteriors over the latent states with leaf shape (B, ...)
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+        """
         # TODO: implement generic m-step
         raise NotImplementedError
 
