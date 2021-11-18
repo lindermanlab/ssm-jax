@@ -157,13 +157,13 @@ def define_optimizer(p_params=None, q_params=None, r_params=None):
         p_opt = None
 
     if q_params is not None:
-        q_opt_def = optim.Adam(learning_rate=0.0001)
+        q_opt_def = optim.Adam(learning_rate=0.01)
         q_opt = q_opt_def.create(q_params)
     else:
         q_opt = None
 
     if r_params is not None:
-        r_opt_def = optim.Adam(learning_rate=0.0001)
+        r_opt_def = optim.Adam(learning_rate=0.01)
         r_opt = r_opt_def.create(r_params)
     else:
         r_opt = None
@@ -248,17 +248,20 @@ def define_proposal(n_proposals, stock_proposal_input_without_q_state, dummy_out
     :return:
     """
 
-    # Define a more conservative initialization.
-    w_init_mean = lambda *args: (0.01 * jax.nn.initializers.glorot_normal()(*args))
+    # w_init_mean = lambda *args: (0.01 * jax.nn.initializers.glorot_normal()(*args))
 
-    w_init_var = lambda *args: (0.01 * jax.nn.initializers.glorot_normal()(*args))
+    # Define a more conservative initialization.
+    w_init_mean = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
+
+    w_init_var = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
     b_init_var = lambda *args: (jax.nn.initializers.zeros(*args) - 2)
 
     output_dim = nn_util.vectorize_pytree(dummy_output).shape[0]
 
     trunk_fn = None  # MLP(features=(3, 4, 5), kernel_init=w_init)
-    mean_fn = nn.Dense(output_dim, kernel_init=w_init_mean)
-    var_fn = nn.Dense(output_dim, kernel_init=w_init_var, bias_init=b_init_var)
+    mean_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)  # nn.Dense(output_dim, kernel_init=w_init_mean)
+    var_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)  # nn.Dense(output_dim, kernel_init=w_init_var,
+    # bias_init=b_init_var)
 
     return independent_gaussian_proposal(n_proposals, stock_proposal_input_without_q_state, dummy_output,
                                          trunk_fn=trunk_fn, head_mean_fn=mean_fn,
