@@ -4,8 +4,6 @@ from jax import tree_util, vmap
 from jax.tree_util import register_pytree_node_class
 
 import ssm.distributions as ssmd
-from ssm.utils import sum_tuples
-
 
 class InitialCondition:
     """
@@ -19,19 +17,22 @@ class InitialCondition:
     def __init__(self):
         pass
 
-    def distribution(self):
+    def distribution(self, covariates=None, metadata=None):
         """
-        Return the distribution of z_1
+        Return the distribution of x_1 (potentially given covariates u_t)
+
+        Args:
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+
+        Returns:
+            distribution (tfd.Distribution): distribution of z_1
         """
         raise NotImplementedError
 
-    def log_probs(self, data):
-        """
-        Return [log Pr(z_1 = k) for k in range(num_states)]
-        """
-        return self.distribution().log_prob(np.arange(self.num_states))
-
-    def m_step(self, dataset, posteriors):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
         # TODO: implement generic m-step
         raise NotImplementedError
 
@@ -80,11 +81,34 @@ class StandardInitialCondition(InitialCondition):
     def mean(self):
         return self._distribution.loc
 
-    def distribution(self):
-       return self._distribution
+    def distribution(self, covariates=None, metadata=None):
+        """
+        Return the distribution of x_1.
 
-    def m_step(self, dataset, posteriors):
+        Args:
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
 
+        Returns:
+            distribution (tfd.Distribution): distribution of z_1
+        """
+        return self._distribution
+
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+        """Update the initial distribution in an M step given posteriors over the latent states.
+
+        Update is performed in place.
+
+        Args:
+            dataset (np.ndarray): the observed dataset with shape (B, T, D)
+            posteriors (HMMPosterior): posteriors over the latent states with leaf shape (B, ...)
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+        """
         def compute_stats_and_counts(posterior):
             Ex = posterior.expected_states[0]
             ExxT = posterior.expected_states_squared[0]

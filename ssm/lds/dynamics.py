@@ -17,13 +17,36 @@ class Dynamics:
     def __init__(self):
         pass
 
-    def distribution(self, state):
+    def distribution(self, state, covariates=None, metadata=None):
         """
-        Return the conditional distribution of z_t given state z_{t-1}
+        Return the conditional distribution of x_t given state x_{t-1}
+        
+        Args:
+            state (float): state x_{t-1}
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+                
+        Returns:
+            distribution (tfd.Distribution): conditional distribution of x_t given state x_{t-1}.
         """
         raise NotImplementedError
 
     def m_step(self, dataset, posteriors):
+        """Update the transition parameters in an M step given posteriors
+        over the latent states. 
+        
+        Update is performed in place.
+
+        Args:
+            dataset (np.ndarray): the observed dataset with shape (B, T, D)
+            posteriors (HMMPosterior): posteriors over the latent states with leaf shape (B, ...)
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+        """
         # TODO: implement generic m-step
         raise NotImplementedError
 
@@ -82,28 +105,50 @@ class StationaryDynamics(Dynamics):
     def scale(self):
         return self._distribution.scale
 
-    def distribution(self, state):
-       return self._distribution.predict(covariates=state)
+    def distribution(self, state, covariates=None, metadata=None):
+        if covariates is not None:
+            return self._distribution.predict(np.concatenate([state, covariates]))
+        else:
+            return self._distribution.predict(state)
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self,
+               batched_data,
+               batched_posteriors,
+               batched_covariates=None,
+               batched_metadata=None):
 
         # Manually extract the expected sufficient statistics from posterior
-        def compute_stats_and_counts(data, posterior):
-            Ex = posterior.expected_states
-            ExxT = posterior.expected_states_squared
-            ExnxT = posterior.expected_states_next_states
+        def compute_stats_and_counts(data, posterior, covariates, metadata):
+            Ex = posterior.expected_states[:-1]
+            Ey = posterior.expected_states[1:]
+            ExxT = posterior.expected_states_squared[:-1]
+            EyxT = posterior.expected_states_next_states
+            EyyT = posterior.expected_states_squared[1:]
+
+            # Concatenate with the covariates
+            if covariates is not None:
+                u = covariates[1:]
+                Ex = np.column_stack((Ex, u))
+                ExxT = vmap(lambda xi, xixiT, ui: \
+                    np.block([[xixiT,            np.outer(xi, ui)],
+                              [np.outer(ui, xi), np.outer(ui, ui)]]))(Ex, ExxT, u)
+                EyxT = vmap(lambda yi, yixiT, ui: \
+                    np.block([yixiT, np.outer(yi, ui)]))(Ey, EyxT, u)
 
             # Sum over time
-            sum_x = Ex[:-1].sum(axis=0)
-            sum_y = Ex[1:].sum(axis=0)
-            sum_xxT = ExxT[:-1].sum(axis=0)
-            sum_yxT = ExnxT.sum(axis=0)
-            sum_yyT = ExxT[1:].sum(axis=0)
+            sum_x = Ex.sum(axis=0)
+            sum_y = Ey.sum(axis=0)
+            sum_xxT = ExxT.sum(axis=0)
+            sum_yxT = EyxT.sum(axis=0)
+            sum_yyT = EyyT.sum(axis=0)
             T = len(data) - 1
             stats = (T, sum_xxT, sum_x, T, sum_yxT, sum_y, sum_yyT)
             return stats
 
-        stats = vmap(compute_stats_and_counts)(dataset, posteriors)
+        stats = vmap(compute_stats_and_counts)(batched_data,
+                                               batched_posteriors,
+                                               batched_covariates,
+                                               batched_metadata)
         stats = tree_map(sum, stats)  # sum out batch for each leaf
 
         if self._prior is not None:

@@ -1,3 +1,4 @@
+from jax._src.tree_util import register_pytree_node_class
 import jax.numpy as np
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
@@ -20,10 +21,10 @@ class NormalInverseWishart(ConjugatePrior, tfd.JointDistributionNamed):
         """
         # Store hyperparameters.
         # Note: these should really be private.
-        self.loc = loc
-        self.mean_precision = mean_precision
-        self.df = df
-        self.scale = scale
+        self._loc = loc
+        self._mean_precision = mean_precision
+        self._df = df
+        self._scale = scale
 
         # Convert the inverse Wishart scale to the scale_tril of a Wishart.
         # Note: this could be done more efficiently.
@@ -37,8 +38,18 @@ class NormalInverseWishart(ConjugatePrior, tfd.JointDistributionNamed):
                         tfb.Invert(tfb.CholeskyOuterProduct())
                         ])),
             mu=lambda Sigma: tfd.MultivariateNormalFullCovariance(
-                loc, Sigma / mean_precision)
-        ))
+                loc, Sigma / mean_precision))
+        )
+
+        # Replace the default JointDistributionNamed parameters with the NIW ones
+        # because the JointDistributionNamed parameters contain lambda functions,
+        # which are not jittable.
+        self._parameters = dict(
+            loc=loc,
+            mean_precision=mean_precision,
+            df=df,
+            scale=scale
+        )
 
     # These functions compute the pseudo-observations implied by the NIW prior
     # and convert sufficient statistics to a NIW posterior. We'll describe them
@@ -46,11 +57,11 @@ class NormalInverseWishart(ConjugatePrior, tfd.JointDistributionNamed):
     @property
     def natural_parameters(self):
         """Compute pseudo-observations from standard NIW parameters."""
-        dim = self.loc.shape[-1]
-        s1 = self.df + dim + 2
-        s2 = np.einsum('...,...i->...i', self.mean_precision, self.loc)
-        s3 = self.scale + self.mean_precision * np.einsum("...i,...j->...ij", self.loc, self.loc)
-        s4 = self.mean_precision
+        dim = self._loc.shape[-1]
+        s1 = self._df + dim + 2
+        s2 = np.einsum('...,...i->...i', self._mean_precision, self._loc)
+        s3 = self._scale + self._mean_precision * np.einsum("...i,...j->...ij", self._loc, self._loc)
+        s4 = self._mean_precision
         return s1, s2, s3, s4
 
     @classmethod
@@ -81,6 +92,6 @@ class NormalInverseWishart(ConjugatePrior, tfd.JointDistributionNamed):
         .. math::
             \Sigma^* = \Psi_0 / (\nu_0 + d + 2)
         """
-        dim = self.loc.shape[-1]
-        covariance = np.einsum("...,...ij->...ij", 1 / (self.df + dim + 2), self.scale)
-        return self.loc, covariance
+        dim = self._loc.shape[-1]
+        covariance = np.einsum("...,...ij->...ij", 1 / (self._df + dim + 2), self._scale)
+        return self._loc, covariance

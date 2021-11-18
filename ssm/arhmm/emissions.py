@@ -19,7 +19,7 @@ class AutoregressiveEmissions(Emissions):
                  covariances: np.ndarray=None,
                  emissions_distribution: ssmd.GaussianLinearRegression=None,
                  emissions_distribution_prior: ssmd.GaussianLinearRegressionPrior=None) -> None:
-        """Gaussian linear regression emissions class for Autoregressive HMM.
+        r"""Gaussian linear regression emissions class for Autoregressive HMM.
 
         Can be instantiated by specifying the parameters or you can pass in
         the initialized distribution object directly to ``emissions_distribution``.
@@ -29,13 +29,13 @@ class AutoregressiveEmissions(Emissions):
         Args:
             num_states (int): number of discrete states
             weights (np.ndarray, optional): state-based weight matrix for Gaussian linear regression
-                of shape :math:`(\text{num_states}, \text{num_emission_dims}, \text{num_emission_dims} * \text{num_lags})`.
+                of shape :math:`(\text{num\_states}, \text{emissions\_dim}, \text{emissions\_dim} * \text{num\_lags})`.
                 Defaults to None.
             biases (np.ndarray, optional): state-based bias vector for Gaussian linear regression
-                of shape :math:`(\text{num_states}, \text{num_emission_dims})`.
+                of shape :math:`(\text{num\_states}, \text{emissions\_dim})`.
                 Defaults to None.
             covariances (np.ndarray, optional): state-based covariances for Gaussian linear regression
-                of shape :math:`(\text{num_states}, \text{num_emission_dims}, \text{num_emission_dims})`.
+                of shape :math:`(\text{num\_states}, \text{emissions\_dim}, \text{emissions\_dim})`.
                 Defaults to None.
             emissions_distribution (ssmd.GaussianLinearRegression, optional): initialized emissions distribution. Defaults to None.
             emissions_distribution_prior (ssmd.MatrixNormalInverseWishart, optional): emissions prior distribution. Defaults to None.
@@ -67,10 +67,10 @@ class AutoregressiveEmissions(Emissions):
         self._prior = emissions_distribution_prior
 
     @property
-    def emissions_dim(self):
-        return self._distribution.weights.shape[-1]
+    def emissions_shape(self):
+        return (self._distribution.weights.shape[-1],)
 
-    def distribution(self, state: int, covariates: np.ndarray=None) -> ssmd.GaussianLinearRegression:
+    def distribution(self, state: int, covariates=None, metadata=None, history: np.ndarray=None) -> ssmd.GaussianLinearRegression:
         """Returns the emissions distribution conditioned on a given state.
 
         Args:
@@ -81,9 +81,9 @@ class AutoregressiveEmissions(Emissions):
         Returns:
             emissions_distribution (ssmd.GaussianLinearRegression): the emissions distribution
         """
-        return self._distribution[state]
+        return self._distribution[state].predict(history.ravel())
 
-    def log_probs_scan(self, data):
+    def log_likelihoods_scan(self, data):
         # Compute the emission log probs
         dim = self._distribution.data_dimension
         num_lags = self._distribution.covariate_dimension // dim
@@ -99,7 +99,7 @@ class AutoregressiveEmissions(Emissions):
         log_probs = log_probs.at[:num_lags].set(0.0)
         return log_probs
 
-    def log_probs(self, data):
+    def log_likelihoods(self, data, covariates=None, metadata=None):
         # Constants
         num_timesteps, dim = data.shape
         num_states = self.num_states
@@ -126,14 +126,18 @@ class AutoregressiveEmissions(Emissions):
         log_probs = np.row_stack([np.zeros((num_lags, num_states)), log_probs])
         return log_probs
 
-    def m_step(self, dataset: np.ndarray, posteriors: StationaryHMMPosterior) -> None:
+    def m_step(self,
+               dataset: np.ndarray,
+               posteriors: StationaryHMMPosterior,
+               covariates=None,
+               metadata=None) -> None:
         r"""Update the distribution (in-place) with an M step.
 
         Operates over a batch of data.
 
         Args:
             dataset (np.ndarray): observed data
-                of shape :math:`(\text{batch_dim}, \text{num_timesteps}, \text{emissions_dim})`.
+                of shape :math:`(\text{batch\_dim}, \text{num\_timesteps}, \text{emissions\_dim})`.
             posteriors (StationaryHMMPosterior): HMM posterior object
                 with batch_dim to match dataset.
         """

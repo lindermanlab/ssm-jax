@@ -1,11 +1,14 @@
 # SSM: Bayesian learning and inference for state space models
 
-[![Tests](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/python-package-conda.yml/badge.svg)](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/python-package-conda.yml)
+[![Integration Tests](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/integration_tests.yml/badge.svg)](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/integration_tests.yml)
+[![Unit Tests](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/unit_tests.yml/badge.svg)](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/unit_tests.yml)
 
 
 Refactoring the SSM code base to use Jax.
 
 # Example
+
+A quick demonstration of some of the most basic elements of SSM. Check out the [example notebooks](https://github.com/lindermanlab/ssm-jax-refactor/tree/main/notebooks) for more!
 
 ```python
 from ssm.hmm import GaussianHMM

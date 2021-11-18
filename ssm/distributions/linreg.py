@@ -153,7 +153,7 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
     """
     def __repr__(self) -> str:
         return "<GaussianLinearRegressionPrior batch_shape={} event_shape={}>".\
-            format(self.loc.shape[:-2], self.loc.shape[-2:])
+            format(self._loc.shape[:-2], self._loc.shape[-2:])
 
     def _mode(self):
         r"""Solve for the mode. Recall,
@@ -168,8 +168,8 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
         .. math::
             \Sigma^* = \Psi_0 / (\nu_0 + d + 2)
         """
-        weights_and_bias = self.loc
-        scale = np.einsum("...,...ij->...ij", 1 / (self.df + self.dim[0] + self.dim[1] + 2), self.scale)
+        weights_and_bias = self._loc
+        scale = np.einsum("...,...ij->...ij", 1 / (self._df + self.dim[0] + self.dim[1] + 2), self._scale)
         return dict(weights=weights_and_bias[...,:,:-1],
                     bias=weights_and_bias[...,:,-1],
                     scale_tril=np.linalg.cholesky(scale))
@@ -179,17 +179,17 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
         """Compute pseudo-observations from standard NIW parameters."""
         T = lambda X: np.swapaxes(X, -1, -2)
         row_dim, col_dim = self.dim
-        Vi = np.linalg.inv(self.scale_column)
-        MVi = T(Vi @ T(self.loc))
-        MViMT = MVi @ T(self.loc)
+        Vi = np.linalg.inv(self._scale_column)
+        MVi = T(Vi @ T(self._loc))
+        MViMT = MVi @ T(self._loc)
 
-        s1 = self.df + row_dim + col_dim + 1    # 1
+        s1 = self._df + row_dim + col_dim + 1    # 1
         s2 = Vi[...,:-1,:-1]                    # xx^T
         s3 = Vi[...,:-1,-1]                     # x
         s4 = Vi[...,-1,-1]                      # 1
         s5 = MVi[...,:,:-1]                     # yx^T
         s6 = MVi[...,:, -1]                     # y
-        s7 = self.scale + MViMT                 # yy^T
+        s7 = self._scale + MViMT                 # yy^T
         return s1, s2, s3, s4, s5, s6, s7
 
     @classmethod

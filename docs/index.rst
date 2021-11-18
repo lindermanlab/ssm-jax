@@ -5,6 +5,8 @@
 Welcome to ssm-jax's documentation!
 ===================================
 
+.. include:: quickstart.rst
+
 .. toctree::
    :maxdepth: 1
    :caption: Contents:

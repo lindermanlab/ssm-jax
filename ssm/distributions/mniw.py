@@ -16,10 +16,10 @@ class MatrixNormalInverseWishart(ConjugatePrior, tfd.JointDistributionNamed):
         """
         # Store hyperparameters.
         # Note: these should really be private.
-        self.loc = loc
-        self.scale_column = scale_column
-        self.df = df
-        self.scale = scale_covariance
+        self._loc = loc
+        self._scale_column = scale_column
+        self._df = df
+        self._scale = scale_covariance
 
         # Convert the inverse Wishart scale to the scale_tril of a Wishart.
         # Note: this could be done more efficiently.
@@ -38,28 +38,38 @@ class MatrixNormalInverseWishart(ConjugatePrior, tfd.JointDistributionNamed):
                 scale_column=tf.linalg.LinearOperatorFullMatrix(scale_column))
         ))
 
+        # Replace the default JointDistributionNamed parameters with the NIW ones
+        # because the JointDistributionNamed parameters contain lambda functions,
+        # which are not jittable.
+        self._parameters = dict(
+            loc=loc,
+            scale_column=scale_column,
+            df=df,
+            scale=scale_covariance
+        )
+
     def __repr__(self) -> str:
         return "<MatrixNormalInverseWishart batch_shape={} event_shape={}>".\
-            format(self.loc.shape[:-2], self.loc.shape[-2:])
+            format(self._loc.shape[:-2], self._loc.shape[-2:])
 
     @property
     def dim(self):
-        return self.loc.shape[-2:]
+        return self._loc.shape[-2:]
 
     def _mode(self):
         covariance = np.einsum("...,...ij->...ij",
-                               1 / (self.df + sum(self.dim) + 1), self.scale)
-        return self.loc, covariance
+                               1 / (self._df + sum(self.dim) + 1), self._scale)
+        return self._loc, covariance
 
     @property
     def natural_parameters(self):
         """Compute pseudo-observations from standard NIW parameters."""
         row_dim, col_dim = self.dim
-        V0iM0T = np.linalg.solve(self.scale_column, self.loc.T)
-        s1 = self.df + row_dim + col_dim + 1
-        s2 = np.linalg.inv(self.scale_column)
+        V0iM0T = np.linalg.solve(self._scale_column, self._loc.T)
+        s1 = self._df + row_dim + col_dim + 1
+        s2 = np.linalg.inv(self._scale_column)
         s3 = np.swapaxes(V0iM0T, -1, -2)
-        s4 = self.scale + self.loc @ V0iM0T
+        s4 = self._scale + self._loc @ V0iM0T
         return s1, s2, s3, s4
 
     @classmethod
