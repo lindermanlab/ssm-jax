@@ -14,7 +14,7 @@ from copy import deepcopy as dc
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation
-from ssm.inference.smc import smc, plot_single_sweep
+from ssm.inference.smc import smc, _plot_single_sweep
 from ssm.inference.em import em
 import ssm.distributions as ssmd
 from ssm.inference.conditional_generators import build_independent_gaussian_generator
@@ -105,19 +105,19 @@ def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_swee
     sweep_em_mean = em_posterior.mean()[0]
     sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[0]
     sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
-    plot_single_sweep(sweep_em_statistics, true_states[0], tag='EM smoothing', preprocessed=True)
+    _plot_single_sweep(sweep_em_statistics, true_states[0], tag='EM smoothing', preprocessed=True)
 
     # Test SMC in the true model..
     key, subkey = jr.split(key)
     true_sweep, true_lml, _, _ = smc(subkey, true_model, dataset, num_particles=5000)
     true_lml = - lexp(true_lml)
-    plot_single_sweep(true_sweep[0], true_states[0], tag='True Smoothing.')
+    _plot_single_sweep(true_sweep[0], true_states[0], tag='True Smoothing.')
 
     # Test SMC in the initial model.
     initial_params = dc(get_params(opt))
     key, subkey = jr.split(key)
     initial_lml, initial_sweep = _do_fivo_sweep_jitted(subkey, get_params(opt), _num_particles=5000)
-    sweep_fig = plot_single_sweep(initial_sweep[0], true_states[0], tag='Initial Smoothing.')
+    sweep_fig = _plot_single_sweep(initial_sweep[0], true_states[0], tag='Initial Smoothing.')
     do_print(0, initial_lml, true_model, true_lml, opt, em_log_marginal_likelihood)
     return true_lml, em_log_marginal_likelihood, sweep_fig
 
@@ -350,9 +350,9 @@ def main():
     # Set up true model and draw some data.
     latent_dim = 3
     emissions_dim = 5
-    num_trials = 5
-    num_timesteps = 100
-    num_particles = 100
+    num_trials = 20
+    num_timesteps = 200
+    num_particles = 200
     opt_steps = 100000
 
     # Create a more reasonable emission scale.
@@ -440,8 +440,8 @@ def main():
 
                 if _step > coldstart:
                     pred_lml, pred_sweep = do_fivo_sweep_jitted(subkey, get_params(opt), _num_particles=5000)
-                    sweep_fig = plot_single_sweep(pred_sweep[0], true_states[0], tag='{} Smoothing.'.format(_step),
-                                                  fig=sweep_fig)
+                    sweep_fig = _plot_single_sweep(pred_sweep[0], true_states[0], tag='{} Smoothing.'.format(_step),
+                                                   fig=sweep_fig)
 
             p = 0
 

@@ -602,7 +602,7 @@ def do_resample(key,
     return resampled_particles, ancestors, resampled_log_weights, should_resample
 
 
-def plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=None):
+def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=None):
     """
     Some stock code for plotting the results of an SMC sweep.
 
