@@ -22,6 +22,7 @@ from ssm.inference.conditional_generators import build_independent_gaussian_gene
 import flax.linen as nn
 from ssm.lds.models import GaussianLDS
 import ssm.nn_util as nn_util
+import ssm.inference.proposals as proposals
 
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
@@ -172,168 +173,36 @@ def define_optimizer(p_params=None, q_params=None, r_params=None):
     return opt
 
 
-class independent_gaussian_proposal():
-    """
-    Define a proposal FUNCTION that is an indpendent gaussian.  This Module is actually just a thin wrapper over a set
-    of Linen modules.
-
-    To define a different proposal FUNCTION here (as opposed to a proposal structure), change this class.
-
-    This modules `.apply` method also wraps a call to the input generator, which takes the standard proposal
-    parametersization (dataset, model, particles, t, p_dist, q_state) and flattens it into the right form.
-
-    :param n_proposals:
-    :param stock_proposal_input_without_q_state:
-    :param dummy_output:
-    :param trunk_fn:
-    :param head_mean_fn:
-    :param head_log_var_fn:
-    :return:
-    """
-
-    def __init__(self, n_proposals, stock_proposal_input_without_q_state, dummy_output,
-                 trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
-
-        assert n_proposals == 1, 'Can only use a single proposal.'
-
-        # Re-build the full input that will be provided.
-        q_state = None
-        full_input = (*stock_proposal_input_without_q_state, q_state)
-
-        # Parse the input.
-        self._dummy_processed_input = self.proposal_input_generator(*full_input)
-
-        # Build out the function approximator.
-        self.proposal = build_independent_gaussian_generator(self._dummy_processed_input,
-                                                             dummy_output,
-                                                             trunk_fn=trunk_fn,
-                                                             head_mean_fn=head_mean_fn,
-                                                             head_log_var_fn=head_log_var_fn, )
-
-    def init(self, key):
-        return self.proposal.init(key, self._dummy_processed_input)
-
-    def apply(self, params, inputs):
-        proposal_inputs = self.proposal_input_generator(*inputs)
-        q_dist = self.proposal.apply(params, proposal_inputs)
-        return q_dist, None
-
-    def proposal_input_generator(self, *_inputs):
-        """
-        Inputs of the form: (dataset, model, particle[SINGLE], t, p_dist, q_state).
-        :param _inputs:
-        :return:
-        """
-
-        dataset, _, particles, t, _, _ = _inputs  # NOTE - this part of q can't actually use model or p_dist.
-        proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=0, axis=0, keepdims=False), _inputs[2])
-
-        is_batched = (_inputs[1].latent_dim != particles.shape[0])
-        if not is_batched:
-            return nn_util.vectorize_pytree(proposal_inputs)
-        else:
-            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return vmapped(*proposal_inputs)
-
-
-def define_proposal(n_proposals, stock_proposal_input_without_q_state, dummy_output):
-    """
-    Define the proposal.  Right now, this is implemented to define a static proposal with no input dependence.
-
-    This function would be then changed to define more expressive proposals.
-
-    :param n_proposals:
-    :param stock_proposal_input_without_q_state:
-    :param dummy_output:
-    :return:
-    """
-
-    # w_init_mean = lambda *args: (0.01 * jax.nn.initializers.glorot_normal()(*args))
-
-    # Define a more conservative initialization.
-    w_init_mean = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
-
-    w_init_var = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
-    b_init_var = lambda *args: (jax.nn.initializers.zeros(*args) - 2)
-
-    output_dim = nn_util.vectorize_pytree(dummy_output).shape[0]
-
-    trunk_fn = None  # MLP(features=(3, 4, 5), kernel_init=w_init)
-    mean_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)  # nn.Dense(output_dim, kernel_init=w_init_mean)
-    var_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)  # nn.Dense(output_dim, kernel_init=w_init_var,
-    # bias_init=b_init_var)
-
-    return independent_gaussian_proposal(n_proposals, stock_proposal_input_without_q_state, dummy_output,
-                                         trunk_fn=trunk_fn, head_mean_fn=mean_fn,
-                                         head_log_var_fn=var_fn)
-
-
-def wrap_proposal_structure(PROPOSAL_STRUCTURE, proposal, param_vals):
-    """
-    Function that produces another function that wraps the proposal.  This needs wrapping because we define a
-    proposal as a function that takes just the inputs (as opposed to the inputs and the parameters of the proposal).
-    Therefore, this function partly just closes over the value of the proposal parameters, returning a function with
-    a call to these values baked in.
-
-    The proposal may also be parameterized in a funny way, and so this function provides some flexibility in how the
-    function is defined and used.
-
-    This is partly to separate out the code as much as possible, but also because vmapping over distribution and
-    model objects was proving to be a pain, so this allows you to vmap the proposal inside the proposal itself,
-    and then get the results of that and use them as required (i.e. for implementing the ResQ proposal).
-
-    NOTE - both of the proposal functions also return a None, as there is no q_state to pass along.
-
-    :param PROPOSAL_STRUCTURE:      String indicating the type of proposal structure to use.
-    :param proposal:                Proposal object.  Will wrap a call to the `.apply` method.
-    :param param_vals:              Tuple of parameters (p, q, r).  We will wrap q here.
-    :return: Function that can be called as fn(inputs).
-    """
-
-    # If there is no proposal, then there is no structure to define.
-    if proposal is None:
-        return None
-
-    # We fork depending on the proposal type.
-    # Proposal takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
-    if PROPOSAL_STRUCTURE == 'DIRECT':
-
-        def _proposal(*_input):
-            z_dist, q_state = proposal.apply(param_vals[1], _input)
-            return z_dist, q_state
-
-    elif PROPOSAL_STRUCTURE == 'RESQ':
-
-        def _proposal(*_input):
-            dataset, model, particles, t, p_dist, q_state = _input
-            q_dist, q_state = proposal.apply(param_vals[1], _input)
-            z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist.mean() + q_dist.mean(),
-                                                          covariance_matrix=q_dist.covariance())
-            return z_dist, q_state
-    else:
-        raise NotImplementedError()
-
-    return _proposal
-
-
-
 # TODO - BEGIN PAIN AND MISERY AND DEATH AND DESTRUCTION AND SADNESS.
 
-def rebuild_model(_model, _param_vals, _p_params_accessors):
-    for _v, _a in zip(_param_vals, _p_params_accessors):
-        _model = _a(_model, _v)
-    return _model
+def define_rebuild_model(_model, _p_params_accessors):
+
+    def rebuild_model(_param_vals):
+        _rebuilt_model = dc(_model)
+        for _v, _a in zip(_param_vals, _p_params_accessors):
+            _rebuilt_model = _a(_rebuilt_model, _v)
+        return _rebuilt_model
+
+    return rebuild_model
+
+
+def define_rebuild_proposal(_proposal, _prop_structure):
+
+    def rebuild_proposal(_param_vals):
+        return proposals.wrap_proposal_structure(_prop_structure, _proposal, _param_vals)
+
+    return rebuild_proposal
 
 # TODO - END PAIN AND MISERY AND DEATH AND DESTRUCTION AND SADNESS.
 
 
+def do_fivo_sweep(_param_vals, _key, _rebuild_model, _rebuild_proposal, _dataset, _num_particles):
 
-def do_fivo_sweep(_key, _model, _proposal, _param_vals, _p_params_accessors, _dataset, _num_particles, _prop_structure):
     # Reconstruct the model, inscribing the new parameter values.
-    _model = rebuild_model(_model, _param_vals[0], _p_params_accessors)
+    _model = _rebuild_model(_param_vals[0])
 
-    # Reconstruct the proposal function.
-    _proposal = wrap_proposal_structure(_prop_structure, _proposal, _param_vals)
+    # Reconstruct the proposal.
+    _proposal = _rebuild_proposal(_param_vals[1])
 
     # Do the sweep.
     _smooth, _lmls, _, _ = smc(_key, _model, _dataset, proposal=_proposal, num_particles=_num_particles)
@@ -387,9 +256,9 @@ def main():
     # Stock proposal input form is (dataset, model, particles, t, p_dist).
     stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles[0], 0, dummy_p_dist)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((latent_dim, )), )
-    proposal = define_proposal(n_proposals=1,
-                               stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
-                               dummy_output=dummy_proposal_output)
+    proposal = proposals.IndependentGaussianProposal(n_proposals=1,
+                                                     stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
+                                                     dummy_output=dummy_proposal_output)
     key, subkey = jr.split(key)
     proposal_params = proposal.init(subkey)
 
@@ -411,17 +280,23 @@ def main():
     # Build up the optimizer.
     opt = define_optimizer(p_params, proposal_params)
 
+    # Define the functions for constructing objects.
+    rebuild_model_fn = define_rebuild_model(model, p_params_accessors)
+    rebuild_prop_fn = define_rebuild_proposal(proposal, PROPOSAL_STRUCTURE)
+
     with possibly_disabled():
 
         # Close over constant parameters.
         do_fivo_sweep_closed = lambda _k, _p, _num_particles: \
-            do_fivo_sweep(_k, model, proposal, _p, p_params_accessors, dataset, _num_particles, PROPOSAL_STRUCTURE)
+            do_fivo_sweep(_p, _k, rebuild_model_fn, rebuild_prop_fn, dataset, _num_particles)
 
         # Jit this badboy.
-        do_fivo_sweep_jitted = jax.jit(do_fivo_sweep_closed, static_argnums=2)
+        do_fivo_sweep_jitted = \
+            jax.jit(do_fivo_sweep_closed, static_argnums=2)
 
         # Convert into value and grad.
-        do_fivo_sweep_val_and_grad = jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
+        do_fivo_sweep_val_and_grad = \
+            jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
 
         # Test the initial models.
         true_lml, em_log_marginal_likelihood, sweep_fig = \
