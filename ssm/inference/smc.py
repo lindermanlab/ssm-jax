@@ -379,7 +379,7 @@ def _smc_forward_pass(key,
     log_weights = np.concatenate((initial_incremental_log_weights[None, :], log_weights))
     resampled = np.concatenate((np.asarray([initial_resampled]), resampled))
     ancestors = np.concatenate((np.arange(num_particles)[None, :], ancestors))
-    q_states = np.concatenate((np.asarray([initial_q_state]), q_states))
+    q_states = np.concatenate((np.asarray([initial_q_state]), q_states)) if q_states is not None else None
 
     # Average over particle dimension.
     p_hats = spsp.logsumexp(log_weights, axis=1) - np.log(num_particles)
