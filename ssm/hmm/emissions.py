@@ -88,12 +88,14 @@ class ExponentialFamilyEmissions(Emissions):
         return self._distribution.event_shape
 
     def distribution(self, state: int, covariates=None, metadata=None) -> ssmd.MultivariateNormalTriL:
-        """Get the distribution at the provided state.
+        """Get the emissions distribution at the provided state.
 
         Args:
             state (int): discrete state
-            covariates (np.ndarray, optional): optional covariates.
-                Not yet supported. Defaults to None.
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
 
         Returns:
             emissions distribution (tfd.MultivariateNormalLinearOperator):
@@ -108,7 +110,11 @@ class ExponentialFamilyEmissions(Emissions):
 
         Args:
             dataset (np.ndarray): the observed dataset
-            posteriors ([type]): the HMM posteriors
+            posteriors (HMMPosterior): the HMM posteriors
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
         """
         conditional = self._emissions_distribution_class.compute_conditional(
             dataset, weights=posteriors.expected_states, prior=self._prior)

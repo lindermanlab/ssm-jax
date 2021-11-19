@@ -9,7 +9,7 @@ from jax.tree_util import register_pytree_node_class
 import tensorflow_probability.substrates.jax as tfp
 
 from ssm.hmm.base import HMM
-from ssm.utils import tree_get, tree_concatenate
+from ssm.utils import tree_get, tree_concatenate, auto_batch
 
 @register_pytree_node_class
 class AutoregressiveHMM(HMM):
@@ -17,17 +17,16 @@ class AutoregressiveHMM(HMM):
 
     Inherits from HMM base class.
     """
-
-    @property
-    def emission_dim(self):
-        return self._emissions._distribution.data_dimension
-
     @property
     def num_lags(self):
         dist = self._emissions._distribution
         return dist.covariate_dimension // dist.data_dimension
 
-    def emissions_distribution(self, state: float, covariates=None, metadata=None, history=None) -> tfp.distributions.Distribution:
+    def emissions_distribution(self,
+                               state: float,
+                               covariates=None,
+                               metadata=None,
+                               history=None) -> tfp.distributions.Distribution:
         """
         The emissions (or observation) distribution conditioned on the current state.
 
@@ -43,6 +42,7 @@ class AutoregressiveHMM(HMM):
         """
         return self._emissions.distribution(state, covariates=covariates, metadata=metadata, history=history)
 
+    @auto_batch(batched_args=("states", "data", "covariates", "metadata"))
     def log_probability(self, states, data, covariates=None, metadata=None, history=None):
         r"""
         Computes the log joint probability of a set of states and data (observations).
@@ -64,56 +64,55 @@ class AutoregressiveHMM(HMM):
                 of shape :math:`(\text{batch]},)`
         """
 
-        def _log_probability_single(_states, _data, _covariates, _history):
-            if _history is None:
-                _history = np.zeros((self.num_lags, self.emission_dim))
+        if history is None:
+            history = np.zeros((self.num_lags, *self.emissions_shape))
 
-            lp = 0
+        lp = 0
 
-            # Get the first timestep probability
-            initial_state = tree_get(_states, 0)
-            initial_data = tree_get(_data, 0)
-            initial_covariates = tree_get(_covariates, 0)
+        # Get the first timestep probability
+        initial_state = tree_get(states, 0)
+        initial_data = tree_get(data, 0)
+        initial_covariates = tree_get(covariates, 0)
 
-            lp += self.initial_distribution(covariates=initial_covariates,
-                                            metadata=metadata).log_prob(initial_state)
-            lp += self.emissions_distribution(initial_state,
-                                              covariates=initial_covariates,
-                                              metadata=metadata,
-                                              history=_history).log_prob(initial_data)
+        lp += self.initial_distribution(covariates=initial_covariates,
+                                        metadata=metadata).log_prob(initial_state)
+        lp += self.emissions_distribution(initial_state,
+                                            covariates=initial_covariates,
+                                            metadata=metadata,
+                                            history=history).log_prob(initial_data)
 
-            def _step(carry, args):
-                prev_state, history, lp = carry
-                state, emission, covariates = args
-                lp += self.dynamics_distribution(prev_state,
-                                                 covariates=covariates,
-                                                 metadata=metadata).log_prob(state)
-                lp += self.emissions_distribution(state,
-                                                  covariates=covariates,
-                                                  metadata=metadata,
-                                                  history=history).log_prob(emission)
-                # new_history = tree_concatenate(tree_get(_history, slice(1, None)), emission[None, ...])
-                new_history = np.row_stack((history[1:], emission))
-                return (state, new_history, lp), None
+        def _step(carry, args):
+            prev_state, history, lp = carry
+            state, emission, covariates = args
+            lp += self.dynamics_distribution(prev_state,
+                                                covariates=covariates,
+                                                metadata=metadata).log_prob(state)
+            lp += self.emissions_distribution(state,
+                                                covariates=covariates,
+                                                metadata=metadata,
+                                                history=history).log_prob(emission)
+            # new_history = tree_concatenate(tree_get(_history, slice(1, None)), emission[None, ...])
+            new_history = np.row_stack((history[1:], emission))
+            return (state, new_history, lp), None
 
-            initial_carry = (tree_get(_states, 0),
-                             np.row_stack((_history[1:], data[0])),
-                             lp)
-            (_, _, lp), _ = lax.scan(_step, initial_carry,
-                                     (tree_get(_states, slice(1, None)),
-                                      tree_get(_data, slice(1, None)),
-                                      tree_get(_covariates, slice(1, None))))
-            return lp
-
-        if data.ndim > 2:
-            lp = vmap(_log_probability_single)(states, data, covariates, history)
-        else:
-            lp = _log_probability_single(states, data, covariates, history)
-
+        initial_carry = (tree_get(states, 0),
+                            np.row_stack((history[1:], data[0])),
+                            lp)
+        (_, _, lp), _ = lax.scan(_step, initial_carry,
+                                    (tree_get(states, slice(1, None)),
+                                    tree_get(data, slice(1, None)),
+                                    tree_get(covariates, slice(1, None))))
         return lp
 
 
-    def sample(self, key, num_steps: int, initial_state=None, covariates=None, metadata=None, num_samples: int=1, history=None):
+    def sample(self,
+               key,
+               num_steps: int,
+               initial_state=None,
+               covariates=None,
+               metadata=None,
+               num_samples: int=1,
+               history=None):
         r"""
         Sample from the joint distribution defined by the state space model.
 
@@ -149,7 +148,7 @@ class AutoregressiveHMM(HMM):
                 state = initial_state
 
             if history is None:
-                history = np.zeros((self.num_lags, self.emission_dim))
+                history = np.zeros((self.num_lags, *self.emissions_shape))
             else:
                 history = history
 
@@ -182,4 +181,4 @@ class AutoregressiveHMM(HMM):
 
     def __repr__(self):
         return f"<ssm.hmm.{type(self).__name__} num_states={self.num_states} " \
-               f"emissions_dim={self.emissions_shape} num_lags={self.num_lags}>"
+               f"emissions_shape={self.emissions_shape} num_lags={self.num_lags}>"

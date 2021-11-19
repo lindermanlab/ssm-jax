@@ -1,4 +1,4 @@
-name: Tests
+name: Integration Tests
 
 # sets workflow to be manual-run only
 on:
@@ -37,7 +37,7 @@ jobs:
       run: |
         conda install pytest
         pytest tests/timing_comparisons -v -rw --ignore ssm_v0_benchmark_tests --junit-xml pytest.xml
-    - name: Publish Unit Test Results
+    - name: Publish Integration Test Results
       uses: EnricoMi/publish-unit-test-result-action@v1
       if: always()
       with:
