@@ -5,8 +5,8 @@ Useful utility functions.
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
-from jax import vmap, lax
-from jax.tree_util import tree_map, tree_structure, tree_leaves
+from jax import vmap, lax, tree_multimap
+from jax.tree_util import tree_map, tree_structure, tree_leaves, tree_reduce, tree_multimap
 
 import inspect
 from enum import IntEnum
@@ -61,6 +61,21 @@ def tree_concatenate(tree1, tree2, axis=0):
     """
     return tree_map(lambda x, y: np.concatenate((x, y), axis=axis), tree1, tree2)
 
+def tree_all_equal(tree1, tree2):
+    """Check Pytree equality when tree leaves are arrays.
+
+    Args:
+        tree1 ([type]): [description]
+        tree2 ([type]): [description]
+        
+    Returns:
+        isEqual (bool): whether array PyTrees are equal
+    """
+    return tree_reduce(
+        lambda x, y: np.all(x) == np.all(y) == True,
+        tree_multimap(lambda x, y: np.all(x == y), tree1, tree2),
+        True
+    )
 
 def ssm_pbar(num_iters, verbose, description, *args):
     """
