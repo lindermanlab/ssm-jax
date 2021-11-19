@@ -58,23 +58,23 @@ class StationaryDynamics(Dynamics):
     Basic dynamics model for CTLDS.
 
     Uses the underlying SDE:
-        dx = (drift_matrix @ x + drift_bias) dt + scale @ dB
+        dx = (drift_matrix @ x + drift_bias) dt + diffusion_scale @ dB
     where B is a standard Brownian motion.
     """
     def __init__(self,
                  drift_matrix=None,
                  drift_bias=None,
-                 scale=None,
+                 diffusion_scale=None,
                  dynamics_distribution_prior=None) -> None:
         super(StationaryDynamics, self).__init__()
 
         assert (drift_matrix is not None and \
                 drift_bias is not None and \
-                scale is not None)
+                diffusion_scale is not None)
 
         self.drift_matrix = drift_matrix
         self.drift_bias = drift_bias
-        self.scale = scale
+        self.diffusion_scale = diffusion_scale
 
         self._state_dim = drift_matrix.shape[0]
     
@@ -83,17 +83,17 @@ class StationaryDynamics(Dynamics):
         self._prior = dynamics_distribution_prior
 
     def tree_flatten(self):
-        children = (self.drift_matrix, self.drift_bias, self.scale, self._prior) # will this work?
+        children = (self.drift_matrix, self.drift_bias, self.diffusion_scale, self._prior) # will this work?
         aux_data = None
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        drift_matrix, drift_bias, scale, prior = children
+        drift_matrix, drift_bias, diffusion_scale, prior = children
         return cls(aux_data,
                    drift_matrix=drift_matrix,
                    drift_bias=drift_bias,
-                   scale=scale,
+                   diffusion_scale=diffusion_scale,
                    dynamics_distribution_prior=prior)
 
     def distribution(self, state, covariates=None, metadata=None):
@@ -108,7 +108,7 @@ class StationaryDynamics(Dynamics):
         bias = augmented_transition_matrix[:self._state_dim, self._state_dim:] @ self.drift_bias
 
         hamiltonian = (
-            np.block([[self.drift_matrix, self.scale @ self.scale.T],
+            np.block([[self.drift_matrix, self.diffusion_scale @ self.diffusion_scale.T],
                         [zeros,             -self.drift_matrix.T]]))
         matrix_fraction_numerator = expm(hamiltonian * covariates)[:self._state_dim, self._state_dim:]
         noise_covariance = matrix_fraction_numerator @ transition_matrix.T

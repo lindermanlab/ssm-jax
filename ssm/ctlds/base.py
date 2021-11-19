@@ -5,6 +5,10 @@ from jax import lax
 
 from ssm.base import SSM
 from ssm.distributions import MultivariateNormalBlockTridiag
+import ssm.ctlds.initial as initial
+import ssm.ctlds.dynamics as dynamics
+import ssm.ctlds.emissions as emissions
+from ssm.utils import Verbosity, auto_batch, ensure_has_batch_dim
 CTLDSPosterior = MultivariateNormalBlockTridiag
 
 @register_pytree_node_class
@@ -46,17 +50,16 @@ class CTLDS(SSM):
         return self._initial_condition._distribution.covariance()
 
     @property
-    def dynamics_matrix(self):
-        return self._dynamics.weights
+    def drift_matrix(self):
+        return self._dynamics.drift_matrix
 
     @property
-    def dynamics_bias(self):
-        return self._dynamics.bias
-
+    def drift_bias(self):
+        return self._dynamics.drift_bias
+    
     @property
-    def dynamics_noise_covariance(self):
-        Q_sqrt = self._dynamics.scale_tril  # TODO: this should be a property in dynamics
-        return Q_sqrt @ Q_sqrt.T
+    def diffusion_scale(self):
+        return self._dynamics.diffusion_scale
 
     @property
     def emissions_matrix(self):

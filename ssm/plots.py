@@ -78,3 +78,42 @@ def plot_dynamics_2d(dynamics_matrix,
 
     plt.gca().set_aspect(1.0)
     return q
+
+
+def plot_continuous_dynamics_2d(drift_matrix,
+                                drift_bias,
+                                mins=(-40,-40),
+                                maxs=(40,40),
+                                npts=20,
+                                axis=None,
+                                **kwargs):
+    """Utility to visualize the dynamics for a 2 dimensional dynamical system.
+    
+    TODO: document this
+
+    Args:
+        drift_matrix: 2x2 numpy array. "D" matrix for the system.
+        drift_bias: "b" vector for the system. Has size (2,).
+        mins: Tuple of minimums for the quiver plot.
+        maxs: Tuple of maximums for the quiver plot.
+        npts: Number of arrows to show.
+        axis: Axis to use for plotting. Defaults to None, and returns a new axis.
+        kwargs: keyword args passed to plt.quiver.
+
+    Returns:
+        q: quiver object returned by pyplot
+    """
+    assert drift_matrix.shape == (2, 2), "Must pass a 2 x 2 dynamics matrix to visualize."
+    assert len(drift_bias) == 2, "Bias vector must have length 2."
+
+    x_grid, y_grid = np.meshgrid(np.linspace(mins[0], maxs[0], npts), np.linspace(mins[1], maxs[1], npts))
+    xy_grid = np.column_stack((x_grid.ravel(), y_grid.ravel(), np.zeros((npts**2,0))))
+    dx = xy_grid.dot(drift_matrix.T) + drift_bias
+
+    if axis is not None:
+        q = axis.quiver(x_grid, y_grid, dx[:, 0], dx[:, 1], **kwargs)
+    else:
+        q = plt.quiver(x_grid, y_grid, dx[:, 0], dx[:, 1], **kwargs)
+
+    # plt.gca().set_aspect(1.0)
+    return q
