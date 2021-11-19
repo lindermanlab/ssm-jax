@@ -31,10 +31,10 @@ class DeterministicRNN(SSM):
         return obj
 
     def initial_distribution(self, covariates=None, metadata=None):
-        return tfd.Deterministic(self._initial_state)
+        return tfd.VectorDeterministic(self._initial_state, atol=1e-5)
 
     def dynamics_distribution(self, state, covariates=None, metadata=None):
         return NotImplementedError
 
     def emissions_distribution(self, state, covariates=None, metadata=None):
-        return tfd.Deterministic(state)
+        return tfd.VectorDeterministic(state, atol=1e-5)

@@ -1,2 +1,2 @@
 from .base import DeterministicRNN
-from .models import GRU
+from .models import GRU, LSTM
