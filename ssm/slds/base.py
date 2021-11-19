@@ -3,6 +3,8 @@ import jax.random as jr
 from jax.tree_util import register_pytree_node_class
 
 from tensorflow_probability.substrates import jax as tfp
+
+from ssm.slds.posterior import StructuredMeanFieldSLDSPosterior
 tfd = tfp.distributions
 
 from ssm.base import SSM
@@ -11,10 +13,9 @@ from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch
 
 import ssm.hmm.initial as hmm_initial
 import ssm.hmm.transitions as transitions
-import ssm.lds.emissions as emissions
 import ssm.lds.initial as lds_initial
+import ssm.slds.emissions as emissions
 import ssm.slds.dynamics as dynamics
-from ssm.distributions import MultivariateNormalBlockTridiag as LDSPosterior
 
 
 @register_pytree_node_class
@@ -159,7 +160,7 @@ class SLDS(SSM):
     @ensure_has_batch_dim
     def m_step(self,
                data: np.ndarray,
-               posterior: LDSPosterior,
+               posterior, #: LDSPosterior,
                covariates=None,
                metadata=None,
                key: jr.PRNGKey=None):
@@ -221,4 +222,4 @@ class SLDS(SSM):
     def __repr__(self):
         return f"<ssm.slds.{type(self).__name__} num_states={self.num_states} " \
                f"latent_dim={self.latent_dim} " \
-               f"emissions_dim={self.emissions_dim}>"
+               f"emissions_shape={self.emissions_shape}>"
