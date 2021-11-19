@@ -78,6 +78,9 @@ class GaussianLinearRegression(ExponentialFamilyDistribution,
         mean = np.einsum('...i,...ji->...j', covariates, self.weights) + self.bias
         return tfp.distributions.MultivariateNormalTriL(mean, self.scale_tril)
 
+    def _event_shape(self):
+        return self.bias.shape[-1]
+
     def _sample_n(self, n, covariates=None, seed=None):
         return self.predict(covariates).sample(sample_shape=n, seed=seed)
 

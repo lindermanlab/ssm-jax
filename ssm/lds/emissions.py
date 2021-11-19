@@ -100,6 +100,10 @@ class GaussianEmissions(Emissions):
                    emissions_distribution_prior=prior)
 
     @property
+    def emissions_shape(self):
+        return self._distribution.event_shape
+
+    @property
     def weights(self):
         return self._distribution.weights
 

@@ -80,8 +80,12 @@ class StandardDynamics(Dynamics):
     def scales(self):
         return self._distribution.scale
 
-    def distribution(self, prev_continuous_state, discrete_state):
-        return self._distribution[discrete_state].predict(prev_continuous_state)
+    def distribution(self, prev_continuous_state, discrete_state, covariates=None, metadata=None):
+        d = self._distribution[discrete_state]
+        if covariates is not None:
+            return d.predict(np.concatenate([prev_continuous_state, covariates]))
+        else:
+            return d.predict(prev_continuous_state)
 
     def m_step(self, dataset, posteriors):
         # TODO: Compute expected sufficient statistics under q(z).

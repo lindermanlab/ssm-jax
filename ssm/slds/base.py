@@ -7,13 +7,14 @@ tfd = tfp.distributions
 
 from ssm.base import SSM
 from ssm.inference.em import em
-from ssm.utils import Verbosity, format_dataset
+from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch
 
 import ssm.hmm.initial as hmm_initial
 import ssm.hmm.transitions as transitions
-import ssm.lds.dynamics as dynamics
 import ssm.lds.emissions as emissions
 import ssm.lds.initial as lds_initial
+import ssm.slds.dynamics as dynamics
+from ssm.distributions import MultivariateNormalBlockTridiag as LDSPosterior
 
 
 @register_pytree_node_class
@@ -67,8 +68,8 @@ class SLDS(SSM):
         return self._latent_dim
 
     @property
-    def emissions_dim(self):
-        return self._emissions.emissions_dim
+    def emissions_shape(self):
+        return self._emissions.emissions_shape
 
     def tree_flatten(self):
         children = (self._discrete_initial_condition,
@@ -87,21 +88,25 @@ class SLDS(SSM):
         SLDS.__init__(obj, *aux_data, *children)
         return obj
 
-    def initial_distribution(self):
+    def initial_distribution(self, covariates=None, metadata=None):
         return tfd.JointDistributionNamed(dict(
-            discrete=self._discrete_initial_condition.distribution(),
-            continuous=self._continuous_initial_condition.distribution()
+            discrete=self._discrete_initial_condition.distribution(
+                covariates=covariates, metadata=metadata),
+            continuous=self._continuous_initial_condition.distribution(
+                covariates=covariates, metadata=metadata)
             ))
 
-    def dynamics_distribution(self, state):
+    def dynamics_distribution(self, state, covariates=None, metadata=None):
         z_prev = state["discrete"]
         x_prev = state["continuous"]
         return tfd.JointDistributionNamed(dict(
-            discrete=self._transitions.distribution(z_prev),
-            continuous=lambda discrete: self._dynamics.distribution(x_prev, discrete)
+            discrete=self._transitions.distribution(
+                z_prev, covariates=covariates, metadata=metadata),
+            continuous=lambda discrete: self._dynamics.distribution(
+                x_prev, discrete, covariates=covariates, metadata=metadata)
         ))
 
-    def emissions_distribution(self, state):
+    def emissions_distribution(self, state, covariates=None, metadata=None):
         return self._emissions.distribution(state)
 
     ### Methods for posterior inference
@@ -151,12 +156,18 @@ class SLDS(SSM):
         raise NotImplementedError
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
-    def m_step(self, dataset, posteriors):
-        self._discrete_initial_condition.m_step(dataset, posteriors.discrete_state_posterior)
-        self._continuous_initial_condition.m_step(dataset, posteriors.continuous_state_posterior)
-        self._transitions.m_step(dataset, posteriors.discrete_state_posterior)
-        self._dynamics.m_step(dataset, posteriors)
-        self._emissions.m_step(dataset, posteriors)
+    @ensure_has_batch_dim
+    def m_step(self,
+               data: np.ndarray,
+               posterior: LDSPosterior,
+               covariates=None,
+               metadata=None,
+               key: jr.PRNGKey=None):
+        self._discrete_initial_condition.m_step(data, posterior.discrete_state_posterior)
+        self._continuous_initial_condition.m_step(data, posterior.continuous_state_posterior)
+        self._transitions.m_step(data, posterior.discrete_state_posterior)
+        self._dynamics.m_step(data, posterior)
+        self._emissions.m_step(data, posterior)
 
     # @format_dataset
     # def fit(self, dataset: np.ndarray,

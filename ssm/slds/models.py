@@ -15,7 +15,7 @@ from ssm.lds.initial import StandardInitialCondition as ContinuousInitialConditi
 from ssm.slds.base import SLDS
 from ssm.slds.dynamics import StandardDynamics
 from ssm.slds.emissions import GaussianEmissions
-from ssm.utils import format_dataset, random_rotation
+from ssm.utils import ensure_has_batch_dim, random_rotation
 
 
 @register_pytree_node_class

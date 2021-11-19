@@ -41,8 +41,7 @@ class LDS(SSM):
 
     @property
     def emissions_shape(self):
-        return (self._emissions.weights.shape[-2],)
-
+        return self._emissions.emissions_shape
     @property
     def initial_mean(self):
         return self._initial_condition.mean
@@ -116,11 +115,11 @@ class LDS(SSM):
                metadata=None,
                key: jr.PRNGKey=None):
         """Update the model in a (potentially approximate) M step.
-        
+
         Updates the model in place.
 
         Args:
-            data (np.ndarray): observed data with shape (B, T, D)  
+            data (np.ndarray): observed data with shape (B, T, D)
             posterior (LDSPosterior): LDS posterior object with leaf shapes (B, ...).
             covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
                 Defaults to None.

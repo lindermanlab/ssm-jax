@@ -28,6 +28,10 @@ class Emissions:
         self._distribution = emissions_distribution
         self._prior = emissions_distribution_prior
 
+    @property
+    def emissions_shape(self):
+        return self._distribution.event_shape
+
     def tree_flatten(self):
         children = (self._distribution, self._prior)
         aux_data = None
@@ -102,7 +106,7 @@ class GaussianEmissions(Emissions):
     def scale(self):
         return self._distribution.scale
 
-    def distribution(self, state):
+    def distribution(self, state, covariates=None, metadat=None):
         z = state["discrete"]
         x = state["continuous"]
         return self._distribution[z].predict(x)
