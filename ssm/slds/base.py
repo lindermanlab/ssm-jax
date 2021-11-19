@@ -151,13 +151,55 @@ class SLDS(SSM):
 
     #     # Do one m-step with the dummy posteriors
     #     self._emissions.m_step(dataset, dummy_posteriors)
+    @ensure_has_batch_dim()
+    def initialize(self,
+                   data,
+                   covariates=None,
+                   metadata=None,
+                   key=None,
+                   method="pca-kmeans"):
+        num_states = self._num_states
+        latent_dim = self._latent_dim
 
-    def infer_posterior(self, data):
+        if method.lower() == "pca-kmeans":
+            # TODO: use self.emissions_shape
+            flat_dataset = data.reshape(-1, data.shape[-1])
+
+            # Run PCA on the flattened data
+            from sklearn.decomposition import PCA
+            pca = PCA(latent_dim)
+            continuous_states = pca.fit_transform(flat_dataset)
+            emissions_matrix = pca.components_.T
+            emissions_variance = pca.noise_variance_
+            precision_diag_blocks = emissions_matrix.T @  emissions_matrix / emissions_variance
+            precision_diag_blocks = np.tile(precision_diag_blocks)
+
+            # Run KMeans on the PCs
+            from sklearn.cluster import KMeans
+            km = KMeans(num_states)
+            assignments = km.fit_predict(flat_dataset).reshape(data.shape[:-1])
+
+        else:
+            raise ValueError(f"Invalid initialize method: {method}.")
+
+        # Make a dummy posterior that just exposes expected_states
+        @dataclass
+        class DummyPosterior:
+            expected_states: np.ndarray
+        dummy_posteriors = DummyPosterior(one_hot(assignments, self._num_states))
+
+
+        # Initialize the posterior
+
+        pass
+
+    @auto_batch()
+    def variational_e_step(self, data, posterior, covariates=None, metadata=None):
         # TODO: fit a structured mean field posterior
         raise NotImplementedError
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
-    @ensure_has_batch_dim
+    @ensure_has_batch_dim()
     def m_step(self,
                data: np.ndarray,
                posterior, #: LDSPosterior,
