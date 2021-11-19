@@ -116,6 +116,7 @@ class SSM(object):
                 of shape :math:`(\text{batch]},)`
         """
 
+
         lp = 0
 
         # Get the first timestep probability
@@ -219,20 +220,32 @@ class SSM(object):
                 initial_covariates = tree_get(covariates, 0)
                 initial_state = self.initial_distribution(covariates=initial_covariates,
                                                           metadata=metadata).sample(seed=key1)
+            
+            key1, key = jr.split(key, 2)
+            initial_emission = self.emissions_distribution(initial_state,
+                                                           covariates=initial_covariates,
+                                                           metadata=metadata).sample(seed=key1)
 
-            def _step(state, key_and_covariates):
+            def _step(prev_state, key_and_covariates):
                 key, covariates = key_and_covariates
                 key1, key2 = jr.split(key, 2)
+                state = self.dynamics_distribution(prev_state,
+                                                   covariates=covariates,
+                                                   metadata=metadata).sample(seed=key2)
                 emission = self.emissions_distribution(state,
                                                        covariates=covariates,
                                                        metadata=metadata).sample(seed=key1)
-                next_state = self.dynamics_distribution(state,
-                                                        covariates=covariates,
-                                                        metadata=metadata).sample(seed=key2)
-                return next_state, (state, emission)
+                return state, (state, emission)
 
-            keys = jr.split(key, num_steps)
-            _, (states, emissions) = lax.scan(_step, initial_state, (keys, covariates))
+            keys = jr.split(key, num_steps-1)
+            _, (states, emissions) = lax.scan(_step, 
+                                              initial_state, 
+                                              (keys, tree_get(covariates, slice(1, None))))
+            
+            # concatentate the initial samples to the scanned samples
+            states = np.concatenate((np.expand_dims(initial_state, axis=0), states))
+            emissions = np.concatenate((np.expand_dims(initial_emission, axis=0), emissions))
+            
             return states, emissions
 
         if num_samples > 1:
