@@ -8,7 +8,7 @@ from jax.tree_util import register_pytree_node_class
 
 from ssm.base import SSM
 from ssm.inference.em import em
-from ssm.utils import Verbosity, format_dataset, one_hot
+from ssm.utils import Verbosity, auto_batch, one_hot, ensure_has_batch_dim
 
 import ssm.hmm.initial as initial
 import ssm.hmm.transitions as transitions
@@ -52,8 +52,8 @@ class HMM(SSM):
         return self._num_states
 
     @property
-    def emissions_dim(self):
-        return self._emissions.emissions_dim
+    def emissions_shape(self):
+        return self._emissions.emissions_shape
 
     def tree_flatten(self):
         children = (self._initial_condition,
@@ -70,26 +70,35 @@ class HMM(SSM):
         HMM.__init__(obj, aux_data, *children)
         return obj
 
-    def initial_distribution(self):
-        return self._initial_condition.distribution()
+    def initial_distribution(self, covariates=None, metadata=None):
+        return self._initial_condition.distribution(covariates=covariates, metadata=metadata)
 
-    def dynamics_distribution(self, state):
-        return self._transitions.distribution(state)
+    def dynamics_distribution(self, state, covariates=None, metadata=None):
+        return self._transitions.distribution(state, covariates=covariates, metadata=metadata)
 
-    def emissions_distribution(self, state):
-        return self._emissions.distribution(state)
+    def emissions_distribution(self, state, covariates=None, metadata=None):
+        return self._emissions.distribution(state, covariates=covariates, metadata=metadata)
 
 
     ### Methods for posterior inference
-    @format_dataset
-    def initialize(self, dataset: np.ndarray, key: jr.PRNGKey, method: str="kmeans") -> None:
+    @ensure_has_batch_dim()
+    def initialize(self,
+                   key: jr.PRNGKey,
+                   data: np.ndarray,
+                   covariates=None,
+                   metadata=None,
+                   method: str="kmeans") -> None:
         r"""Initialize the model parameters by performing an M-step with state assignments
         determined by the specified method (random or kmeans).
 
         Args:
-            dataset (np.ndarray): array of observed data
-                of shape :math:`(\text{batch} , \text{num\_timesteps} , \text{emissions\_dim})`
             key (jr.PRNGKey): random seed
+            data (np.ndarray): array of observed data
+                of shape :math:`(\text{batch} , \text{num\_timesteps} , \text{emissions\_dim})`
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
             method (str, optional): state assignment method.
                 One of "random" or "kmeans". Defaults to "kmeans".
 
@@ -100,15 +109,15 @@ class HMM(SSM):
         num_states = self._num_states
         if method.lower() == "random":
             # randomly assign datapoints to clusters
-            assignments = jr.choice(key, self._num_states, dataset.shape[:-1])
+            # TODO: use self.emissions_shape
+            assignments = jr.choice(key, self._num_states, data.shape[:-1])
 
         elif method.lower() == "kmeans":
-            # cluster the data with kmeans
-            # print("initializing with kmeans")
             from sklearn.cluster import KMeans
             km = KMeans(num_states)
-            flat_dataset = dataset.reshape(-1, dataset.shape[-1])
-            assignments = km.fit_predict(flat_dataset).reshape(dataset.shape[:-1])
+            # TODO: use self.emissions_shape
+            flat_dataset = data.reshape(-1, data.shape[-1])
+            assignments = km.fit_predict(flat_dataset).reshape(data.shape[:-1])
 
         else:
             raise ValueError(f"Invalid initialize method: {method}.")
@@ -120,29 +129,34 @@ class HMM(SSM):
         dummy_posteriors = DummyPosterior(one_hot(assignments, self._num_states))
 
         # Do one m-step with the dummy posteriors
-        self._emissions.m_step(dataset, dummy_posteriors)
-
-    def infer_posterior(self, data):
-        return StationaryHMMPosterior.infer(self._initial_condition.log_probs(data),
-                                            self._emissions.log_probs(data),
-                                            self._transitions.log_probs(data))
-
-    def marginal_likelihood(self, data, posterior=None):
-        if posterior is None:
-            posterior = self.infer_posterior(data)
-
-        # dummy_states = np.zeros(data.shape[0], dtype=int)
-        # return self.log_probability(dummy_states, data) - posterior.log_prob(dummy_states)
-        return posterior.log_normalizer
+        self._emissions.m_step(data, dummy_posteriors)
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
-    def m_step(self, dataset, posteriors):
-        self._initial_condition.m_step(dataset, posteriors)
-        self._transitions.m_step(dataset, posteriors)
-        self._emissions.m_step(dataset, posteriors)
+    @auto_batch(batched_args=("data", "posterior", "covariates", "metadata"))
+    def marginal_likelihood(self, data, posterior=None, covariates=None, metadata=None):
+        if posterior is None:
+            posterior = self.e_step(data, covariates=covariates, metadata=metadata)
 
-    @format_dataset
-    def fit(self, dataset: np.ndarray,
+        return posterior.log_normalizer
+
+    @auto_batch(batched_args=("data", "covariates", "metadata"))
+    def e_step(self, data, covariates=None, metadata=None):
+        return StationaryHMMPosterior.infer(
+            self._initial_condition.log_initial_probs(data, covariates=covariates, metadata=metadata),
+            self._emissions.log_likelihoods(data, covariates=covariates, metadata=metadata),
+            self._transitions.log_transition_matrices(data, covariates=covariates, metadata=metadata))
+
+    @ensure_has_batch_dim()
+    def m_step(self, data, posterior, covariates=None, metadata=None):
+        self._initial_condition.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        self._transitions.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        self._emissions.m_step(data, posterior, covariates=covariates, metadata=metadata)
+
+    @ensure_has_batch_dim()
+    def fit(self,
+            data: np.ndarray,
+            covariates=None,
+            metadata=None,
             method: str="em",
             num_iters: int=100,
             tol: float=1e-4,
@@ -152,8 +166,12 @@ class HMM(SSM):
         r"""Fit the HMM to a dataset using the specified method and initialization.
 
         Args:
-            dataset (np.ndarray): observed data
+            data (np.ndarray): observed data
                 of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{emissions\_dim})`
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
             method (str, optional): model fit method.
                 Must be one of ["em"]. Defaults to "em".
             num_iters (int, optional): number of fit iterations.
@@ -176,15 +194,18 @@ class HMM(SSM):
             posteriors (StationaryHMMPosterior): the fitted posteriors
         """
         model = self
-        kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
 
         if initialization_method is not None:
             if verbosity >= Verbosity.LOUD : print("Initializing...")
-            self.initialize(dataset, key, method=initialization_method)
+            self.initialize(key, data, method=initialization_method)
             if verbosity >= Verbosity.LOUD: print("Done.", flush=True)
 
         if method == "em":
-            log_probs, model, posteriors = em(model, dataset, **kwargs)
+            log_probs, model, posteriors = em(
+                model, data, num_iters=num_iters, tol=tol, verbosity=verbosity,
+                covariates=covariates, metadata=metadata
+            )
+
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
@@ -192,4 +213,4 @@ class HMM(SSM):
 
     def __repr__(self):
         return f"<ssm.hmm.{type(self).__name__} num_states={self.num_states} " \
-               f"emissions_dim={self.emissions_dim}>"
+               f"emissions_shape={self.emissions_shape}>"

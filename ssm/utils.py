@@ -5,14 +5,15 @@ Useful utility functions.
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
-from jax.tree_util import tree_map, tree_structure, tree_leaves
+from jax import vmap, lax, tree_multimap
+from jax.tree_util import tree_map, tree_structure, tree_leaves, tree_reduce, tree_multimap
 
 import inspect
 from enum import IntEnum
 from tqdm.auto import trange
 from scipy.optimize import linear_sum_assignment
 from typing import Sequence, Optional
-from functools import wraps
+from functools import wraps, partial
 import copy
 
 
@@ -35,25 +36,46 @@ class Verbosity(IntEnum):
     DEBUG = 3
 
 
-def sum_tuples(a, b):
-    """
-    Utility function to sum tuples in an element-wise fashion.
+def tree_get(tree, idx):
+    """Idx the leaves of the PyTree.
 
     Args:
-        a (tuple): A length ``n`` tuple
-        b (tuple): A length ``n`` tuple
+        tree ([type]): [description]
+        idx ([type]): [description]
 
     Returns:
-        c (tuple): The element-wise sum of ``a`` and ``b``.
+        [type]: [description]
     """
-    assert a or b
-    if a is None:
-        return b
-    elif b is None:
-        return a
-    else:
-        return tuple(ai + bi for ai, bi in zip(a, b))
+    return tree_map(lambda x: x[idx], tree)
 
+def tree_concatenate(tree1, tree2, axis=0):
+    """Concatenate leaves of two pytrees along specified axis.
+
+    Args:
+        tree1 ([type]): [description]
+        tree2 ([type]): [description]
+        axis ([type]): [description]
+
+    Returns:
+        [type]: [description]
+    """
+    return tree_map(lambda x, y: np.concatenate((x, y), axis=axis), tree1, tree2)
+
+def tree_all_equal(tree1, tree2):
+    """Check Pytree equality when tree leaves are arrays.
+
+    Args:
+        tree1 ([type]): [description]
+        tree2 ([type]): [description]
+        
+    Returns:
+        isEqual (bool): whether array PyTrees are equal
+    """
+    return tree_reduce(
+        lambda x, y: np.all(x) == np.all(y) == True,
+        tree_multimap(lambda x, y: np.all(x == y), tree1, tree2),
+        True
+    )
 
 def ssm_pbar(num_iters, verbose, description, *args):
     """
@@ -173,59 +195,129 @@ def random_rotation(seed, n, theta=None):
     return q.dot(out).dot(q.T)
 
 
-def format_dataset(f):
-    sig = inspect.signature(f)
+def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metadata"),
+                         model_arg="self"):
+    """Decorator to automatically add a batch dim to args defined by batched_args.
+    
+    Checks the shape of the PyTree leaves inside the data argument and compares them to the 
+    shape of emissions as defined by the model. A batch dimension is added if the shape
+    only has 1 additional dimension (num_timesteps).
+    
+    Naively assumes that if data needs a batch dim, then so do the rest of the batched_args.
 
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        # Get the `dataset` argument
-        bound_args = sig.bind(*args, **kwargs)
-        bound_args.apply_defaults()
-        dataset = bound_args.arguments["dataset"]
-        if "self" in bound_args.arguments:
-            model = bound_args.arguments["self"]
-        elif "model" in bound_args.arguments:
-            model = bound_args.arguments["model"]
-        else:
-            raise Exception(
-                "Expected function to have either `self` or `model` as an argument."
-            )
+    Args:
+        batched_args (tuple, optional): Names of the function arguments to batch. 
+            'data' must be an element. Defaults to ("data", "posterior", "covariates", "metadata").
+        model_arg (str, optional): The name of the argument of the model class.
+            Used to extract information about the emissions shape. Defaults to "self".
+    """
+    def ensure_has_batch_dim_decorator(f):
+        sig = inspect.signature(f)
 
-        # Make sure dataset is a pytree whose leave nodes have a batch dimension
-        def _ensure_batch_dim(arr, shp):
-            ndim = len(shp)
-            if ndim > 0:
-                assert arr.shape[-ndim:] == shp
-            if arr.ndim == ndim + 2:
-                return arr
-            elif arr.ndim == ndim + 1:
-                return arr[None, ...]
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            bound_args = sig.bind(*args, **kwargs)
+            bound_args.apply_defaults()
+
+            assert "data" in batched_args and "data" in bound_args.arguments,\
+                "`data` must be an argument in order to use the `ensure_has_batch_dim` decorator."
+
+            assert model_arg in bound_args.arguments, \
+                "`model_arg` must be an argument in order to use the `ensure_has_batch_dim` decorator."
+
+            # Determine the batch dimension from the shape of the data and the model.
+            # Naively assume that if data needs a batch, so do the other batched args.
+            given_shape = tree_map(lambda x: np.array(x.shape), bound_args.arguments["data"])
+            emissions_shape = bound_args.arguments[model_arg].emissions_shape
+
+            # First check that the trailing shapes are correct.
+            # leaf_is_valid = lambda shp, shp_suffix: \
+            #     len(shp) > len(shp_suffix) \
+            #         and len(shp) <=  len(shp_suffix) + 2 and \
+            #             np.all(shp[-len(shp_suffix):] == shp_suffix)
+            # assert all(tree_leaves(tree_map(leaf_is_valid, given_shape, emissions_shape)))
+
+            # A leaf needs a batch dim if it only has one extra dimension (num_timesteps).
+            leaf_needs_batch = lambda shp, shp_suffix: len(shp) == len(shp_suffix) + 1
+            needs_batch = all(tree_leaves(tree_map(leaf_needs_batch, given_shape, emissions_shape)))
+
+            # If data needs a batch, assume the other args do too
+            if needs_batch:
+                for key in batched_args:
+                    if key in bound_args.arguments and bound_args.arguments[key] is not None:
+                        bound_args.arguments[key] = \
+                            tree_map(lambda x: x[None, ...], bound_args.arguments[key])
+
+            return f(**bound_args.arguments)
+
+        return wrapper
+    return ensure_has_batch_dim_decorator
+
+
+def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "states"),
+               model_arg="self", map_function=vmap):
+    r"""Decorator to automatically "map" the wrapped function along a a batch if a
+    batch dim is detected in the data. By default, "map" means vmap. 
+    
+    Checks the shape of the PyTree leaves inside the data argument and compares them to the 
+    shape of emissions as defined by the model. The data is considered batched if it has 
+    two additional dimensions compared to the emissions (batch_dim and num_timesteps).
+    
+    Naively assumes that if data has a batch dim, then so do the rest of the batched_args.
+
+    Args:
+        batched_args (tuple, optional): Names of the function arguments that may be batched. 
+            'data' must be an element. Defaults to ("data", "posterior", "covariates", "metadata").
+        model_arg (str, optional): The name of the argument of the model class.
+            Used to extract information about the emissions shape. Defaults to "self".
+        map_function (Callable, optional): Type of map operation applied to func. 
+            Defaults to `vmap`.
+    """
+    def auto_batch_decorator(f):
+        sig = inspect.signature(f)
+
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            bound_args = sig.bind(*args, **kwargs)
+            bound_args.apply_defaults()
+
+            assert "data" in batched_args and "data" in bound_args.arguments,\
+                "`data` must be an argument in order to use the `auto_batch` decorator."
+
+            assert model_arg in bound_args.arguments, \
+                "`model_arg` must be an argument in order to use the `auto_batch` decorator."
+
+            # Determine the batch dimension from the shape of the data and the model.
+            # Naively assume that if data is batched, so are the other batched args.
+            given_shape = tree_map(lambda x: np.array(x.shape), bound_args.arguments["data"])
+            emissions_shape = bound_args.arguments[model_arg].emissions_shape
+
+            # First check that the trailing shapes are correct.
+            # leaf_is_valid = lambda shp, shp_suffix: \
+            #     len(shp) > len(shp_suffix) \
+            #         and len(shp) <=  len(shp_suffix) + 2 and \
+            #             np.all(shp[-len(shp_suffix):] == shp_suffix)
+            # assert all(tree_leaves(tree_map(leaf_is_valid, given_shape, emissions_shape)))
+
+            # Assume a leaf is batched if it has two extra dimensions (batch and num_timesteps).
+            leaf_is_batched = lambda shp, shp_suffix: len(shp) == len(shp_suffix) + 2
+            is_batched = all(tree_leaves(tree_map(leaf_is_batched, given_shape, emissions_shape)))
+
+            if not is_batched:
+                return f(*args, **kwargs)
+
             else:
-                raise Exception(
-                    "dataset must consist of arrays of shape "
-                    "((batch, timesteps) + event_shape) or ((timesteps,) + event_shape)"
-                )
+                # Otherwise, separate out the fixed args from those with a batch dimension and call vmap.
+                fixed_kwargs, batch_kwargs = {}, {}
+                for arg, val in bound_args.arguments.items():
+                    if arg in batched_args:
+                        batch_kwargs[arg] = val
+                    else:
+                        fixed_kwargs[arg] = val
+                return map_function(partial(f, **fixed_kwargs))(**batch_kwargs)
 
-        dataset = tree_map(_ensure_batch_dim, dataset, model.emissions_shape)
-
-        # if isinstance(dataset, (list, tuple)):
-        #     assert all([isinstance(d, dict) and "data" in d for d in dataset])
-        # elif isinstance(dataset, dict):
-        #     assert "data" in dataset
-        #     dataset = [dataset]
-        # elif isinstance(dataset, np.ndarray):
-        #     dataset = [dict(data=dataset)]
-        # else:
-        #     raise Exception("Expected `dataset` to be a numpy array, a dictionary, or a "
-        #                     "list of dictionaries.  See help(ssm.HMM) for more details.")
-
-        # Update the bound arguments
-        bound_args.arguments["dataset"] = dataset
-
-        # Call the function
-        return f(*bound_args.args, **bound_args.kwargs)
-
-    return wrapper
+        return wrapper
+    return auto_batch_decorator
 
 
 def one_hot(z, K):
@@ -264,7 +356,7 @@ CEND = "\033[0m"
 
 def test_and_find_inequality(obj_a, obj_b, check_name="shape", mode="input", sig=None):
     """Iterates through zipped components of obj_a and obj_b to find inequality.
-    
+
     Prints a message and returns the indices of unequal components in obj_a and obj_b.
 
     Args:
@@ -288,8 +380,8 @@ def test_and_find_inequality(obj_a, obj_b, check_name="shape", mode="input", sig
                 print(f"prev={a}\ncurr={b}", CEND)
                 inequality_idxs.append(i)
     return inequality_idxs
-    
-                
+
+
 
 
 def check_pytree_structure_match(obj_a, obj_b, mode="input", sig=None):
@@ -337,7 +429,7 @@ def check_pytree_shape_match(obj_a, obj_b, mode="input", sig=None):
 def check_pytree_weak_type_match(obj_a, obj_b, mode="input", sig=None):
     """Checks whether pytrees A and B have the same weak_typing.
     Used for debugging re-jit problems (see debug_rejit decorator).
-    """    
+    """
     shape_a = [x.weak_type for x in tree_leaves(obj_a)]
     shape_b = [x.weak_type for x in tree_leaves(obj_b)]
     idxs = test_and_find_inequality(
@@ -347,7 +439,7 @@ def check_pytree_weak_type_match(obj_a, obj_b, mode="input", sig=None):
         print(f"{CRED}[{mode} pytree leaf [{i}]]")
         print("prev=", repr(tree_leaves(obj_a)[i]))
         print("curr=", repr(tree_leaves(obj_b)[i]), CEND)
-    
+
 def check_pytree_dtype_match(obj_a, obj_b, mode="input", sig=None):
     """Checks whether pytrees A and B have the same dtype.
     Used for debugging re-jit problems (see debug_rejit decorator).
@@ -368,7 +460,7 @@ def check_pytree_match(
 ):
     """Checks whether pytrees A and B are the same by checking shape, structure,
     weak_typing, and dtype.
-    
+
     Used for debugging re-jit problems (see debug_rejit decorator).
 
     Args:

@@ -4,27 +4,33 @@ General EM routines
 import warnings
 import jax.numpy as np
 from jax import jit, vmap
-from ssm.utils import Verbosity, format_dataset, ssm_pbar
+from ssm.utils import Verbosity, ensure_has_batch_dim, ssm_pbar
 
 
-@format_dataset
+@ensure_has_batch_dim(model_arg="model")
 def em(model,
-       dataset,
+       data,
+       covariates=None,
+       metadata=None,
        num_iters=100,
        tol=1e-4,
        verbosity=Verbosity.DEBUG,
     ):
     """Fit a model using EM.
-    
+
     Assumes the model has the following methods for EM:
-    
-        - `.infer_posterior(data)` (i.e. E-step)
-        - `.marginal_likelihood(data, posterior)`
-        - `.m_step(dataset, posteriors)`
+
+        - `model.e_step(data)` (i.e. E-step)
+        - `model.m_step(dataset, posteriors)`
+        - `model.marginal_likelihood(data, posterior)`
 
     Args:
         model (ssm.base.SSM): the model to be fit
-        dataset ([np.ndarray]): the dataset with shape (B, T, D).
+        data (PyTree): the observed data with leaf shape (B, T, D).
+        covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+            Defaults to None.
+        metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+            Defaults to None.
         num_iters (int, optional): number of iterations of EM fit. Defaults to 100.
         tol (float, optional): tolerance in marginal lp to declare convergence. Defaults to 1e-4.
         verbosity (ssm.utils.Verbosity, optional): verbosity of fit. Defaults to Verbosity.DEBUG.
@@ -37,10 +43,10 @@ def em(model,
 
     @jit
     def update(model):
-        posteriors = vmap(model.infer_posterior)(dataset)
-        lp = vmap(model.marginal_likelihood)(dataset, posteriors).sum()
-        model.m_step(dataset, posteriors)
-        return model, posteriors, lp
+        posterior = model.e_step(data, covariates=covariates, metadata=metadata)
+        lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
+        model.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        return model, posterior, lp
 
     # Run the EM algorithm to convergence
     log_probs = []
