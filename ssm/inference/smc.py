@@ -4,6 +4,8 @@ SMC filtering/smoothing for SSMs.
 import jax
 import jax.numpy as np
 import matplotlib.pyplot as plt
+import logging
+from tensorflow_probability.substrates import jax as tfp
 
 # Specific imports for here.
 from jax.scipy import special as spsp
@@ -14,6 +16,7 @@ from ssm.utils import Verbosity
 
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
+
 
 
 def smc(key,
@@ -597,9 +600,15 @@ def do_resample(key,
         (key, log_weights, particles)
     )
 
-    resampled_log_weights = (1. - should_resample) * log_weights
+    if use_stop_gradient_resampling:
+        resamp_log_ws = jax.lax.cond(should_resample,
+                                     lambda _: log_weights[ancestors] - jax.lax.stop_gradient(log_weights[ancestors]),
+                                     lambda _: log_weights,
+                                     None)
+    else:
+        resamp_log_ws = (1. - should_resample) * log_weights
 
-    return resampled_particles, ancestors, resampled_log_weights, should_resample
+    return resampled_particles, ancestors, resamp_log_ws, should_resample
 
 
 def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=None):
