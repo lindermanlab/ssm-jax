@@ -9,4 +9,10 @@ class SVAEPosterior(tfp.distributions.Distribution):
     def __init__(self):
         pass
 
-    def infer(self, )
+    @classmethod
+    def infer(cls, data):
+        # What information should be passed in here?
+        # I feel like this class shouldn't really do all of the work
+        # And we should really just separate the CRF part from the NN part
+        pass
+

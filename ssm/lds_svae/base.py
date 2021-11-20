@@ -7,6 +7,10 @@ from ssm.base import SSM
 @register_pytree_node_class
 class SVAE(SSM):
     def __init__(self):
+        # Initial distribution
+        # Dynamics
+        # Generation network (emissions)
+        # Ideally, we want to pass in the recognition network in here as well
         pass
     
     @property
@@ -22,9 +26,10 @@ class SVAE(SSM):
     def emissions_distribution(self, state, covariates=None, metadata=None):
         pass
 
-    def e_step(self, data):
-        pass
-    
+    # Auto-batching?
+    def e_step(self, data, covariates=None, metadata=None):
+        return SVAEPosterior.infer(data)
+
     def m_step(self, dataset, posteriors):
         pass
 
