@@ -36,24 +36,25 @@ class FactorialInitialCondition(InitialCondition):
     def tree_unflatten(cls, aux_data, children):
         return cls(initial_condition_objects=children)
 
-    def log_probs(self, data):
-        return tuple(ic.log_probs(data) for ic in self._initial_conditions)
+    def log_initial_probs(self, data, covariates=None, metadata=None):
+        return tuple(ic.log_initial_probs(data, covariates=covariates, metadata=metadata)
+                     for ic in self._initial_conditions)
 
-    def distribution(self):
+    def distribution(self, covariates=None, metadata=None):
         Root = tfd.JointDistributionCoroutine.Root
         def model():
             for ic in self._initial_conditions:
                 yield Root(ic.distribution())
         return tfd.JointDistributionCoroutine(model)
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, data, posterior, covariates=None, metadata=None):
 
         class DummyPosterior:
             def __init__(self, expected_initial_states) -> None:
                 self.expected_initial_states = expected_initial_states
 
         for ic, expected_initial_states in \
-            zip(self._initial_conditions, posteriors.expected_initial_states):
-            ic.m_step(dataset, DummyPosterior(expected_initial_states))
+            zip(self._initial_conditions, posterior.expected_initial_states):
+            ic.m_step(data, DummyPosterior(expected_initial_states))
 
         return self

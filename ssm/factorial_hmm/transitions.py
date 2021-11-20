@@ -1,3 +1,4 @@
+from jax._src.numpy.lax_numpy import cov
 import jax.numpy as np
 from jax.tree_util import register_pytree_node_class
 
@@ -35,24 +36,25 @@ class FactorialTransitions(Transitions):
             M = np.kron(M, t.transition_matrix)
         return M
 
-    def distribution(self, state):
+    def distribution(self, state, covariates=None, metadata=None):
         Root = tfd.JointDistributionCoroutine.Root
         def model():
             for prev_state, transitions in zip(state, self._transitions):
                 yield Root(transitions.distribution(prev_state))
         return tfd.JointDistributionCoroutine(model)
 
-    def log_probs(self, data):
-        return tuple(t.log_probs(data) for t in self._transitions)
+    def log_transition_matrices(self, data, covariates=None, metadata=None):
+        return tuple(t.log_transition_matrices(data, covariates=covariates, metadata=metadata)
+                     for t in self._transitions)
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, data, posterior, covariates=None, metadata=None):
 
         class DummyPosterior:
             def __init__(self, expected_transitions) -> None:
                 self.expected_transitions = expected_transitions
 
         for transitions_object, expected_transitions in \
-            zip(self._transitions, posteriors.expected_transitions):
-            transitions_object.m_step(dataset, DummyPosterior(expected_transitions))
+            zip(self._transitions, posterior.expected_transitions):
+            transitions_object.m_step(data, DummyPosterior(expected_transitions))
 
         return self

@@ -43,7 +43,7 @@ class Emissions:
         inds = np.arange(self.num_states)
         return vmap(lambda k: self.distribution(k, covariates=covariates, metadata=metadata).log_prob(data))(inds).T
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+    def m_step(self, data, posterior, covariates=None, metadata=None):
         """By default, try to optimize the emission distribution via generic
         gradient-based optimization of the expected log likelihood.
 
@@ -55,9 +55,10 @@ class Emissions:
 
         def _objective(flat_emissions):
             emissions = unravel(flat_emissions)
-            f = lambda data, expected_states: np.sum(emissions.log_probs(data) * expected_states)
-            lp = vmap(f)(dataset, posteriors.expected_states).sum()
-            return -lp / dataset.size
+            f = lambda data, expected_states: \
+                np.sum(emissions.log_likelihoods(data, covariates=covariates, metadata=metadata) * expected_states)
+            lp = vmap(f)(data, posterior.expected_states).sum()
+            return -lp / data.size
 
         results = jax.scipy.optimize.minimize(
             _objective,

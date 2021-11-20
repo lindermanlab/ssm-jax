@@ -75,14 +75,14 @@ class NormalFactorialEmissions(FactorialEmissions):
     def emissions_shape(self):
         return self._distribution.event_shape
 
-    def distribution(self, state):
+    def distribution(self, state, covariates=None, metadata=None):
         """
         Return the conditional distribution of emission x_t
         given state z_t and (optionally) covariates u_t.
         """
         return self._distribution[state]
 
-    def log_probs(self, data):
+    def log_likelihoods(self, data, covariates=None, metadata=None):
         """
         Compute log p(x_t | z_t=(k_1, ..., k_J)) for all t and (k_1,...,k_J).
         """

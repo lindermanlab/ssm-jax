@@ -61,9 +61,7 @@ class NormalFactorialHMM(FactorialHMM):
             assert isinstance(K, int)
 
         if initial_probs is None:
-            initial_conditions = tuple(
-                StandardInitialCondition(K, np.ones(K) / K) for K in num_states
-            )
+            initial_probs = tuple(np.ones(K) / K for K in num_states)
 
         if transition_matrices is None:
             transmat = lambda K: 0.9 * np.eye(K) + 0.1 / (K-1) * (1 - np.eye(K))
@@ -81,7 +79,7 @@ class NormalFactorialHMM(FactorialHMM):
                 emission_means.append(tfd.Normal(0, 1).sample(seed=this_seed, sample_shape=K))
 
 
-        factorial_initial_condition = FactorialInitialCondition(initial_conditions)
+        factorial_initial_condition = FactorialInitialCondition(initial_probs)
         factorial_transitions = FactorialTransitions(transitions)
         factorial_emissions = NormalFactorialEmissions(
             num_states, means=emission_means, log_scale=np.log(np.sqrt(emission_variance)))
