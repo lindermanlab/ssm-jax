@@ -1,3 +1,7 @@
+"""
+TODO: update this test to work with new modules
+"""
+
 import jax.numpy as np
 import jax.random as jr
 
@@ -5,7 +9,7 @@ from tensorflow_probability.substrates import jax as tfp
 
 from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.distributions.linreg import GaussianLinearRegression
-from ssm.models.lds import GaussianLDS
+from ssm.lds import GaussianLDS
 from ssm.utils import random_rotation
 
 
@@ -13,26 +17,7 @@ def random_lds(key, T=10, D=2, N=4):
     """
     Make a random LDS with T time steps, D latent dimensions, N emission dims.
     """
-    k1, k2 = jr.split(key, 2)
-    m0 = np.zeros(D)
-    Q0 = np.eye(D)
-
-    initial_distribution = tfp.distributions.MultivariateNormalTriL(m0, Q0)
-
-
-    dynamics_distribution = GaussianLinearRegression(
-        random_rotation(k1, D, theta=np.pi/20),
-        np.zeros(D),
-        0.1 * np.eye(D))
-
-    emissions_distribution = GaussianLinearRegression(
-        jr.normal(k2, shape=(N, D)),
-        np.zeros(N),
-        1.0 * np.eye(N))
-
-    return GaussianLDS(initial_distribution,
-                       dynamics_distribution,
-                       emissions_distribution)
+    return GaussianLDS(D, N, seed=key)
 
 
 def make_big_Jh(J_diag, J_lower_diag, h):
@@ -60,7 +45,7 @@ def test_mean_to_h(key, T=10, D=2, N=4):
     k1, k2, k3 = jr.split(key, 3)
     lds = random_lds(k1, T=T, D=D, N=N)
     data = jr.normal(k2, shape=(T, N))
-    J_diag, J_lower_diag, h = lds.natural_parameters(data)
+    J_diag, J_lower_diag, h = lds.e_step(data)
     big_J, big_h = make_big_Jh(J_diag, J_lower_diag, h)
 
     mean = jr.normal(k3, shape=(T, D))

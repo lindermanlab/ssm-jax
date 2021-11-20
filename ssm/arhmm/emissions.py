@@ -67,10 +67,10 @@ class AutoregressiveEmissions(Emissions):
         self._prior = emissions_distribution_prior
 
     @property
-    def emissions_dim(self):
-        return self._distribution.weights.shape[-1]
+    def emissions_shape(self):
+        return (self._distribution.weights.shape[-1],)
 
-    def distribution(self, state: int, covariates: np.ndarray=None) -> ssmd.GaussianLinearRegression:
+    def distribution(self, state: int, covariates=None, metadata=None, history: np.ndarray=None) -> ssmd.GaussianLinearRegression:
         """Returns the emissions distribution conditioned on a given state.
 
         Args:
@@ -81,9 +81,9 @@ class AutoregressiveEmissions(Emissions):
         Returns:
             emissions_distribution (ssmd.GaussianLinearRegression): the emissions distribution
         """
-        return self._distribution[state]
+        return self._distribution[state].predict(history.ravel())
 
-    def log_probs_scan(self, data):
+    def log_likelihoods_scan(self, data):
         # Compute the emission log probs
         dim = self._distribution.data_dimension
         num_lags = self._distribution.covariate_dimension // dim
@@ -99,7 +99,7 @@ class AutoregressiveEmissions(Emissions):
         log_probs = log_probs.at[:num_lags].set(0.0)
         return log_probs
 
-    def log_probs(self, data):
+    def log_likelihoods(self, data, covariates=None, metadata=None):
         # Constants
         num_timesteps, dim = data.shape
         num_states = self.num_states
@@ -126,7 +126,11 @@ class AutoregressiveEmissions(Emissions):
         log_probs = np.row_stack([np.zeros((num_lags, num_states)), log_probs])
         return log_probs
 
-    def m_step(self, dataset: np.ndarray, posteriors: StationaryHMMPosterior) -> None:
+    def m_step(self,
+               dataset: np.ndarray,
+               posteriors: StationaryHMMPosterior,
+               covariates=None,
+               metadata=None) -> None:
         r"""Update the distribution (in-place) with an M step.
 
         Operates over a batch of data.

@@ -25,19 +25,23 @@ class Emissions:
     def num_states(self):
         return self._num_states
 
-    def distribution(self, state, covariates=None):
+    @property
+    def emissions_shape(self):
+        raise NotImplementedError
+
+    def distribution(self, state, covariates=None, metadata=None):
         """
         Return the conditional distribution of emission x_t
         given state z_t and (optionally) covariates u_t.
         """
         raise NotImplementedError
 
-    def log_probs(self, data):
+    def log_likelihoods(self, data, covariates=None, metadata=None):
         """
         Compute log p(x_t | z_t=k) for all t and k.
         """
         inds = np.arange(self.num_states)
-        return vmap(lambda k: self.distribution(k).log_prob(data))(inds).T
+        return vmap(lambda k: self.distribution(k, covariates=covariates, metadata=metadata).log_prob(data))(inds).T
 
     def m_step(self, dataset, posteriors):
         """By default, try to optimize the emission distribution via generic
@@ -107,13 +111,15 @@ class ExponentialFamilyEmissions(Emissions):
     def emissions_shape(self):
         return self._distribution.event_shape
 
-    def distribution(self, state: int, covariates: np.ndarray=None) -> ssmd.MultivariateNormalTriL:
-        """Get the distribution at the provided state.
+    def distribution(self, state: int, covariates=None, metadata=None) -> ssmd.MultivariateNormalTriL:
+        """Get the emissions distribution at the provided state.
 
         Args:
             state (int): discrete state
-            covariates (np.ndarray, optional): optional covariates.
-                Not yet supported. Defaults to None.
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
 
         Returns:
             emissions distribution (tfd.MultivariateNormalLinearOperator):
@@ -121,14 +127,18 @@ class ExponentialFamilyEmissions(Emissions):
         """
         return self._distribution[state]
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
         """Update the emissions distribution in-place using an M-step.
 
         Operates over a batch of data (posterior must have the same batch dim).
 
         Args:
             dataset (np.ndarray): the observed dataset
-            posteriors ([type]): the HMM posteriors
+            posteriors (HMMPosterior): the HMM posteriors
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
         """
         conditional = self._emissions_distribution_class.compute_conditional(
             dataset, weights=posteriors.expected_states, prior=self._prior)
