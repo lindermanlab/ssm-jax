@@ -62,7 +62,8 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         dim = self._weights.shape[-1]
         effective_weights = np.einsum('kde,i->kide', self._weights, 1/self._time_constants) + np.eye(dim)
         effective_biases = np.einsum('kd,i->kid', self._biases, 1/self._time_constants)
-        effective_scale_trils = np.einsum('kde,i->kide', self._scale_trils, 1/self._time_constants)
+        # effective_scale_trils = np.einsum('kde,i->kide', self._scale_trils, 1/self._time_constants)
+        effective_scale_trils = np.einsum('kde,i->kide', self._scale_trils, 1/np.sqrt(self._time_constants))
         self._distribution = GaussianLinearRegression(
             effective_weights, effective_biases, effective_scale_trils)
 
@@ -90,7 +91,8 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
     def log_probs(self, data):
 
         # Warp the covariances
-        warped_scale_trils = np.einsum('kij,c->kcij', self._scale_trils, 1/self.time_constants)
+        # warped_scale_trils = np.einsum('kij,c->kcij', self._scale_trils, 1/self.time_constants)
+        warped_scale_trils = np.einsum('kij,c->kcij', self._scale_trils, 1/np.sqrt(self.time_constants))
 
         # For AR(1) models, the (unwarped) predictive change in x is just a matrix multiplication
         def _lp_single(dx, x):
@@ -128,11 +130,22 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
             posteriors (StationaryHMMPosterior): HMM posterior object
                 with batch_dim to match dataset.
         """
-        # Collect statistics for a single datapoint
+        # Collect statistics for a single time step
         def _suff_stats_single(expected_states, dx, x):
             # compute sufficient statistics for each time constant
-            f = lambda tau: GaussianLinearRegression.sufficient_statistics(tau * dx, x)
-            stats = vmap(f)(self.time_constants)
+            # f = lambda tau: GaussianLinearRegression.sufficient_statistics(tau * dx, x)
+            # stats = vmap(f)(self.time_constants)
+
+            tw_sufficient_stats = lambda tau: \
+                (1.0,
+                 1 / tau * np.outer(x, x),
+                 1 / tau * x,
+                 1 / tau,
+                 np.outer(dx, x),
+                 dx,
+                 tau * np.outer(dx, dx))
+            stats = vmap(tw_sufficient_stats)(self.time_constants)
+
             # compute the expected sufficient statistics by summing over time constants
             # weighted by Pr(z=k, tau=c) for each discrete state k
             return tree_map(lambda s: np.einsum('kc,c...->k...', expected_states, s), stats)
