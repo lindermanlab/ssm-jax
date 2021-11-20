@@ -5,11 +5,12 @@ import jax.numpy as np
 import jax.random as jr
 from jax import vmap, lax
 from jax.tree_util import register_pytree_node_class
+from functools import partial
 
 import tensorflow_probability.substrates.jax as tfp
 
 from ssm.hmm.base import HMM
-from ssm.utils import tree_get, tree_concatenate, auto_batch
+from ssm.utils import tree_get, tree_concatenate, auto_batch, tree_map
 
 @register_pytree_node_class
 class AutoregressiveHMM(HMM):
@@ -174,8 +175,9 @@ class AutoregressiveHMM(HMM):
                                               (history, initial_state), 
                                               (keys, tree_get(covariates, slice(1, None))))
             
-            states = np.concatenate((np.expand_dims(initial_state, axis=0), states))
-            emissions = np.concatenate((np.expand_dims(initial_emission, axis=0), emissions))
+            expand_dims_fn = partial(np.expand_dims, axis=0)
+            states = tree_concatenate(tree_map(expand_dims_fn, initial_state), states)
+            emissions = tree_concatenate(tree_map(expand_dims_fn, initial_emission), emissions)
             
             return states, emissions
 

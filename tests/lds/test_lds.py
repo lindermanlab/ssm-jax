@@ -4,6 +4,8 @@ import jax.random as jr
 import jax.numpy as np
 from jax import jit
 
+import numpy as onp
+
 from ssm.lds import GaussianLDS, PoissonLDS
 
 SEED = jr.PRNGKey(0)
@@ -33,22 +35,22 @@ def test_gaussian_lds_sample_is_consistent():
     rng1, rng2 = jr.split(SEED, 2)
     
     true_states = np.array([[[ 2.0503902 , -0.98077524, -1.389261  ],
-                             [ 2.143722  , -1.0683461 , -1.1490295 ],
-                             [ 2.21696   , -1.1373025 , -0.9108291 ]],
+                             [ 2.1278157 , -1.0894692 , -1.1714737 ],
+                             [ 2.2172518 , -1.1573169 , -0.93505853]],
                             [[ 0.17471106, -0.05582879, -1.9695592 ],
-                             [ 0.24238327, -0.34164798, -1.9394323 ],
-                             [ 0.31522033, -0.63146836, -1.8712306 ]]], dtype=np.float32)
-    true_data = np.array([[[ 4.185537  , -0.3276755 ],
-                           [ 3.05506   , -0.72648746],
-                           [ 4.175408  , -0.05829722]],
-                          [[ 0.12157202, -1.9061788 ],
-                           [-0.56306684, -1.0952222 ],
-                           [ 1.3611842 , -2.24853   ]]], dtype=np.float32)
+                             [ 0.24917215, -0.34881595, -1.9439837 ],
+                             [ 0.33026809, -0.6336352 , -1.8497025 ]]], dtype=np.float32)
+    true_data = np.array([[[ 1.9926789 , -0.42406225],
+                           [ 2.0938962 , -0.6344335 ],
+                           [ 2.364299  , -0.9663689 ]],
+                          [[ 0.984763  , -0.40625238],
+                           [-1.1792403 , -2.729756  ],
+                           [ 0.37870926,  0.0921855 ]]], dtype=np.float32)
     rng1, rng2 = jr.split(SEED, 2)
     hmm = GaussianLDS(3, 2, seed=rng1)
     states, data = hmm.sample(rng2, num_steps=3, num_samples=2)
-    assert np.allclose(true_states, states)
-    assert np.allclose(true_data, data)
+    onp.testing.assert_allclose(true_states, states)
+    onp.testing.assert_allclose(true_data, data)
     
 def test_poisson_lds_sample():
     rng1, rng2 = jr.split(SEED, 2)
@@ -61,22 +63,21 @@ def test_poisson_lds_sample_is_consistent():
     rng1, rng2 = jr.split(SEED, 2)
     
     true_states = np.array([[[ 2.0503902 , -0.98077524, -1.389261  ],
-                             [ 2.143722  , -1.0683461 , -1.1490295 ],
-                             [ 2.21696   , -1.1373025 , -0.9108291 ]],
+                             [ 2.1278157 , -1.0894692 , -1.1714737 ],
+                             [ 2.2172518 , -1.1573169 , -0.93505853]],
                             [[ 0.17471106, -0.05582879, -1.9695592 ],
-                             [ 0.24238327, -0.34164798, -1.9394323 ],
-                             [ 0.31522033, -0.63146836, -1.8712306 ]]], dtype=np.float32)
-    true_data = np.array([[[17.,  0.],
-                           [12.,  0.],
-                           [15.,  0.]],
-                          [[ 4.,  2.],
-                           [ 1.,  0.],
-                           [ 5.,  1.]]], dtype=np.float32)
-    rng1, rng2 = jr.split(SEED, 2)
-    hmm = PoissonLDS(3, 2, seed=rng1)
-    states, data = hmm.sample(rng2, num_steps=3, num_samples=2)
-    assert np.allclose(true_states, states)
-    assert np.allclose(true_data, data)
+                             [ 0.24917215, -0.34881595, -1.9439837 ],
+                             [ 0.33026809, -0.6336352 , -1.8497025 ]]], dtype=np.float32)
+    true_data = np.array([[[20.,  3.],
+                           [13.,  0.],
+                           [14.,  0.]],
+                          [[ 5.,  1.],
+                           [ 2.,  0.],
+                           [ 4.,  1.]]], dtype=np.float32)
+    lds = PoissonLDS(3, 2, seed=rng1)
+    states, data = lds.sample(rng2, num_steps=3, num_samples=2)
+    onp.testing.assert_allclose(true_states, states)
+    onp.testing.assert_allclose(true_data, data)
     
 def test_gaussian_lds_em_fit():
     rng1, rng2, rng3 = jr.split(SEED, 3)

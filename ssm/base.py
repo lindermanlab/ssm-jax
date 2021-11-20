@@ -10,10 +10,12 @@ The base ``SSM`` object provides template functionality for a state space model.
 import jax.numpy as np
 import jax.random as jr
 from jax import lax, vmap
+from functools import partial
+from jax.tree_util import tree_map
 
 import tensorflow_probability.substrates.jax as tfp
 
-from ssm.utils import tree_get, auto_batch
+from ssm.utils import tree_get, auto_batch, tree_concatenate
 
 
 class SSM(object):
@@ -49,7 +51,7 @@ class SSM(object):
         The dynamics (or state-transition) distribution conditioned on the current state.
 
         .. math::
-            p(x_{t+1} | x_t)
+            p(x_{t+1} | x_t, u_{t+1})
 
         Args:
             state: The current state on which to condition the dynamics.
@@ -68,7 +70,7 @@ class SSM(object):
         The emissions (or observation) distribution conditioned on the current state.
 
         .. math::
-            p(y_t | x_t)
+            p(y_t | x_t, u_t)
 
         Args:
             state: The current state on which to condition the emissions.
@@ -243,8 +245,10 @@ class SSM(object):
                                               (keys, tree_get(covariates, slice(1, None))))
             
             # concatentate the initial samples to the scanned samples
-            states = np.concatenate((np.expand_dims(initial_state, axis=0), states))
-            emissions = np.concatenate((np.expand_dims(initial_emission, axis=0), emissions))
+            # TODO: should we make a tree_vstack?
+            expand_dims_fn = partial(np.expand_dims, axis=0)
+            states = tree_concatenate(tree_map(expand_dims_fn, initial_state), states)
+            emissions = tree_concatenate(tree_map(expand_dims_fn, initial_emission), emissions)
             
             return states, emissions
 

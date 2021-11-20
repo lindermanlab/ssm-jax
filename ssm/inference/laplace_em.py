@@ -127,6 +127,10 @@ def _compute_laplace_precision_blocks(model, states, data):
     return J_diag, J_lower_diag
 
 
+# recognition network :: model, data --> approximate posterior
+
+
+
 def laplace_approximation(model, data, initial_states, laplace_mode_fit_method="L-BFGS", num_laplace_mode_iters=10):
     """
     Laplace approximation to the posterior distribution for state space models

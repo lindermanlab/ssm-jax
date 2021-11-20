@@ -36,14 +36,14 @@ def test_gaussian_hmm_sample():
 def test_gaussian_hmm_sample_is_consistent():
     rng1, rng2 = jr.split(SEED, 2)
     
-    true_states = np.array([[0, 2, 2],
-                            [0, 0, 0]], dtype=np.int32)
-    true_data = np.array([[[ 1.901474 ,  0.3903318],
-                           [ 1.4439511,  1.0113559],
-                           [ 2.636291 ,  1.7115304]],
-                          [[-0.5909422, -1.5956663],
-                           [-1.248173 , -0.5830741],
-                           [ 0.7204445, -1.533948 ]]], dtype=np.float32)
+    true_states = np.array([[0, 2, 0],
+                            [0, 0, 2]], dtype=np.int32)
+    true_data = np.array([[[-0.29138386,  0.29394504],
+                           [ 0.4951557 ,  1.1221184 ],
+                           [ 0.19978702, -0.15766774]],
+                          [[ 0.27224892, -0.09574001],
+                           [-1.8726401 , -2.213043  ],
+                           [ 0.350825  ,  1.7823567 ]]], dtype=np.float32)
     rng1, rng2 = jr.split(SEED, 2)
     hmm = GaussianHMM(3, 2, seed=rng1)
     states, data = hmm.sample(rng2, num_steps=3, num_samples=2)
@@ -60,14 +60,14 @@ def test_poisson_hmm_sample():
 def test_poisson_hmm_sample_is_consistent():
     rng1, rng2 = jr.split(SEED, 2)
     
-    true_states = np.array([[0, 2, 2],
-                            [0, 0, 0]], dtype=np.int32)
-    true_data = np.array([[[2., 3.],
-                           [1., 5.],
-                           [3., 4.]],
-                          [[2., 4.],
-                           [0., 5.],
-                           [4., 4.]]], dtype=np.float32)
+    true_states = np.array([[0, 2, 0],
+                            [0, 0, 2]], dtype=np.int32)
+    true_data = np.array([[[2., 5.],
+                           [3., 7.],
+                           [2., 2.]],
+                          [[2., 1.],
+                           [1., 2.],
+                           [4., 3.]]], dtype=np.float32)
     rng1, rng2 = jr.split(SEED, 2)
     hmm = PoissonHMM(3, 2, seed=rng1)
     states, data = hmm.sample(rng2, num_steps=3, num_samples=2)
@@ -84,14 +84,14 @@ def test_bernoulli_hmm_sample():
 def test_bernoulli_hmm_sample_is_consistent():
     rng1, rng2 = jr.split(SEED, 2)
     
-    true_states = np.array([[0, 2, 2],
-                            [0, 0, 0]], dtype=np.int32)
+    true_states = np.array([[0, 2, 0],
+                            [0, 0, 2]], dtype=np.int32)
     true_data = np.array([[[1, 0],
                            [1, 1],
-                           [0, 0]],
-                          [[1, 1],
+                           [1, 0]],
+                          [[1, 0],
                            [1, 1],
-                           [1, 1]]], dtype=np.int32)
+                           [1, 0]]], dtype=np.int32)
     rng1, rng2 = jr.split(SEED, 2)
     hmm = BernoulliHMM(3, 2, seed=rng1)
     states, data = hmm.sample(rng2, num_steps=3, num_samples=2)
