@@ -142,33 +142,41 @@ class AutoregressiveHMM(HMM):
             if initial_state is None:
                 key1, key = jr.split(key, 2)
                 initial_covariates = tree_get(covariates, 0)
-                state = self.initial_distribution(covariates=initial_covariates,
-                                                  metadata=metadata).sample(seed=key1)
-            else:
-                state = initial_state
-
+                initial_state = self.initial_distribution(covariates=initial_covariates,
+                                                          metadata=metadata).sample(seed=key1)
             if history is None:
                 history = np.zeros((self.num_lags, *self.emissions_shape))
-            else:
-                history = history
+                
+            key1, key = jr.split(key, 2)
+            initial_emission = self.emissions_distribution(initial_state,
+                                                           covariates=initial_covariates,
+                                                           metadata=metadata,
+                                                           history=history).sample(seed=key1)
+            history = np.row_stack((history[1:], initial_emission))
 
             def _step(carry, key_and_covariates):
-                history, state = carry
+                history, prev_state = carry
                 key, covariates = key_and_covariates
                 key1, key2 = jr.split(key, 2)
+                state = self.dynamics_distribution(prev_state,
+                                                   covariates=covariates,
+                                                   metadata=metadata).sample(seed=key1)
                 emission = self.emissions_distribution(state,
                                                        covariates=covariates,
                                                        metadata=metadata,
-                                                       history=history).sample(seed=key1)
-                next_state = self.dynamics_distribution(state,
-                                                        covariates=covariates,
-                                                        metadata=metadata).sample(seed=key2)
+                                                       history=history).sample(seed=key2)
                 # next_history = tree_concatenate(tree_get(history, slice(1, None)), emission)
                 next_history = np.row_stack((history[1:], emission))
-                return (next_history, next_state), (state, emission)
+                return (next_history, state), (state, emission)
 
-            keys = jr.split(key, num_steps)
-            _, (states, emissions) = lax.scan(_step, (history, state), (keys, covariates))
+            keys = jr.split(key, num_steps - 1)
+            _, (states, emissions) = lax.scan(_step, 
+                                              (history, initial_state), 
+                                              (keys, tree_get(covariates, slice(1, None))))
+            
+            states = np.concatenate((np.expand_dims(initial_state, axis=0), states))
+            emissions = np.concatenate((np.expand_dims(initial_emission, axis=0), emissions))
+            
             return states, emissions
 
         if num_samples > 1:
