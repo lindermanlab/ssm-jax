@@ -48,7 +48,7 @@ def test_gaussian_hmm_sample_is_consistent():
     hmm = GaussianHMM(3, 2, seed=rng1)
     states, data = hmm.sample(rng2, num_steps=3, num_samples=2)
     assert np.all(true_states == states)
-    assert np.allclose(true_data, data)
+    assert np.allclose(true_data, data, atol=1e-5)
     
 def test_poisson_hmm_sample():
     rng1, rng2 = jr.split(SEED, 2)
@@ -72,7 +72,7 @@ def test_poisson_hmm_sample_is_consistent():
     hmm = PoissonHMM(3, 2, seed=rng1)
     states, data = hmm.sample(rng2, num_steps=3, num_samples=2)
     assert np.all(true_states == states)
-    assert np.allclose(true_data, data)
+    assert np.allclose(true_data, data, atol=1e-5)
     
 def test_bernoulli_hmm_sample():
     rng1, rng2 = jr.split(SEED, 2)
@@ -96,7 +96,7 @@ def test_bernoulli_hmm_sample_is_consistent():
     hmm = BernoulliHMM(3, 2, seed=rng1)
     states, data = hmm.sample(rng2, num_steps=3, num_samples=2)
     assert np.all(true_states == states)
-    assert np.allclose(true_data, data)
+    assert np.allclose(true_data, data, atol=1e-5)
     
 def test_gaussian_hmm_em_fit():
     rng1, rng2, rng3 = jr.split(SEED, 3)

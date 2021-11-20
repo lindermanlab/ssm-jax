@@ -49,8 +49,8 @@ def test_gaussian_lds_sample_is_consistent():
     rng1, rng2 = jr.split(SEED, 2)
     hmm = GaussianLDS(3, 2, seed=rng1)
     states, data = hmm.sample(rng2, num_steps=3, num_samples=2)
-    onp.testing.assert_allclose(true_states, states)
-    onp.testing.assert_allclose(true_data, data)
+    onp.testing.assert_allclose(true_states, states, atol=1e-5)
+    onp.testing.assert_allclose(true_data, data, atol=1e-5)
     
 def test_poisson_lds_sample():
     rng1, rng2 = jr.split(SEED, 2)
@@ -76,8 +76,8 @@ def test_poisson_lds_sample_is_consistent():
                            [ 4.,  1.]]], dtype=np.float32)
     lds = PoissonLDS(3, 2, seed=rng1)
     states, data = lds.sample(rng2, num_steps=3, num_samples=2)
-    onp.testing.assert_allclose(true_states, states)
-    onp.testing.assert_allclose(true_data, data)
+    onp.testing.assert_allclose(true_states, states, atol=1e-5)
+    onp.testing.assert_allclose(true_data, data, atol=1e-5)
     
 def test_gaussian_lds_em_fit():
     rng1, rng2, rng3 = jr.split(SEED, 3)
