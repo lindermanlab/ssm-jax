@@ -188,6 +188,7 @@ class GaussianEmissions(Emissions):
 
         conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
         self._distribution = ssmd.GaussianLinearRegression.from_params(conditional.mode())
+        return self
 
 
 @register_pytree_node_class
@@ -270,3 +271,4 @@ class PoissonEmissions(Emissions):
         )
 
         self._distribution = unravel(optimize_results.x)
+        return self

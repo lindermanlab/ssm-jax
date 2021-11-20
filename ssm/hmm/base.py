@@ -147,9 +147,10 @@ class HMM(SSM):
 
     @ensure_has_batch_dim()
     def m_step(self, data, posterior, covariates=None, metadata=None):
-        self._initial_condition.m_step(data, posterior, covariates=covariates, metadata=metadata)
-        self._transitions.m_step(data, posterior, covariates=covariates, metadata=metadata)
-        self._emissions.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        self._initial_condition = self._initial_condition.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        self._transitions = self._transitions.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        self._emissions = self._emissions.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        return self
 
     @ensure_has_batch_dim()
     def fit(self,

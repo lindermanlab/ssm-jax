@@ -20,14 +20,14 @@ class Dynamics:
     def distribution(self, state, covariates=None, metadata=None):
         """
         Return the conditional distribution of x_t given state x_{t-1}
-        
+
         Args:
             state (float): state x_{t-1}
             covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-                
+
         Returns:
             distribution (tfd.Distribution): conditional distribution of x_t given state x_{t-1}.
         """
@@ -35,8 +35,8 @@ class Dynamics:
 
     def m_step(self, dataset, posteriors):
         """Update the transition parameters in an M step given posteriors
-        over the latent states. 
-        
+        over the latent states.
+
         Update is performed in place.
 
         Args:
@@ -157,3 +157,4 @@ class StationaryDynamics(Dynamics):
 
         conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
         self._distribution = ssmd.GaussianLinearRegression.from_params(conditional.mode())
+        return self

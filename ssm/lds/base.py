@@ -116,11 +116,11 @@ class LDS(SSM):
                metadata=None,
                key: jr.PRNGKey=None):
         """Update the model in a (potentially approximate) M step.
-        
+
         Updates the model in place.
 
         Args:
-            data (np.ndarray): observed data with shape (B, T, D)  
+            data (np.ndarray): observed data with shape (B, T, D)
             posterior (LDSPosterior): LDS posterior object with leaf shapes (B, ...).
             covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
                 Defaults to None.
@@ -129,8 +129,9 @@ class LDS(SSM):
             key (jr.PRNGKey, optional): random seed. Defaults to None.
         """
         # self._initial_condition.m_step(dataset, posteriors)  # TODO initial dist needs prior
-        self._dynamics.m_step(data, posterior)
-        self._emissions.m_step(data, posterior, key=key)
+        self._dynamics = self._dynamics.m_step(data, posterior)
+        self._emissions = self._emissions.m_step(data, posterior, key=key)
+        return self
 
     @ensure_has_batch_dim()
     def fit(self,

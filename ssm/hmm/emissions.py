@@ -43,7 +43,7 @@ class Emissions:
         inds = np.arange(self.num_states)
         return vmap(lambda k: self.distribution(k, covariates=covariates, metadata=metadata).log_prob(data))(inds).T
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
         """By default, try to optimize the emission distribution via generic
         gradient-based optimization of the expected log likelihood.
 

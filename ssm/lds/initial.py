@@ -20,13 +20,13 @@ class InitialCondition:
     def distribution(self, covariates=None, metadata=None):
         """
         Return the distribution of x_1 (potentially given covariates u_t)
-        
-        Args: 
+
+        Args:
             covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-                
+
         Returns:
             distribution (tfd.Distribution): distribution of z_1
         """
@@ -80,21 +80,21 @@ class StandardInitialCondition(InitialCondition):
     def distribution(self, covariates=None, metadata=None):
         """
         Return the distribution of x_1.
-        
-        Args: 
+
+        Args:
             covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-                
+
         Returns:
             distribution (tfd.Distribution): distribution of z_1
         """
         return self._distribution
 
     def m_step(self, dataset, posteriors, covariates=None, metadata=None):
-        """Update the initial distribution in an M step given posteriors over the latent states. 
-        
+        """Update the initial distribution in an M step given posteriors over the latent states.
+
         Update is performed in place.
 
         Args:
@@ -119,3 +119,4 @@ class StandardInitialCondition(InitialCondition):
 
         conditional = ssmd.MultivariateNormalTriL.compute_conditional_from_stats(stats)
         self._distribution = ssmd.MultivariateNormalTriL.from_params(conditional.mode())
+        return self

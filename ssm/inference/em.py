@@ -46,7 +46,7 @@ def em(model,
     def update(model):
         posterior = model.e_step(data, covariates=covariates, metadata=metadata)
         lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
-        model.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
         return model, posterior, lp
 
     # Run the EM algorithm to convergence

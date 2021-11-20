@@ -20,23 +20,12 @@ class FactorialTransitions(Transitions):
         super(FactorialTransitions, self).__init__(num_states)
 
     def tree_flatten(self):
-        # children, aux_data = [], []
-        # for t in self._transitions:
-        #     c, a = t.tree_flatten()
-        #     children.append(c)
-        #     aux_data.append((type(t), *a))
-        # return tuple(children), tuple(aux_data)
         aux_data = None
         children = self._transitions
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        # transitions = []
-        # for aux, chd in zip(aux_data, children):
-        #     sub_cls = aux[0]
-        #     transitions.append(sub_cls.tree_unflatten(aux[1:], chd))
-        # return cls(transitions)
         return cls(children)
 
     @property

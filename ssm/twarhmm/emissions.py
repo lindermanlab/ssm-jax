@@ -27,7 +27,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         Optionally takes in a prior distribution.
 
         ..math:
-            x_t \sim N((I + \frac{1}{\tau_t} A_{z_t}) x_{t-1} + \frac{1}{\tau_t} b_{z_t}, Q_{z_t})
+            x_t \sim N((I + \frac{1}{\tau_t} A_{z_t}) x_{t-1} + \frac{1}{\tau_t} b_{z_t}, \frac{1}{\tau_t} Q_{z_t})
 
         Args:
             num_states (int): number of discrete states
@@ -62,7 +62,6 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         dim = self._weights.shape[-1]
         effective_weights = np.einsum('kde,i->kide', self._weights, 1/self._time_constants) + np.eye(dim)
         effective_biases = np.einsum('kd,i->kid', self._biases, 1/self._time_constants)
-        # effective_scale_trils = np.einsum('kde,i->kide', self._scale_trils, 1/self._time_constants)
         effective_scale_trils = np.einsum('kde,i->kide', self._scale_trils, 1/np.sqrt(self._time_constants))
         self._distribution = GaussianLinearRegression(
             effective_weights, effective_biases, effective_scale_trils)
@@ -115,14 +114,26 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         Gaussian linear regression where
 
         ..math:
-            y_t \sim \mathcal{N}(A_{z_t} x_t + b_{z_t}, Q_{z_t})
+            dx_t \sim \mathcal{N}(\frac{1}{\tau_t}(A_{z_t} x_t + b_{z_t}), \frac{1}{\tau_t} Q_{z_t})
 
-        and :math:`y_t = \tau_t (x_{t+1} - x_t)`.
+        and :math:`dx_t = x_{t+1} - x_t`.
 
         To update the parameters of the linear regression, we need the expected sufficient statistics,
-        :math:`(E[y_t], E[y_t y_t^\top], E[y_t x_t^\top], E_[x_t], E[x_t x_t^\top], 1)`.
-        These are easy to compute because :math:`\tau_t` is the only random variable in :math:`y_t`
-        and it is constrained to a finite set of values.
+        which we obtain by expanding the log likelihood above and writing it as a sum of inner
+        products between parameters (A, b, Q) and sufficient statistics, which are functions of \tau,
+        x, and dx.
+
+        ..math:
+            (1,
+             E[x_t x_t^\top / \tau_t],
+             E[x_t / \tau_t],
+             E[1 / \tau_t],
+             E[dx_t x_t^\top],
+             E[dx_t],
+             E[\tau_t dx_t dx_t^\top])
+
+        These are easy to compute because :math:`\tau_t` is the only random variable and it is constrained
+        to a finite set of values.
 
         Args:
             dataset (np.ndarray): observed data
@@ -135,7 +146,6 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
             # compute sufficient statistics for each time constant
             # f = lambda tau: GaussianLinearRegression.sufficient_statistics(tau * dx, x)
             # stats = vmap(f)(self.time_constants)
-
             tw_sufficient_stats = lambda tau: \
                 (1.0,
                  1 / tau * np.outer(x, x),
