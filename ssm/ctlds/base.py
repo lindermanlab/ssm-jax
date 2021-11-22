@@ -3,7 +3,7 @@ import jax.random as jr
 from jax.tree_util import register_pytree_node_class
 from jax import lax
 
-from ssm.base import SSM
+from ssm.lds.base import LDS
 from ssm.distributions import MultivariateNormalBlockTridiag
 import ssm.ctlds.initial as initial
 import ssm.ctlds.dynamics as dynamics
@@ -12,13 +12,13 @@ from ssm.utils import Verbosity, auto_batch, ensure_has_batch_dim
 CTLDSPosterior = MultivariateNormalBlockTridiag
 
 @register_pytree_node_class
-class CTLDS(SSM):
+class CTLDS(LDS):
     def __init__(self,
                  initial_condition: initial.InitialCondition,
                  dynamics: dynamics.Dynamics,
                  emissions: emissions.Emissions,
                  ):
-        """The LDS base class.
+        """The CTLDS base class.
 
         Args:
             num_states (int): number of discrete states
@@ -29,25 +29,7 @@ class CTLDS(SSM):
             emissions (emissions.Emissions):
                 emissions ojbect defining :math:`p(x_t|z_t)`
         """
-        self._initial_condition = initial_condition
-        self._dynamics = dynamics
-        self._emissions = emissions
-
-    @property
-    def latent_dim(self):
-        return self._emissions.weights.shape[-1]
-
-    @property
-    def emissions_shape(self):
-        return (self._emissions.weights.shape[-2],)
-
-    @property
-    def initial_mean(self):
-        return self._initial_condition.mean
-
-    @property
-    def initial_covariance(self):
-        return self._initial_condition._distribution.covariance()
+        super().__init__(initial_condition, dynamics, emissions)
 
     @property
     def drift_matrix(self):
@@ -62,32 +44,16 @@ class CTLDS(SSM):
         return self._dynamics.diffusion_scale
 
     @property
-    def emissions_matrix(self):
-        return self._emissions.weights
+    def dynamics_matrix(self):
+        raise NotImplementedError
 
     @property
-    def emissions_bias(self):
-        return self._emissions.bias
+    def dynamics_bias(self):
+        raise NotImplementedError
 
-    def tree_flatten(self):
-        children = (self._initial_condition,
-                    self._dynamics,
-                    self._emissions)
-        aux_data = None
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        return cls(aux_data, *children)
-
-    def initial_distribution(self, covariates=None, metadata=None):
-        return self._initial_condition.distribution(covariates=covariates, metadata=metadata)
-
-    def dynamics_distribution(self, state, covariates=None, metadata=None):
-        return self._dynamics.distribution(state, covariates=covariates, metadata=metadata)
-
-    def emissions_distribution(self, state, covariates=None, metadata=None):
-        return self._emissions.distribution(state, covariates=covariates, metadata=metadata)
+    @property
+    def dynamics_noise_covariance(self):
+        raise NotImplementedError
 
     ### Methods for posterior inference
     def initialize(self, dataset, covariates=None, metadata=None, key=None, method=None):
@@ -108,7 +74,7 @@ class CTLDS(SSM):
     @ensure_has_batch_dim()
     def m_step(self,
                data: np.ndarray,
-               posterior: LDSPosterior,
+               posterior: CTLDSPosterior,
                covariates=None,
                metadata=None,
                key: jr.PRNGKey=None):
@@ -179,5 +145,5 @@ class CTLDS(SSM):
         return elbos, lds, posteriors
 
     def __repr__(self):
-        return f"<ssm.lds.{type(self).__name__} latent_dim={self.latent_dim} "\
+        return f"<ssm.ctlds.{type(self).__name__} latent_dim={self.latent_dim} "\
             f"emissions_shape={self.emissions_shape}>"

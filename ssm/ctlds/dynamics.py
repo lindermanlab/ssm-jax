@@ -4,56 +4,9 @@ from jax import vmap
 from jax.tree_util import tree_map, register_pytree_node_class
 
 import ssm.distributions as ssmd
-
-
-class Dynamics:
-    """
-    Base class for CT-LDS dynamics models,
-
-    .. math::
-        p_t(z_t \mid z_{t-1}, u_t)
-
-    where u_t are optional covariates at time t.
-    """
-    def __init__(self):
-        pass
-
-    def distribution(self, state, covariates=None, metadata=None):
-        """
-        Return the conditional distribution of x_t given state x_{t-1}
-        
-        Args:
-            state (float): state x_{t-1}
-            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
-                Defaults to None.
-            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
-                Defaults to None.
-                
-        Returns:
-            distribution (tfd.Distribution): conditional distribution of x_t given state x_{t-1}.
-        """
-        raise NotImplementedError
-
-    def m_step(self, dataset, posteriors):
-        """Update the transition parameters in an M step given posteriors
-        over the latent states. 
-        
-        Update is performed in place.
-
-        Args:
-            dataset (np.ndarray): the observed dataset with shape (B, T, D)
-            posteriors (HMMPosterior): posteriors over the latent states with leaf shape (B, ...)
-            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
-                Defaults to None.
-            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
-                Defaults to None.
-        """
-        # TODO: implement generic m-step
-        raise NotImplementedError
-
-
+from ssm.lds.dynamics import Dynamics
 @register_pytree_node_class
-class StationaryDynamics(Dynamics):
+class StationaryCTDynamics(Dynamics):
     """
     Basic dynamics model for CTLDS.
 
@@ -66,7 +19,7 @@ class StationaryDynamics(Dynamics):
                  drift_bias=None,
                  diffusion_scale=None,
                  dynamics_distribution_prior=None) -> None:
-        super(StationaryDynamics, self).__init__()
+        super(StationaryCTDynamics, self).__init__()
 
         assert (drift_matrix is not None and \
                 drift_bias is not None and \

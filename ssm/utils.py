@@ -194,6 +194,35 @@ def random_rotation(seed, n, theta=None):
     q = np.linalg.qr(jr.uniform(key2, shape=(n, n)))[0]
     return q.dot(out).dot(q.T)
 
+def random_log_rotation(seed, n, theta=None):
+    """Helper function to create drift matrix for a rotating linear system.
+
+    Args:
+        seed (jax.random.PRNGKey): JAX random seed.
+        n (int): Dimension of the rotation matrix.
+        theta (float, optional): If specified, this is the angle of the rotation, otherwise
+            a random angle sampled from a standard Uniform scaled by ::math::`\pi / 2`. Defaults to None.
+
+    Returns:
+        [type]: [description]
+    """
+
+    key1, key2 = jr.split(seed)
+
+    if theta is None:
+        # Sample a random, slow rotation
+        theta = 0.5 * np.pi * jr.uniform(key1)
+
+    if n == 1:
+        # Technically, this will only return one of two possible 1-dimensional rotations.
+        return np.zeros(1)
+
+    log_rot = np.array([[0., theta], [-theta, 0.]])
+    out = np.zeros((n,n))
+    out = out.at[:2, :2].set(log_rot)
+    q = np.linalg.qr(jr.uniform(key2, shape=(n, n)))[0]
+    return q.dot(out).dot(q.T)
+
 
 def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metadata"),
                          model_arg="self"):
