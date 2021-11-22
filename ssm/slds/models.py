@@ -79,17 +79,17 @@ class GaussianSLDS(SLDS):
             dynamics_biases = jr.normal(rng, (num_states, latent_dim))
 
         if dynamics_scale_trils is None:
-            dynamics_scale_trils = 0.1 * np.eye(latent_dim)
+            dynamics_scale_trils = 0.1 * np.tile(np.eye(latent_dim), (num_states, 1, 1))
 
         if emission_weights is None:
             key, rng = jr.split(key, 2)
-            emission_weights = jr.normal(rng, shape=(emission_dim, latent_dim))
+            emission_weights = jr.normal(rng, shape=(num_states, emission_dim, latent_dim))
 
         if emission_biases is None:
-            emission_biases = np.zeros(emission_dim)
+            emission_biases = np.zeros((num_states, emission_dim))
 
         if emission_scale_trils is None:
-            emission_scale_trils = 1.0**2 * np.eye(emission_dim)
+            emission_scale_trils = np.tile(1.0**2 * np.eye(emission_dim), (num_states, 1, 1))
 
         # Initialize the components
         discrete_initial_condition = \

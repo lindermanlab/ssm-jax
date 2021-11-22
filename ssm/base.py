@@ -7,6 +7,7 @@ respectively.
 
 The base ``SSM`` object provides template functionality for a state space model.
 """
+from jax._src.tree_util import tree_leaves
 import jax.numpy as np
 import jax.random as jr
 from jax import lax, vmap
@@ -15,7 +16,7 @@ from jax.tree_util import tree_map
 
 import tensorflow_probability.substrates.jax as tfp
 
-from ssm.utils import tree_get, auto_batch, tree_concatenate
+from ssm.utils import ensure_has_batch_dim, tree_get, auto_batch, tree_concatenate
 
 
 class SSM(object):
@@ -144,7 +145,7 @@ class SSM(object):
                                 tree_get(covariates, slice(1, None))))
         return lp
 
-    @auto_batch(batched_args=("key", "data", "posterior", "covariates", "metadata"))
+    @ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metadata"))
     def elbo(self,
              key,
              data,
@@ -175,12 +176,19 @@ class SSM(object):
             elbo: the evidence lower bound of shape ([B,])
 
         """
-        def _elbo_single(_key):
-            sample = posterior.sample(seed=_key)
-            return self.log_probability(sample, data, covariates, metadata) - posterior.log_prob(sample)
+        def _elbo_single(_key, _data, _posterior, _covariates, _metadata):
+            def _elbo_single_sample(_this_key):
+                sample = _posterior.sample(seed=_this_key)
+                return self.log_probability(sample, _data, _covariates, _metadata) \
+                    - _posterior.log_prob(sample)
+            elbos = vmap(_elbo_single_sample)(jr.split(_key, num_samples))
+            return np.mean(elbos)
 
-        elbos = vmap(_elbo_single)(jr.split(key, num_samples))
-        return np.mean(elbos)
+        num_batches = tree_leaves(data)[0].shape[0]
+        elbos = vmap(_elbo_single)(
+            jr.split(key, num_batches), data, posterior, covariates, metadata)
+
+        return elbos.sum()
 
     def sample(self,
                key: jr.PRNGKey,
