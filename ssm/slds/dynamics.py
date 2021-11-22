@@ -73,6 +73,10 @@ class StandardDynamics(Dynamics):
         return self._distribution.bias
 
     @property
+    def covariances(self):
+        return self._distribution.covariance
+
+    @property
     def scale_trils(self):
         return self._distribution.scale_tril
 
@@ -87,28 +91,23 @@ class StandardDynamics(Dynamics):
         else:
             return d.predict(prev_continuous_state)
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, data, posterior):
         # TODO: Compute expected sufficient statistics under q(z).
 
         # Manually extract the expected sufficient statistics from posterior
-        def compute_stats_and_counts(data, posterior):
-            Ez = posterior.discrete_posterior.expected_states
-            Ex = posterior.continuous_posterior.expected_states
-            ExxT = posterior.continuous_posterior.expected_states_squared
-            ExnxT = posterior.continuous_posterior.expected_states_next_states
+        Ez = posterior.discrete_posterior.expected_states
+        Ex = posterior.continuous_posterior.expected_states
+        ExxT = posterior.continuous_posterior.expected_states_squared
+        ExnxT = posterior.continuous_posterior.expected_states_next_states
 
-            # Sum over time
-            sum_x = np.einsum('tk,ti->ki', Ez[1:], Ex[:-1])
-            sum_y = np.einsum('tk,ti->ki', Ez[1:], Ex[1:])
-            sum_xxT = np.einsum('tk,tij->kij', Ez[1:], ExxT[:-1])
-            sum_yxT = np.einsum('tk,tij->kij', Ez[1:], ExnxT)
-            sum_yyT = np.einsum('tk,tij->kij', Ez[1:], ExxT[1:])
-            T = np.sum(Ez[1:], axis=0)
-            stats = (T, sum_xxT, sum_x, T, sum_yxT, sum_y, sum_yyT)
-            return stats
-
-        stats = vmap(compute_stats_and_counts)(dataset, posteriors)
-        stats = tree_map(sum, stats)  # sum out batch for each leaf
+        # Sum over time
+        sum_x = np.einsum('btk,bti->ki', Ez[:, 1:], Ex[:, :-1])
+        sum_y = np.einsum('btk,bti->ki', Ez[:, 1:], Ex[:, 1:])
+        sum_xxT = np.einsum('btk,btij->kij', Ez[:, 1:], ExxT[:, :-1])
+        sum_yxT = np.einsum('btk,btij->kij', Ez[:, 1:], ExnxT)
+        sum_yyT = np.einsum('btk,btij->kij', Ez[:, 1:], ExxT[:, 1:])
+        T = np.einsum('btk->k', Ez[1:])
+        stats = (T, sum_xxT, sum_x, T, sum_yxT, sum_y, sum_yyT)
 
         if self._prior is not None:
             stats = tree_map(np.add, stats, self._prior.natural_parameters)

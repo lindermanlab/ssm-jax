@@ -26,7 +26,7 @@ def em(model,
 
     Args:
         model (ssm.base.SSM): the model to be fit
-        data (PyTree): the observed data with leaf shape (B, T, D).
+        data (PyTree): the observed data with leaf shape (B, T, ...).
         covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
             Defaults to None.
         metadata (PyTree, optional): optional metadata with leaf shape (B, ...).

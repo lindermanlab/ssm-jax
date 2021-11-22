@@ -81,6 +81,10 @@ class StandardInitialCondition(InitialCondition):
     def mean(self):
         return self._distribution.loc
 
+    @property
+    def covariance(self):
+        return self._distribution.covariance()
+
     def distribution(self, covariates=None, metadata=None):
         """
         Return the distribution of x_1.

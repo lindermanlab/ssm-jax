@@ -301,15 +301,17 @@ class MultivariateNormalBlockTridiag(tfd.Distribution):
             # Transpose to be (num_samples, num_timesteps, dim)
             return np.transpose(x, (1, 0, 2))
 
-        # TODO: Handle arbitrary batch shapes
-        if filtered_Js.ndim == 4:
-            # batch mode
-            samples = vmap(sample_single)(seed, filtered_Js, filtered_hs, J_lower_diag)
+        if len(self.batch_shape) == 0:
+            samples = sample_single(seed, filtered_Js, filtered_hs, J_lower_diag)
+        elif len(self.batch_shape) == 1:
+            num_batches = self.batch_shape[0]
+            samples = vmap(sample_single)(jr.split(seed, num_batches), filtered_Js, filtered_hs, J_lower_diag)
             # Transpose to be (num_samples, num_batches, num_timesteps, dim)
             samples = np.transpose(samples, (1, 0, 2, 3))
         else:
-            # non-batch mode
-            samples = sample_single(seed, filtered_Js, filtered_hs, J_lower_diag)
+            # TODO: Handle arbitrary batch shapes
+            raise NotImplementedError
+
         return samples
 
     def _entropy(self):

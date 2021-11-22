@@ -4,19 +4,17 @@ from jax.tree_util import register_pytree_node_class
 
 from tensorflow_probability.substrates import jax as tfp
 
-from ssm.slds.posterior import StructuredMeanFieldSLDSPosterior
-tfd = tfp.distributions
-
 from ssm.base import SSM
-from ssm.inference.em import em
-from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch
-
 import ssm.hmm.initial as hmm_initial
 import ssm.hmm.transitions as transitions
+from ssm.inference.variational_em import variational_em
 import ssm.lds.initial as lds_initial
 import ssm.slds.emissions as emissions
 import ssm.slds.dynamics as dynamics
+from ssm.slds.posterior import StructuredMeanFieldSLDSPosterior
+from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch
 
+tfd = tfp.distributions
 
 @register_pytree_node_class
 class SLDS(SSM):
@@ -110,156 +108,73 @@ class SLDS(SSM):
     def emissions_distribution(self, state, covariates=None, metadata=None):
         return self._emissions.distribution(state)
 
-    ### Methods for posterior inference
-    # @format_dataset
-    # def initialize(self, dataset: np.ndarray, key: jr.PRNGKey, method: str="kmeans") -> None:
-    #     r"""Initialize the model parameters by performing an M-step with state assignments
-    #     determined by the specified method (random or kmeans).
-
-    #     Args:
-    #         dataset (np.ndarray): array of observed data
-    #             of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
-    #         key (jr.PRNGKey): random seed
-    #         method (str, optional): state assignment method.
-    #             One of "random" or "kmeans". Defaults to "kmeans".
-
-    #     Raises:
-    #         ValueError: when initialize method is not recognized
-    #     """
-    #     # initialize assignments and perform one M-step
-    #     num_states = self._num_states
-    #     if method.lower() == "random":
-    #         # randomly assign datapoints to clusters
-    #         assignments = jr.choice(key, self._num_states, dataset.shape[:-1])
-
-    #     elif method.lower() == "kmeans":
-    #         # cluster the data with kmeans
-    #         print("initializing with kmeans")
-    #         from sklearn.cluster import KMeans
-    #         km = KMeans(num_states)
-    #         flat_dataset = dataset.reshape(-1, dataset.shape[-1])
-    #         assignments = km.fit_predict(flat_dataset).reshape(dataset.shape[:-1])
-
-    #     else:
-    #         raise ValueError(f"Invalid initialize method: {method}.")
-
-    #     # Make a dummy posterior that just exposes expected_states
-    #     @dataclass
-    #     class DummyPosterior:
-    #         expected_states: np.ndarray
-    #     dummy_posteriors = DummyPosterior(one_hot(assignments, self._num_states))
-
-    #     # Do one m-step with the dummy posteriors
-    #     self._emissions.m_step(dataset, dummy_posteriors)
-    @ensure_has_batch_dim()
-    def initialize(self,
-                   data,
-                   covariates=None,
-                   metadata=None,
-                   key=None,
-                   method="pca-kmeans"):
-        num_states = self._num_states
-        latent_dim = self._latent_dim
-
-        if method.lower() == "pca-kmeans":
-            # TODO: use self.emissions_shape
-            flat_dataset = data.reshape(-1, data.shape[-1])
-
-            # Run PCA on the flattened data
-            from sklearn.decomposition import PCA
-            pca = PCA(latent_dim)
-            continuous_states = pca.fit_transform(flat_dataset)
-            emissions_matrix = pca.components_.T
-            emissions_variance = pca.noise_variance_
-            precision_diag_blocks = emissions_matrix.T @  emissions_matrix / emissions_variance
-            precision_diag_blocks = np.tile(precision_diag_blocks)
-
-            # Run KMeans on the PCs
-            from sklearn.cluster import KMeans
-            km = KMeans(num_states)
-            assignments = km.fit_predict(flat_dataset).reshape(data.shape[:-1])
-
-        else:
-            raise ValueError(f"Invalid initialize method: {method}.")
-
-        # Make a dummy posterior that just exposes expected_states
-        @dataclass
-        class DummyPosterior:
-            expected_states: np.ndarray
-        dummy_posteriors = DummyPosterior(one_hot(assignments, self._num_states))
-
-
-        # Initialize the posterior
-
-        pass
-
-    @auto_batch()
-    def variational_e_step(self, data, posterior, covariates=None, metadata=None):
-        # TODO: fit a structured mean field posterior
-        raise NotImplementedError
-
     ### EM: Operates on batches of data (aka datasets) and posteriors
     @ensure_has_batch_dim()
     def m_step(self,
                data: np.ndarray,
-               posterior, #: LDSPosterior,
+               posterior, #: SLDSPosterior,
                covariates=None,
                metadata=None,
                key: jr.PRNGKey=None):
-        self._discrete_initial_condition.m_step(data, posterior.discrete_state_posterior)
-        self._continuous_initial_condition.m_step(data, posterior.continuous_state_posterior)
-        self._transitions.m_step(data, posterior.discrete_state_posterior)
+        self._discrete_initial_condition.m_step(data, posterior.discrete_posterior)
+        self._continuous_initial_condition.m_step(data, posterior.continuous_posterior)
+        self._transitions.m_step(data, posterior.discrete_posterior)
         self._dynamics.m_step(data, posterior)
         self._emissions.m_step(data, posterior)
+        return self
 
-    # @format_dataset
-    # def fit(self, dataset: np.ndarray,
-    #         method: str="em",
-    #         num_iters: int=100,
-    #         tol: float=1e-4,
-    #         initialization_method: str="kmeans",
-    #         key: jr.PRNGKey=None,
-    #         verbosity: Verbosity=Verbosity.DEBUG):
-    #     r"""Fit the HMM to a dataset using the specified method and initialization.
+    @ensure_has_batch_dim()
+    def fit(self,
+            key: jr.PRNGKey,
+            data: np.ndarray,
+            covariates=None,
+            metadata=None,
+            method: str="variational_em",
+            num_iters: int=100,
+            tol: float=1e-4,
+            verbosity: Verbosity=Verbosity.DEBUG):
+        r"""Fit the HMM to a dataset using the specified method and initialization.
 
-    #     Args:
-    #         dataset (np.ndarray): observed data
-    #             of shape :math:`(\text{[batch]} , \text{num_timesteps} , \text{emissions_dim})`
-    #         method (str, optional): model fit method.
-    #             Must be one of ["em"]. Defaults to "em".
-    #         num_iters (int, optional): number of fit iterations.
-    #             Defaults to 100.
-    #         tol (float, optional): tolerance in log probability to determine convergence.
-    #             Defaults to 1e-4.
-    #         initialization_method (str, optional): method to initialize latent states.
-    #             Defaults to "kmeans".
-    #         key (jr.PRNGKey, optional): Random seed.
-    #             Defaults to None.
-    #         verbosity (Verbosity, optional): print verbosity.
-    #             Defaults to Verbosity.DEBUG.
+        Args:
+            data (np.ndarray): observed data
+                of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{emissions\_dim})`
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+            method (str, optional): model fit method.
+                Must be one of ["em"]. Defaults to "em".
+            num_iters (int, optional): number of fit iterations.
+                Defaults to 100.
+            tol (float, optional): tolerance in log probability to determine convergence.
+                Defaults to 1e-4.
+            key (jr.PRNGKey, optional): Random seed.
+                Defaults to None.
+            verbosity (Verbosity, optional): print verbosity.
+                Defaults to Verbosity.DEBUG.
 
-    #     Raises:
-    #         ValueError: if fit method is not reocgnized
+        Raises:
+            ValueError: if fit method is not reocgnized
 
-    #     Returns:
-    #         log_probs (np.ndarray): log probabilities at each fit iteration
-    #         model (HMM): the fitted model
-    #         posteriors (StationaryHMMPosterior): the fitted posteriors
-    #     """
-    #     model = self
-    #     kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
+        Returns:
+            bounds (np.ndarray): log probabilities at each fit iteration
+            model (SLDS): the fitted model
+            posterior (SLDSPosterior): the fitted posteriors
+        """
+        # Just initialize the posterior since the model will be
+        # updated on the first m-step.
+        posterior = StructuredMeanFieldSLDSPosterior.initialize(
+            self, data, covariates=covariates, metadata=metadata)
 
-    #     if initialization_method is not None:
-    #         if verbosity >= Verbosity.LOUD : print("Initializing...")
-    #         self.initialize(dataset, key, method=initialization_method)
-    #         if verbosity >= Verbosity.LOUD: print("Done.", flush=True)
+        if method == "variational_em":
+            bounds, model, posterior = variational_em(
+                key, self, data, posterior, covariates=covariates, metadata=metadata,
+                num_iters=num_iters, tol=tol, verbosity=verbosity)
 
-    #     if method == "em":
-    #         log_probs, model, posteriors = em(model, dataset, **kwargs)
-    #     else:
-    #         raise ValueError(f"Method {method} is not recognized/supported.")
+        else:
+            raise ValueError(f"Method {method} is not recognized/supported.")
 
-    #     return log_probs, model, posteriors
+        return bounds, model, posterior
 
     def __repr__(self):
         return f"<ssm.slds.{type(self).__name__} num_states={self.num_states} " \

@@ -67,12 +67,12 @@ class GaussianLinearRegression(ExponentialFamilyDistribution,
         return self._bias
 
     @property
-    def scale_tril(self):
-        return self._scale_tril
+    def covariance(self):
+        return np.einsum('...ij,...ji->...ij', self.scale_tril, self.scale_tril)
 
     @property
-    def scale(self):
-        return np.einsum('...ij,...ji->...ij', self.scale_tril, self.scale_tril)
+    def scale_tril(self):
+        return self._scale_tril
 
     def predict(self, covariates=None):
         mean = np.einsum('...i,...ji->...j', covariates, self.weights) + self.bias
@@ -108,11 +108,11 @@ class GaussianLinearRegression(ExponentialFamilyDistribution,
                 -1/2 \log |\Sigma| -1/2 b^\top \Sigma^{-1} b
         """
         transpose = lambda x: np.swapaxes(x, -1, -2)
-        Si = np.linalg.inv(self.scale)
+        Si = np.linalg.inv(self.covariance)
         SiW = np.einsum('...ij,...jk->...ik', Si, self.weights)
         Sib = np.einsum('...ij,...j->...i', Si, self.bias)
         WTSiW = np.einsum('...ij,...jk->...ik', transpose(self.weights), SiW)
-        WTSib = np.einsum('...ij,...jk->...ik', transpose(self.weights), Sib)
+        WTSib = np.einsum('...ij,...j->...i', transpose(self.weights), Sib)
         bTSib = np.einsum('...i,...i->...', self.bias, Sib)
 
         ell = np.sum(-0.5 * Si * expected_data_squared)
@@ -120,7 +120,7 @@ class GaussianLinearRegression(ExponentialFamilyDistribution,
         ell += np.sum(-0.5 * WTSiW * expected_covariates_squared)
         ell += np.sum(Sib * expected_data)
         ell += np.sum(-WTSib * expected_covariates)
-        ell += -0.5 * np.linalg.slogdet(self.scale)[1]
+        ell += -0.5 * np.linalg.slogdet(self.covariance)[1]
         ell += -0.5 * bTSib
         return ell
 

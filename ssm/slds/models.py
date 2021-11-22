@@ -34,12 +34,12 @@ class GaussianSLDS(SLDS):
                  emission_weights: np.ndarray=None,
                  emission_biases: np.ndarray=None,
                  emission_scale_trils: np.ndarray=None,
-                 seed: jr.PRNGKey=None):
+                 key: jr.PRNGKey=None):
         """SLDS with Gaussian emissions.
 
         The GaussianSLDS can be initialized by specifying each parameter explicitly,
         or you can simply specify the ``num_states``, ``latent_dim``, and ``emission_dim``,
-        and ``seed`` to create a GaussianSLDS with generic, randomly initialized parameters.
+        and ``key`` to create a GaussianSLDS with generic, randomly initialized parameters.
 
         Args:
             num_states (int): number of discrete latent states
@@ -54,7 +54,7 @@ class GaussianSLDS(SLDS):
             emission_weights (np.ndarray, optional): [description]. Defaults to None.
             emission_bias (np.ndarray, optional): [description]. Defaults to None.
             emission_scale_tril (np.ndarray, optional): [description]. Defaults to None.
-            seed (jr.PRNGKey, optional): [description]. Defaults to None.
+            key (jr.PRNGKey, optional): [description]. Defaults to None.
         """
         if initial_probs is None:
             initial_probs = np.ones(num_states) / num_states
@@ -69,19 +69,20 @@ class GaussianSLDS(SLDS):
             transition_matrix = np.ones((num_states, num_states)) / num_states
 
         if dynamics_weights is None:
-            seed, rng = jr.split(seed, 2)
-            dynamics_weights = vmap(partial(random_rotation, n=latent_dim, theta=np.pi/20),
-                                    jr.split(rng, num_states))
+            key, rng = jr.split(key, 2)
+            dynamics_weights = \
+                vmap(partial(random_rotation, n=latent_dim, theta=np.pi/20))(
+                    jr.split(rng, num_states))
 
         if dynamics_biases is None:
-            seed, rng = jr.split(seed, 2)
+            key, rng = jr.split(key, 2)
             dynamics_biases = jr.normal(rng, (num_states, latent_dim))
 
         if dynamics_scale_trils is None:
             dynamics_scale_trils = 0.1 * np.eye(latent_dim)
 
         if emission_weights is None:
-            seed, rng = jr.split(seed, 2)
+            key, rng = jr.split(key, 2)
             emission_weights = jr.normal(rng, shape=(emission_dim, latent_dim))
 
         if emission_biases is None:
@@ -116,6 +117,38 @@ class GaussianSLDS(SLDS):
                          transitions,
                          dynamics,
                          emissions)
+
+    @property
+    def initial_mean(self):
+        return self._continuous_initial_condition.mean
+
+    @property
+    def initial_covariance(self):
+        return self._continuous_initial_condition.covariance
+
+    @property
+    def dynamics_weights(self):
+        return self._dynamics.weights
+
+    @property
+    def dynamics_biases(self):
+        return self._dynamics.biases
+
+    @property
+    def dynamics_covariances(self):
+        return self._dynamics.covariances
+
+    @property
+    def emissions_weights(self):
+        return self._emissions.weights
+
+    @property
+    def emissions_biases(self):
+        return self._emissions.biases
+
+    @property
+    def emissions_covariances(self):
+        return self._emissions.covariances
 
     # Methods for inference
     # def infer_posterior(self, data):

@@ -2,11 +2,13 @@
 
 """
 import jax.numpy as np
+import jax.random as jr
 import jax.scipy.special as spsp
 from jax import lax, value_and_grad, vmap
 
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
+tfd = tfp.distributions
 
 
 ### Core message passing routines
@@ -215,19 +217,35 @@ class _HMMPosterior(tfp.distributions.Distribution):
         return self._log_transition_matrix.ndim == self._log_likelihoods.ndim
 
     @property
+    def log_initial_state_probs(self):
+        return self._log_initial_state_probs
+
+    @property
+    def log_likelihoods(self):
+        return self._log_likelihoods
+
+    @property
+    def log_transition_matrix(self):
+        return self._log_transition_matrix
+
+    @property
     def log_normalizer(self):
         return self._log_normalizer
 
-    def _mean(self):
-        return self._expected_states
+    @property
+    def filtered_potentials(self):
+        return self._filtered_potentials
 
     @property
     def expected_states(self):
-        return self.mean()
+        return self._expected_states
 
     @property
     def expected_transitions(self):
         return self._expected_transitions
+
+    def _mean(self):
+        return self._expected_states
 
     def _log_prob(self, data, **kwargs):
         def _log_prob_single(z, initial, unary, pair):
@@ -249,13 +267,92 @@ class _HMMPosterior(tfp.distributions.Distribution):
         return lps.reshape(self.batch_shape)
 
     def _sample_n(self, n, seed=None):
-        if not self.ran_message_passing:
-            self.message_passing()
 
-        # TODO make these parameters w/ lazy op?
-        alphas = self._alphas
+        def _sample_single(key, filtered_potentials, log_likelihoods, log_transition_matrix):
+            # Normalize the log transition matrix
+            log_transition_matrix -= spsp.logsumexp(log_transition_matrix, axis=-1, keepdims=True)
 
-        raise NotImplementedError
+            # Sample the last state
+            this_key, key = jr.split(key, 2)
+            logits = filtered_potentials[-1] + log_likelihoods[-1]
+            last_state = tfd.Categorical(logits=logits).sample(n, seed=this_key)
+
+            def _step(carry, args):
+                next_state, key = carry
+                filtered_potential, ll = args
+                this_key, key = jr.split(key, 2)
+
+                logits = filtered_potential + ll + log_transition_matrix[:, next_state].T # (n, num_states)
+                state = tfd.Categorical(logits=logits).sample(seed=this_key) # (n,)
+                return (state, key), state
+
+            _, reversed_states = lax.scan(
+                _step, (last_state, key), (filtered_potentials[:-1][::-1], log_likelihoods[:-1][::-1]))
+            return np.row_stack([reversed_states[::-1], last_state])    # (num_timesteps, n)
+
+        # Sample over batches if necessary
+        if len(self.batch_shape) == 0:
+            # non-batch mode
+            samples = _sample_single(seed,
+                                     self._filtered_potentials,
+                                     self._log_likelihoods,
+                                     self._log_transition_matrix)
+
+            # Transpose to be (num_samples, num_timesteps)
+            samples = np.transpose(samples, (1, 0))
+
+        elif len(self.batch_shape) == 1:
+            # batch mode
+            num_batches = self.batch_shape[0]
+            samples = vmap(_sample_single)(jr.split(seed, num_batches),
+                                           self._filtered_potentials,
+                                           self._log_likelihoods,
+                                           self._log_transition_matrix)
+
+            # Transpose to be (num_samples, num_batches, num_timesteps)
+            samples = np.transpose(samples, (2, 0, 1))
+        else:
+            # TODO: Handle arbitrary batch shapes
+            raise NotImplementedError
+
+        return samples
+
+
+    # @numba.jit(nopython=True, cache=True)
+    # def backward_sample(Ps, log_likes, alphas, us, zs):
+    #     T = log_likes.shape[0]
+    #     K = log_likes.shape[1]
+    #     assert Ps.shape[0] == T-1 or Ps.shape[0] == 1
+    #     assert Ps.shape[1] == K
+    #     assert Ps.shape[2] == K
+    #     assert alphas.shape[0] == T
+    #     assert alphas.shape[1] == K
+    #     assert us.shape[0] == T
+    #     assert zs.shape[0] == T
+
+    #     lpzp1 = np.zeros(K)
+    #     lpz = np.zeros(K)
+
+    #     # Trick for handling time-varying transition matrices
+    #     hetero = (Ps.shape[0] == T-1)
+
+    #     for t in range(T-1,-1,-1):
+    #         # compute normalized log p(z[t] = k | z[t+1])
+    #         lpz = lpzp1 + alphas[t]
+    #         Z = logsumexp(lpz)
+
+    #         # sample
+    #         acc = 0
+    #         zs[t] = K-1
+    #         for k in range(K):
+    #             acc += np.exp(lpz[k] - Z)
+    #             if us[t] < acc:
+    #                 zs[t] = k
+    #                 break
+
+    #         # set the transition potential
+    #         if t > 0:
+    #             lpzp1 = np.log(Ps[(t-1) * hetero, :, int(zs[t])] + LOG_EPS)
 
     def _entropy(self):
         """
