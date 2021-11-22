@@ -6,17 +6,18 @@ import jax.numpy as np
 import matplotlib.pyplot as plt
 import logging
 from tensorflow_probability.substrates import jax as tfp
+from tensorflow_probability.python.internal.backend.jax.compat import v2 as tf
 
 # Specific imports for here.
 from jax.scipy import special as spsp
 from jax import vmap
 from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
+from tensorflow_probability.python.internal import reparameterization
 from ssm.utils import Verbosity
 
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
-
 
 
 def smc(key,
@@ -28,6 +29,7 @@ def smc(key,
         resampling_criterion=None,
         resampling_function=None,
         use_stop_gradient_resampling=False,
+        use_resampling_gradients=False,
         verbosity=default_verbosity):
     r"""Recover posterior over latent state given potentially batch of observation traces
     and a model.
@@ -83,6 +85,11 @@ def smc(key,
 
         use_stop_gradient_resampling (bool, No size, default=False):
             Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
+            NAND with use_resampling_gradients.
+
+        use_resampling_gradients (bool, No size, default=False):
+            Whether to use resampling gradients [Maddison et al, 2017].
+            NAND with use_stop_gradient_resampling.
 
         verbosity (SSM.verbosity, No size, default=default_verbosity):
             Level of text output.
@@ -106,16 +113,21 @@ def smc(key,
             has a leading batch dimension.
     """
 
+    # Check the args.
+    assert np.logical_not(np.logical_and(use_stop_gradient_resampling, use_resampling_gradients)), \
+        "[Error]: Cannot use both resampling gradients and stop gradient resampling."
+
+    # Assign defaults.
     if resampling_criterion is None:
         resampling_criterion = always_resample_criterion
-
     if resampling_function is None:
         resampling_function = systematic_resampling
 
     # Close over the static arguments.
     single_smc_closed = lambda _k, _d: \
         _single_smc(_k, model, _d, initialization_distribution, proposal, num_particles,
-                    resampling_criterion, resampling_function, use_stop_gradient_resampling, verbosity)
+                    resampling_criterion, resampling_function, use_stop_gradient_resampling,
+                    use_resampling_gradients, verbosity=verbosity)
 
     # If there are three dimensions, it assumes that the dimensions correspond to
     # (batch_dim x time x states).  This copies the format of ssm->base->sample.
@@ -127,6 +139,255 @@ def smc(key,
         return single_smc_closed(key, dataset)
 
 
+class SMCPosterior(tfd.Distribution):
+    """
+    Define a thin wrapper and constructor for a MixtureSameFamily distribution for constructing a representation
+    of the SMC smoothing distribution.  Note that the rest of the SMC code considers (T x N x D), but here we think
+    about things as (N x T x D), since this is essentially a mixture distribution over the N particles.
+
+    NOTE - there is some oddities about accessing the particles though log probs and stuff.
+    i.e.
+        self.log_prob(self.particles[:, 0, :]) returns the right thing.
+        self.log_prob((4, )) return -inf, when it probably should return a type error...
+
+    To test:
+    ```
+    T = 10                                          # Timesteps.
+    N = 5                                           # Number of particles.
+    D = 2                                           # State dimension.
+    p = np.arange(T * N * D).reshape((T, N, D))     # Create array.
+    w = np.zeros((N, ))                             # Equally weight.
+    dist = SMCPosterior(p, w)                       # Define the posterior.
+    dist.log_prob(p[:, 0, :])                       # Evaluate the probability of a particle.
+    ```
+    """
+
+    def __init__(self,
+                 smoothing_particles,
+                 log_weights,
+                 ancestry,
+                 filtering_particles,
+                 log_marginal_likelihood,
+                 resampled,
+                 validate_args=False,
+                 allow_nan_stats=True,
+                 name="SMCPosterior", ):
+        """
+
+        # TODO - this currently required that smoothing_particles is a tensor.  Needs to be converted to allow PyTrees.
+
+        Args:
+
+            smoothing_particles (ndarray, (time x num_particles x state_dim)):
+                ndarray of the smoothing particles.  Will form the atomic representations used in the mixture.
+
+            log_weights (ndarray, (time x num_particles)):
+
+            ancestry (ndarray, (time x num_particles x state_dim)):
+                ndarray of the ancestors of each particle.  Can be omitted for computational savings.
+
+            filtering_particles (ndarray, (time x num_particles x state_dim)):
+                ndarray of the filtering particles.  Can be omitted for computational savings.
+
+            log_marginal_likelihood (float):
+                The estimated log marginal likelihood.
+
+            resampled (ndarray, (time, )):
+                Whether particles were resampled at that time bin.
+
+        """
+
+        # # Validate the args.
+        # assert smoothing_particles.shape[0] == log_weights.shape[0], \
+        #     "Must be the same number of timesteps."
+        # assert smoothing_particles.shape[1] == log_weights.shape[1], \
+        #     "Must be the same number of weights as particles."
+        #
+        # assert smoothing_particles.shape[0] == ancestry.shape[0], \
+        #     "[Error]: Ancestry length must match particles length."
+        # assert smoothing_particles.shape[1] == ancestry.shape[1], \
+        #     "[Error]: Ancestry dim must match n particles."
+        #
+        # assert filtering_particles.shape == smoothing_particles.shape, \
+        #     "[Error]: Filtering particles and smoothing particles must have same shape."
+
+        # Note that these require the batch dimension (T) to be the first dimension.
+        self._ancestry = ancestry
+        self._smoothing_particles = smoothing_particles
+        self._filtering_particles = filtering_particles
+        self._log_accumulated_weights = log_weights
+        self._log_marginal_likelihood = log_marginal_likelihood
+        self._resampled = resampled
+
+        # We would detect the dtype dynamically but that would break vmap
+        # see https://github.com/tensorflow/probability/issues/1271
+        dtype = np.float32
+        super(SMCPosterior, self).__init__(
+            dtype=dtype,
+            validate_args=validate_args,
+            allow_nan_stats=allow_nan_stats,
+            reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            parameters=dict(smoothing_particles=self._smoothing_particles,
+                            log_weights=self._log_accumulated_weights,
+                            ancestry=self._ancestry,
+                            filtering_particles=self._filtering_particles,
+                            log_marginal_likelihood=self._log_marginal_likelihood,
+                            resampled=self._resampled,),
+            name=name,
+        )
+
+
+    @classmethod
+    def _parameter_properties(self, dtype, num_classes=None):
+        """
+        There is something weird in how i'm constructing the class, but it doesn't seem to make too much of a
+        difference.  Without overriding the class property, TFP throws a rather unhelpful warning.
+
+        Need to double check that the dictionary that is returned here is correct.
+
+        see https://github.com/tensorflow/probability/issues/1458
+
+        :param dtype:
+        :param num_classes:
+        :return:
+        """
+        return dict(
+            smoothing_particles=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
+            log_weights=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1),
+            ancestry=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1),
+            filtering_particles=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
+            log_marginal_likelihood=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+            resampled=tfp.internal.parameter_properties.ParameterProperties(event_ndims=0),
+        )
+
+    def _event_shape_tensor(self):
+        # If there are only three dimensions, then the particle dimension is the batch dimension.
+        if len(self._smoothing_particles.shape) == 3:
+            return tf.TensorShape((self._smoothing_particles.shape[0],
+                                   self._smoothing_particles.shape[2]))
+        else:
+            # Otherwise, the leading dimension in the batch dim.
+            return tf.TensorShape(self._smoothing_particles.shape[1:])
+
+    def _event_shape(self):
+        return self._event_shape_tensor()
+
+    def _batch_shape(self):
+        return tf.TensorShape(self._smoothing_particles.shape[0])
+
+    def tree_flatten(self):
+        children = (self._smoothing_particles,
+                    self._log_accumulated_weights,
+                    self._ancestry,
+                    self._filtering_particles,
+                    self._log_marginal_likelihood,
+                    self._resampled, )
+        aux_data = None
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
+
+    def _gen_dist(self):
+        # Construct the weighting distribution.
+        smc_mixture_distribution = tfd.Categorical(logits=self.final_particle_weights)
+
+        # Convert the weights into a set of deterministic distributions.
+        particle_dist = tfd.Deterministic(np.moveaxis(self.particles, 0, 1))
+
+        # Construct the components.
+        smc_components_distribution = tfd.Independent(particle_dist, reinterpreted_batch_ndims=2)
+
+        return tfd.MixtureSameFamily(smc_mixture_distribution, smc_components_distribution)
+
+    # Define the properties and class methods.
+    # These definitions predominantly follow the order of HMM -> Posterior.py -> _HMMPosterior .
+
+    def __len__(self):
+        raise NotImplementedError("Len on this object is so ambiguous we disable it.")
+
+    @property
+    def state_dimension(self):
+        return self._smoothing_particles.shape[-1]
+
+    @property
+    def num_particles(self):
+        return self._smoothing_particles.shape[-2]
+
+    @property
+    def num_timesteps(self):
+        return self._smoothing_particles.shape[-3]
+
+    @property
+    def is_stationary(self):
+        """
+        This property doesn't really make sense here.
+        :return:
+        """
+        raise NotImplementedError()
+
+    @property
+    def log_normalizer(self):
+        return self._log_marginal_likelihood
+
+    def _mean(self):
+        """
+        This property doesn't really make sense here.
+        :return:
+        """
+        raise NotImplementedError()
+
+    @property
+    def expected_states(self):
+        """
+        This property doesn't really make sense here.
+        :return:
+        """
+        # return self.mean()
+        raise NotImplementedError()
+
+    # def _log_prob(self, data, **kwargs):
+    #     raise NotImplementedError()
+
+    def _sample_n(self, n, seed=None, **kwargs):
+        """
+        Generate the distribution object and then route this call through to the underlying distribution.
+        :param n:
+        :param seed:
+        :param kwargs:
+        :return:
+        """
+        return self._gen_dist()._sample_n(n, seed=seed)
+
+    # These properties are then SMCPosterior specific.
+
+    @property
+    def particles(self):
+        return self._smoothing_particles
+
+    @property
+    def incremental_importance_weights(self):
+        raise NotImplementedError()
+        # return self._
+
+    @property
+    def final_particle_weights(self):
+        return self._log_accumulated_weights[..., -1, :]
+
+    @property
+    def resampled(self):
+        return self._resampled
+
+    @property
+    def filtering_particles(self):
+        return self._filtering_particles
+
+    @property
+    def accumulated_incremental_importance_weights(self):
+        return self._weights
+
+
 def _single_smc(key,
                 model,
                 dataset,
@@ -136,6 +397,7 @@ def _single_smc(key,
                 resampling_criterion,
                 resampling_function,
                 use_stop_gradient_resampling=False,
+                use_resampling_gradients=False,
                 verbosity=default_verbosity):
     r"""Recover posterior over latent state given a SINGLE dataset and model.
 
@@ -191,6 +453,10 @@ def _single_smc(key,
         use_stop_gradient_resampling (bool, No size, default=False):
             Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
 
+        use_resampling_gradients (bool, No size, default=False):
+            Whether to use resampling gradients [Maddison et al, 2017].
+            NAND with use_stop_gradient_resampling.
+
         verbosity (SSM.verbosity, No size, default=default_verbosity):
             Level of text output.
 
@@ -230,7 +496,7 @@ def _single_smc(key,
         proposal = lambda *args: (model.dynamics_distribution(args[2]), None)
 
     # Do the forward pass.
-    filtering_particles, log_marginal_likelihood, ancestry = \
+    filtering_particles, log_marginal_likelihood, ancestry, resampled, accumulated_log_incr_weights = \
         _smc_forward_pass(key,
                           model,
                           dataset,
@@ -240,12 +506,21 @@ def _single_smc(key,
                           resampling_criterion,
                           resampling_function,
                           use_stop_gradient_resampling,
+                          use_resampling_gradients,
                           verbosity)
 
     # Now do the backwards pass to generate the smoothing distribution.
     smoothing_particles = _smc_backward_pass(filtering_particles, ancestry, verbosity)
 
-    return smoothing_particles, log_marginal_likelihood, ancestry, filtering_particles
+    # Now inscribe the results into an SMCPosterior object for modularity.
+    smc_posterior = SMCPosterior(smoothing_particles,
+                                 accumulated_log_incr_weights,
+                                 ancestry,
+                                 filtering_particles,
+                                 log_marginal_likelihood,
+                                 resampled)
+
+    return smc_posterior
 
 
 def _smc_forward_pass(key,
@@ -257,6 +532,7 @@ def _smc_forward_pass(key,
                       resampling_criterion,
                       resampling_function,
                       use_stop_gradient_resampling=False,
+                      use_resampling_gradients=False,
                       verbosity=default_verbosity,):
     r"""Do the forward pass of an SMC sampler.
 
@@ -298,6 +574,11 @@ def _smc_forward_pass(key,
 
         use_stop_gradient_resampling (bool, No size, default=False):
             Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
+            NAND with use_resampling_gradients.
+
+        use_resampling_gradients (bool, No size, default=False):
+            Whether to use resampling gradients [Maddison et al, 2017].
+            NAND with use_stop_gradient_resampling.
 
         verbosity (SSM.verbosity, No size, default=default_verbosity):
             Level of text output.
@@ -391,15 +672,41 @@ def _smc_forward_pass(key,
     # Note that this needs to force the last accumulated incremental weight to be used.
     log_marginal_likelihood = np.sum(p_hats[:-1] * resampled[:-1]) + p_hats[-1]
 
-    return filtering_particles, log_marginal_likelihood, ancestors
+    # If we are using the resampling gradients, modify the marginal likelihood to contain that gradient information.
+    if use_resampling_gradients:
+
+        raise NotImplementedError("This code isn't ready yet.  There are still too many issues with indexing etc.")
+        
+        # # TO-DO - check if Scibior paper can use adaptive resampling.
+        # # Check that we were always resampling.
+        # assert np.all(resampling_function == always_resample_criterion), \
+        #     "Error: Currently enforcing that always resampling if using Resampling gradients.  We need to derive " \
+        #     "whether the resampling gradient estimator is correct with variable resampling schedule. "
+        #
+        # # Set whether we are raoblackwellizing the estimator.  This is an internal check and should always be set to
+        # # true once we have verified that it is correct.
+        # raoblackwellize_estimator = True
+        #
+        # if raoblackwellize_estimator:
+        #     assert np.all(resampling_function == always_resample_criterion), \
+        #         "Error: Currently enforcing that always resampling if R-B-ing.  We need to derive " \
+        #         "precisely how to R-B with variable resampling schedule. "
+        #
+        # # Compute the resampling loss term.
+        # resampling_loss = _compute_resampling_grad(log_weights, log_marginal_likelihood,
+        #                                            ancestors, raoblackwellize_estimator)
+        #
+        # # Add a numerical zero to the marginal likelihood, but stop the gradient through one of the terms so that the
+        # # gradient of the resampling loss is added to the gradient of the vanilla log marginal term.
+        # log_marginal_likelihood = log_marginal_likelihood + resampling_loss - jax.lax.stop_gradient(resampling_loss)
+        
+    return filtering_particles, log_marginal_likelihood, ancestors, resampled, log_weights
 
 
 def _smc_backward_pass(filtering_particles,
                        ancestors,
                        verbosity=default_verbosity):
     r"""Do the backwards pass (pruning) given a SINGLE forward pass.
-
-    TODO - Double check that the backwards pass code is correct.  I always get this wrong.
 
     Args:
 
@@ -442,6 +749,57 @@ def _smc_backward_pass(filtering_particles,
     smoothing_particles = np.concatenate((smoothing_particles, filtering_particles[-1][np.newaxis]))
 
     return smoothing_particles
+
+
+def _compute_resampling_grad(log_weights, log_marginal_likelihood, ancestors, raoblackwellize_estimator=True):
+    """
+
+    :param log_weights:
+    :param log_marginal_likelihood:
+    :param ancestors:
+    :param raoblackwellize_estimator:
+    :return:
+    """
+
+    # Pull out dimensions.
+    t, n, _ = log_weights.shape
+
+    # Average log_weight at each timestep.
+    p_hats = spsp.logsumexp(log_weights, axis=1) - np.log(n)
+
+    # (T, num_particles)
+    log_weights_normalized = log_weights - spsp.logsumexp(log_weights, axis=1, keepdims=True)
+
+    # If we are R-B-ing, then we need to modify the p-hat terms in the score function.
+    # See (8) in VSMC.
+    if raoblackwellize_estimator:
+        # ``p_hat_diffs[t] = log [p-hat(y_{1:T}) / p-hat(y_{1:t})]`` with length T - 1 (cf. (8) in VSMC)
+        # TO-DO - this cumsum only runs until the penultimate step.
+        p_hat_diffs = jax.lax.stop_gradient(log_marginal_likelihood - np.cumsum(p_hats)[:-1])  # last entry not used
+    else:
+        p_hat_diffs = jax.lax.stop_gradient(log_marginal_likelihood)
+
+    resampling_loss = np.sum()
+
+    # # TO-DO - NOTE - AW - I THINK THIS SHOULD BE TO TIME T.
+    # # TO-DO - decide if having initial ancestors changes everything.
+    # # The anscestor indices may be one out or they may not be.
+    # # If not rao-blackwellized then this should def got to T, if it is R-B, then maybe the last term should be zero
+    # # or maybe the last term can be ignored as it is zero.  Write a little debug for this.
+    # resampling_loss = 0.0
+    # for _t in range(t - 1):
+    #     # Again cf. (8) in VSMC paper
+    #     # (TO-DO: should steps where resampling doesn't happen be zeroed out? For now just doing `always_resample`)
+    #     # resampling_loss += p_hat_diffs[t] * log_weights_normalized[t, ancestors[t]].sum()
+    #
+    #     # resampling_loss += jax.lax.stop_gradient(resampled[t]) * \
+    #                          p_hat_diffs[t] * log_weights_normalized[t, ancestors[t]].sum()
+    #
+    #     # Non-Rao Blackwellized gradient
+    #     resampling_loss += jax.lax.stop_gradient(log_marginal_likelihood) * \
+    #                        log_weights_normalized[t, ancestors[t]].sum()
+
+    return resampling_loss
 
 
 def always_resample_criterion(unused_log_weights, unused_t):
@@ -663,3 +1021,104 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
     plt.pause(0.1)
 
     return fig
+
+
+# # OLD SMCPosterior class.
+# class SMCPosterior(tfd.MixtureSameFamily):
+#     """
+#     Define a thin wrapper and constructor for a MixtureSameFamily distribution for constructing a representation
+#     of the SMC smoothing distribution.  Note that the rest of the SMC code considers (T x N x D), but here we think
+#     about things as (N x T x D), since this is essentially a mixture distribution over the N particles.
+#
+#     NOTE - there is some oddities about accessing the particles though log probs and stuff.
+#     i.e.
+#         self.log_prob(self.particles[:, 0, :]) returns the right thing.
+#         self.log_prob((4, )) return -inf, when it probably should return a type error...
+#
+#     To test:
+#     ```
+#     T = 10                                          # Timesteps.
+#     N = 5                                           # Number of particles.
+#     D = 2                                           # State dimension.
+#     p = np.arange(T * N * D).reshape((T, N, D))     # Create array.
+#     w = np.zeros((N, ))                             # Equally weight.
+#     dist = SMCPosterior(p, w)                       # Define the posterior.
+#     dist.log_prob(p[:, 0, :])                       # Evaluate the probability of a particle.
+#     ```
+#     """
+#
+#     def __init__(self, particles, weights=None):
+#         """
+#
+#         Args:
+#
+#             particles (ndarray, (time x num_particles x state_dim)):
+#                 ndarray of the particles.  Will form the atomic representations used in the mixture.
+#
+#             weights (ndarray, (n_particles, )):
+#                 The final particle weights.  If None, assumes weights are equal
+#
+#         """
+#
+#         # Inscribe some useful stuff.
+#         self._particles = particles
+#         self._weights = weights
+#         self._len = self.particles.shape[0]
+#         self._num_particles = self.particles.shape[1]
+#
+#         # If we haven't specified weights, assume that the weights are uniform.
+#         if weights is None:
+#             weights = np.ones((self.num_particles, )) / self.num_particles
+#
+#         # Construct the weighting distribution.
+#         assert self.num_particles == len(weights), "Must be the same number of weights as particles."
+#         smc_mixture_distribution = tfd.Categorical(logits=weights)
+#
+#         # # TO-DO - this needs to be made to accept arbitrary PyTrees.
+#         # particle_dist = tfd.Deterministic(jax.tree_map(lambda _x: np.moveaxis(_x, 1, 0), self.particles))
+#
+#         # Convert the weights into a set of deterministic distributions.
+#         particle_dist = tfd.Deterministic(np.moveaxis(particles, 1, 0))
+#
+#         # Construct the components.
+#         smc_components_distribution = tfd.Independent(particle_dist, reinterpreted_batch_ndims=2)
+#
+#         # Initialize this distribution by calling the super.
+#         super(SMCPosterior, self).__init__(smc_mixture_distribution, smc_components_distribution)
+#
+#     @classmethod
+#     def _parameter_properties(self, dtype, num_classes=None):
+#         """
+#         There is something weird in how i'm constructing the class, but it doesn't seem to make too much of a
+#         difference.  Without overriding the class property, TFP throws a rather unhelpful warning.
+#
+#         Need to double check that the dictionary that is returned here is correct.
+#
+#         see https://github.com/tensorflow/probability/issues/1458
+#
+#         :param dtype:
+#         :param num_classes:
+#         :return:
+#         """
+#         # td_properties = super().parameter_properties(dtype, num_classes=num_classes)
+#         # return td_properties
+#         return dict(
+#             particles=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
+#             weights=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
+#         )
+#
+#     @property
+#     def __len__(self):
+#         return self._len
+#
+#     @property
+#     def particles(self):
+#         return self._particles
+#
+#     @property
+#     def weights(self):
+#         return self._weights
+#
+#     @property
+#     def num_particles(self):
+#         return self._num_particles

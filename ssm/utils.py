@@ -12,6 +12,8 @@ from scipy.optimize import linear_sum_assignment
 from typing import Sequence, Optional
 from functools import wraps
 import copy
+from jax.scipy import special as spsp
+
 
 class Verbosity(IntEnum):
     """
@@ -312,3 +314,30 @@ def debug_rejit(func):
     wrapper.prev_in = None
     wrapper.prev_out = None
     return wrapper
+
+
+def possibly_disable_jit(disable_jit=False):
+    """
+    Define a little context manager for whether we disable JIT or not.
+    :param disable_jit:
+    :return:
+    """
+    from contextlib import contextmanager
+    import jax
+
+    @contextmanager
+    def nothing():
+        yield
+
+    return lambda _disable=disable_jit: jax.disable_jit if _disable else nothing
+
+
+def lexp(_lmls, _axis=0):
+    """
+    Compute the log-expectation of a ndarray of log probabilities.
+    :param _lmls:
+    :return:
+    """
+    _lml = spsp.logsumexp(_lmls, axis=_axis) - np.log(_lmls.shape[_axis])
+    return _lml
+
