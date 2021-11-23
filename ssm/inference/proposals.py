@@ -92,7 +92,7 @@ class IndependentGaussianProposal:
             return vmapped(*proposal_inputs)
 
 
-def wrap_proposal_structure(proposal, proposal_structure):
+def rebuild_proposal(proposal, proposal_structure):
     """
     Function that produces another function that wraps the proposal.  This needs wrapping because we define a
     proposal as a function that takes just the inputs (as opposed to the inputs and the parameters of the proposal).
@@ -113,9 +113,9 @@ def wrap_proposal_structure(proposal, proposal_structure):
     :return: Function that can be called as fn(inputs).
     """
 
-    def rebuild_proposal(_param_vals):
+    def _rebuild_proposal(_param_vals):
         # If there is no proposal, then there is no structure to define.
-        if proposal is None:
+        if (proposal is None) or (proposal_structure == 'BOOTSTRAP'):
             return None
 
         # We fork depending on the proposal type.
@@ -139,4 +139,4 @@ def wrap_proposal_structure(proposal, proposal_structure):
 
         return _proposal
 
-    return rebuild_proposal
+    return _rebuild_proposal

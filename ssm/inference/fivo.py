@@ -87,7 +87,6 @@ def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_swee
     :return:
     """
     true_lml, em_log_marginal_likelihood = 0.0, 0.0
-
     dset = 0
 
     # Test against EM (which for the LDS is exact).
@@ -260,20 +259,21 @@ def define_test_model(subkey, true_model, ):
             return _model
 
     p_params_accessors = (accessor_0,)
-    return model, p_params_accessors
+    rebuild_model_fn = define_rebuild_model(model, p_params_accessors)
+    return model, p_params_accessors, rebuild_model_fn
 
 
-def define_proposal(subkey, model, dataset):
+def define_proposal(subkey, model, dataset, proposal_structure='RESQ'):
     """
 
     :param subkey:
     :param model:
     :param dataset:
+    :param proposal_structure: {'RESQ', 'DIRECT', 'BOOTSTRAP'}.
     :return:
     """
     # Define the proposal that we will use.
     # Stock proposal input form is (dataset, model, particles, t, p_dist).
-    proposal_structure = 'RESQ'  # {'RESQ', 'DIRECT'}.
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
     dummy_p_dist = model.dynamics_distribution(dummy_particles)
     stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles[0], 0, dummy_p_dist)
@@ -282,13 +282,18 @@ def define_proposal(subkey, model, dataset):
                                                      stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
                                                      dummy_output=dummy_proposal_output)
     proposal_params = proposal.init(subkey)
-    return proposal, proposal_structure, proposal_params
+    rebuild_prop_fn = proposals.rebuild_proposal(proposal, proposal_structure)
+    return proposal, proposal_params, rebuild_prop_fn
 
 
 def define_lds_test(subkey):
 
+    # Define some defaults.
     proposal, proposal_params, proposal_structure = None, None, None
     tilt, tilt_params, tilt_structure = None, None, None
+
+    # Define the
+    proposal_structure = 'RESQ'  # {'RESQ', 'DIRECT', 'BOOTSTRAP'}
 
     # Define the true model.
     key, subkey = jr.split(subkey)
@@ -296,15 +301,13 @@ def define_lds_test(subkey):
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, p_params_accessors = define_test_model(subkey, true_model)
+    model, p_params_accessors, rebuild_model_fn = define_test_model(subkey, true_model)
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_structure, proposal_params = define_proposal(subkey, model, dataset)
+    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, dataset, proposal_structure)
 
-    # Define the functions for constructing objects.
-    rebuild_model_fn = define_rebuild_model(model, p_params_accessors)
-    rebuild_prop_fn = proposals.wrap_proposal_structure(proposal, proposal_structure)
+    # Define the tilt.
     rebuild_tilt_fn = lambda: None
 
     # Return this big pile of stuff.
@@ -328,17 +331,17 @@ def main():
         ret_vals = define_lds_test(subkey)
 
         # Unpack that big mess of stuff.
-        true_model, true_states, dataset = ret_vals[0]                                  # Unpack true model.
-        model, p_params_accessors, rebuild_model_fn = ret_vals[1]                       # Unpack test model.
-        proposal, proposal_params, rebuild_prop_fn = ret_vals[2]                        # Unpack proposal.
-        tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                                # Unpack tilt.
+        true_model, true_states, dataset = ret_vals[0]              # Unpack true model.
+        model, p_params_accessors, rebuild_model_fn = ret_vals[1]   # Unpack test model.
+        proposal, proposal_params, rebuild_prop_fn = ret_vals[2]    # Unpack proposal.
+        tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]            # Unpack tilt.
 
         # Build up the optimizer.
         opt = define_optimizer(get_params_from_model(model, p_params_accessors), proposal_params)
 
         # Close over constant parameters.
-        do_fivo_sweep_closed = lambda _k, _p, _num_particles: \
-            do_fivo_sweep(_p, _k, rebuild_model_fn, rebuild_prop_fn, dataset, _num_particles)
+        do_fivo_sweep_closed = lambda _key, _params, _num_particles: \
+            do_fivo_sweep(_params, _key, rebuild_model_fn, rebuild_prop_fn, dataset, _num_particles)
 
         # Jit this badboy.
         do_fivo_sweep_jitted = \
