@@ -5,6 +5,7 @@ Useful utility functions.
 import jax.numpy as np
 import jax.random as jr
 from jax import tree_util
+import jax
 import inspect
 from enum import IntEnum
 from tqdm.auto import trange
@@ -13,6 +14,7 @@ from typing import Sequence, Optional
 from functools import wraps
 import copy
 from jax.scipy import special as spsp
+from contextlib import contextmanager
 
 
 class Verbosity(IntEnum):
@@ -316,20 +318,18 @@ def debug_rejit(func):
     return wrapper
 
 
+@contextmanager
 def possibly_disable_jit(disable_jit=False):
     """
     Define a little context manager for whether we disable JIT or not.
     :param disable_jit:
     :return:
     """
-    from contextlib import contextmanager
-    import jax
-
-    @contextmanager
-    def nothing():
+    if disable_jit:
+        with jax.disable_jit():
+            yield
+    else:
         yield
-
-    return lambda _disable=disable_jit: jax.disable_jit if _disable else nothing
 
 
 def lexp(_lmls, _axis=0):
