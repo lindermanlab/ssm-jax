@@ -33,13 +33,18 @@ config.update("jax_debug_nans", True)
 DISABLE_JIT = False
 
 
-def get_params(_opt):
+def get_params_from_opt(_opt):
     """
     Pull the parameters (stored in the Flax optimizer target) out of the optimizer tuple.
     :param _opt: Tuple of Flax optimizer objects.
     :return: Tuple of parameters.
     """
     return tuple((_o.target if _o is not None else None) for _o in _opt)
+
+
+def get_params_from_model(model, accessors):
+    p_params = tuple(_a(model) for _a in accessors)
+    return p_params
 
 
 def do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_likelihood=None):
@@ -102,9 +107,9 @@ def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_swee
     _plot_single_sweep(true_sweep[dset], true_states[dset], tag='True Smoothing.')
 
     # Test SMC in the initial model.
-    initial_params = dc(get_params(opt))
+    initial_params = dc(get_params_from_opt(opt))
     key, subkey = jr.split(key)
-    initial_lml, sweep_posteriors = _do_fivo_sweep_jitted(subkey, get_params(opt), _num_particles=_num_particles)
+    initial_lml, sweep_posteriors = _do_fivo_sweep_jitted(subkey, get_params_from_opt(opt), _num_particles=_num_particles)
     sweep_fig = _plot_single_sweep(sweep_posteriors.particles[dset], true_states[dset], tag='Initial Smoothing.')
     do_print(0, initial_lml, true_model, true_lml, opt, em_log_marginal_likelihood)
     return true_lml, em_log_marginal_likelihood, sweep_fig
@@ -200,14 +205,14 @@ def define_rebuild_model(_model, _p_params_accessors):
 
 def define_true_model_and_data(key):
     """
-    
-    :param key: 
-    :return: 
+
+    :param key:
+    :return:
     """
     latent_dim = 3
     emissions_dim = 5
-    num_trials = 10
-    num_timesteps = 100
+    num_trials = 20
+    num_timesteps = 200
 
     # Create a more reasonable emission scale.
     transition_scale_tril = 0.1 * np.eye(latent_dim)
@@ -255,8 +260,7 @@ def define_test_model(subkey, true_model, ):
             return _model
 
     p_params_accessors = (accessor_0,)
-    p_params = tuple(_a(model) for _a in p_params_accessors)
-    return model, p_params, p_params_accessors
+    return model, p_params_accessors
 
 
 def define_proposal(subkey, model, dataset):
@@ -278,7 +282,37 @@ def define_proposal(subkey, model, dataset):
                                                      stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
                                                      dummy_output=dummy_proposal_output)
     proposal_params = proposal.init(subkey)
-    return proposal_structure, proposal_params
+    return proposal, proposal_structure, proposal_params
+
+
+def define_lds_test(subkey):
+
+    proposal, proposal_params, proposal_structure = None, None, None
+    tilt, tilt_params, tilt_structure = None, None, None
+
+    # Define the true model.
+    key, subkey = jr.split(subkey)
+    true_model, true_states, dataset = define_true_model_and_data(subkey)
+
+    # Now define a model to test.
+    key, subkey = jax.random.split(key)
+    model, p_params_accessors = define_test_model(subkey, true_model)
+
+    # Define the proposal.
+    key, subkey = jr.split(key)
+    proposal, proposal_structure, proposal_params = define_proposal(subkey, model, dataset)
+
+    # Define the functions for constructing objects.
+    rebuild_model_fn = define_rebuild_model(model, p_params_accessors)
+    rebuild_prop_fn = proposals.wrap_proposal_structure(proposal, proposal_structure)
+    rebuild_tilt_fn = lambda: None
+
+    # Return this big pile of stuff.
+    ret_model = (true_model, true_states, dataset)
+    ret_test = (model, p_params_accessors, rebuild_model_fn)
+    ret_prop = (proposal, proposal_params, rebuild_prop_fn)
+    ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
+    return ret_model, ret_test, ret_prop, ret_tilt
 
 
 def main():
@@ -288,27 +322,19 @@ def main():
 
         # Define some defaults.
         key = jr.PRNGKey(2)
-        proposal, proposal_params, proposal_structure = None, None, None
-        tilt, tilt_params, tilt_structure = None, None, None
 
-        # Define the true model.
+        # Define the experiment.
         key, subkey = jr.split(key)
-        true_model, true_states, dataset = define_true_model_and_data(subkey)
+        ret_vals = define_lds_test(subkey)
 
-        # Now define a model to test.
-        key, subkey = jax.random.split(key)
-        model, p_params, p_params_accessors = define_test_model(subkey, true_model)
-
-        # Define the proposal.
-        key, subkey = jr.split(key)
-        proposal_structure, proposal_params = define_proposal(subkey, model, dataset)
-
-        # Define the functions for constructing objects.
-        rebuild_model_fn = define_rebuild_model(model, p_params_accessors)
-        rebuild_prop_fn = proposals.wrap_proposal_structure(proposal, proposal_structure)
+        # Unpack that big mess of stuff.
+        true_model, true_states, dataset = ret_vals[0]                                  # Unpack true model.
+        model, p_params_accessors, rebuild_model_fn = ret_vals[1]                       # Unpack test model.
+        proposal, proposal_params, rebuild_prop_fn = ret_vals[2]                        # Unpack proposal.
+        tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                                # Unpack tilt.
 
         # Build up the optimizer.
-        opt = define_optimizer(p_params, proposal_params)
+        opt = define_optimizer(get_params_from_model(model, p_params_accessors), proposal_params)
 
         # Close over constant parameters.
         do_fivo_sweep_closed = lambda _k, _p, _num_particles: \
@@ -327,14 +353,14 @@ def main():
             initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _num_particles=5000)
 
         # Define the parameters to be used during optimization.
-        num_particles = 100
+        num_particles = 200
         opt_steps = 100000
 
         # Main training loop.
         for _step in range(opt_steps):
 
             key, subkey = jr.split(key)
-            (pred_lml, smc_posteriors), grad = do_fivo_sweep_val_and_grad(subkey, get_params(opt), num_particles)
+            (pred_lml, smc_posteriors), grad = do_fivo_sweep_val_and_grad(subkey, get_params_from_opt(opt), num_particles)
             opt = apply_gradient(grad, opt, )
 
             coldstart = 10
@@ -343,7 +369,7 @@ def main():
                 do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_likelihood)
 
                 if _step > coldstart:
-                    pred_lml, pred_sweep = do_fivo_sweep_jitted(subkey, get_params(opt), _num_particles=5000)
+                    pred_lml, pred_sweep = do_fivo_sweep_jitted(subkey, get_params_from_opt(opt), _num_particles=5000)
                     sweep_fig = _plot_single_sweep(pred_sweep.particles[0], true_states[0],
                                                    tag='{} Smoothing.'.format(_step), fig=sweep_fig)
 
