@@ -69,8 +69,7 @@ class StationaryCTDynamics(Dynamics):
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         drift_matrix, drift_bias, diffusion_scale, prior = children
-        return cls(aux_data,
-                   drift_matrix=drift_matrix,
+        return cls(drift_matrix=drift_matrix,
                    drift_bias=drift_bias,
                    diffusion_scale=diffusion_scale,
                    dynamics_distribution_prior=prior)
@@ -92,7 +91,7 @@ class StationaryCTDynamics(Dynamics):
                batched_metadata=None):
 
         # Manually extract the expected sufficient statistics from posterior
-        def compute_stats_and_counts(data, posterior, covariates, metadata):
+        def compute_stats(posterior):
             Ex = posterior.expected_states[:-1]
             Ey = posterior.expected_states[1:]
             ExxT = posterior.expected_states_squared[:-1]
@@ -102,50 +101,30 @@ class StationaryCTDynamics(Dynamics):
             stats = (ExxT, Ex, EyxT, Ey, EyyT)
             return stats
 
-        batched_stats = vmap(compute_stats_and_counts)(batched_data,
-                                                       batched_posteriors,
-                                                       batched_covariates,
-                                                       batched_metadata)
+        batched_stats = vmap(compute_stats)(batched_posteriors)
         
         flattened_params, unravel = ravel_pytree((self.drift_matrix, self.drift_bias, self.diffusion_scale))
 
         def _objective(flattened_params):
             drift_matrix, drift_bias, diffusion_scale = unravel(flattened_params) 
             
-            def _single_element_objective(stats, covariates):
-                ''' stats should be ((T, D, D), (T, D), (T, D, D), (T, D), (T, D, D))
-                covariates should be (T,)
-                '''                
-                # we only ever use linalg.inv(noise_covariance). We can find this directly by
-                # taking expm(-hamiltonian) (probably)
-                # TODO: should I scale the objective value by (1./T)?
+            def _one_step_objective(stats, covariate):
+                A, b, Q = compute_transition_params(drift_matrix, drift_bias, diffusion_scale, covariate)
+                xxT, x, yxT, y, yyT = stats
                 
-                def _one_step_objective(stats, params):
-                    ''' stats should be ((D, D), (D,), (D, D), (D,), (D, D))
-                    params should be ((D, D), (D,), (D, D))
-                    '''
-                    A, b, Q = params
-                    xxT, x, yxT, y, yyT = stats
-                    
-                    Q_inv = np.linalg.inv(Q)
-                    vol_term = -0.5 * np.linalg.slogdet(Q)[1]
-                    quad_terms = (-0.5 * np.trace(Q_inv @ yyT) -
-                                  0.5 * np.trace(A.T @ Q_inv @ A @ xxT) -
-                                  np.trace(A.T @ Q_inv @ yxT))
-                    linear_terms = -np.dot(np.dot(A.T @ Q_inv, b), x) + np.dot(np.dot(Q_inv, b), y)
-                    
-                    transition_lp = vol_term + quad_terms + linear_terms
-                    return transition_lp
+                Q_inv = np.linalg.inv(Q)
+                vol_term = -0.5 * np.linalg.slogdet(Q)[1]
+                quad_terms = (-0.5 * np.trace(Q_inv @ yyT) -
+                                0.5 * np.trace(A.T @ Q_inv @ A @ xxT) -
+                                np.trace(A.T @ Q_inv @ yxT))
+                linear_terms = -np.dot(np.dot(A.T @ Q_inv, b), x) + np.dot(np.dot(Q_inv, b), y)
                 
-                transition_params_sequence = (
-                    compute_transition_params_sequence(drift_matrix, drift_bias, diffusion_scale, covariates[1:]))
-                return vmap(_one_step_objective)(stats, transition_params_sequence) # should be (T,)
+                transition_lp = vol_term + quad_terms + linear_terms
+                return transition_lp
             
-            objective_val = vmap(_single_element_objective)(batched_stats, batched_covariates) # should be (B, T)
-            # import ipdb; ipdb.set_trace()
-            return np.mean(objective_val)
+            _single_element_objective = vmap(_one_step_objective)
+            return np.mean(vmap(_single_element_objective)(batched_stats, batched_covariates[:, 1:]))
            
-        _objective(flattened_params)
         optimize_results = jax.scipy.optimize.minimize(
             _objective,
             flattened_params,
