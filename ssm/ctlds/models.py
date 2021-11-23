@@ -6,7 +6,7 @@ from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.inference.em import em
 from ssm.inference.laplace_em import laplace_em
 from ssm.ctlds.base import CTLDS
-from ssm.ctlds.dynamics import StationaryCTDynamics
+from ssm.ctlds.dynamics import StationaryCTDynamics, compute_transition_params
 from ssm.ctlds.emissions import GaussianEmissions
 from ssm.lds.initial import StandardInitialCondition
 from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, random_log_rotation
@@ -146,7 +146,7 @@ class GaussianCTLDS(CTLDS):
         J_diag = np.tile(J_diag[None, :, :], (seq_len, 1, 1))
         J_diag = J_diag.at[0].add(np.linalg.inv(Q1))
 
-        sequence_transition_params = [self._dynamics.compute_transition_params(covariate) for covariate in covariates[1:]]
+        sequence_transition_params = [self._dynamics.transition_params(covariate) for covariate in covariates[1:]]
         J_lower_diag = np.zeros_like(J_diag)[1:]
 
         for t in range(seq_len - 1):
