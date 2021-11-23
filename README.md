@@ -2,6 +2,7 @@
 
 [![Integration Tests](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/integration_tests.yml/badge.svg)](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/integration_tests.yml)
 [![Unit Tests](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/unit_tests.yml/badge.svg)](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/unit_tests.yml)
+[![Documentation Status](https://readthedocs.org/projects/ssm-jax-refactor/badge/?version=latest)](https://ssm-jax-refactor.readthedocs.io/en/latest/?badge=latest)
 
 Bayesian learning and inference for state space models (SSMs) using Google Research's JAX as a backend. 
 
