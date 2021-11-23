@@ -30,22 +30,26 @@ def test_normal_factorial_hmm_sample():
     assert states[1].min() >= 0 and states[0].max() < 4
     assert data.shape == (32, 10)
 
-# def test_gaussian_arhmm_sample_is_consistent():
-#     # sampled from ARHMM previously
-#     true_states = np.array([[0, 2, 2],
-#                             [0, 0, 0]], dtype=np.int32)
-#     true_data = np.array([[[ 1.1885295 ,  0.55225945],
-#                            [ 1.3390907 ,  0.8323249 ],
-#                            [ 2.7013097 ,  1.469697  ]],
-#                           [[-1.3038868 , -1.4337387 ],
-#                            [-2.3088303 , -0.5458503 ],
-#                            [ 0.1273387 , -1.296866  ]]], dtype=np.float32)
+def test_normal_factorial_hmm_sample_is_consistent():
+    # sampled from FHMM previously
+    true_states_var0 = np.array([[2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                                 [2, 2, 2, 2, 2, 2, 2, 0, 0, 0]], dtype=np.int32)
+    true_states_var1 = np.array([[0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
+                                 [0, 0, 3, 3, 3, 3, 3, 3, 0, 0]], dtype=np.int32)
+    true_data = np.array([[ 0.61314344, -0.28376377, -0.271816  ,  0.08673307,
+                            0.08069246,  0.08510165,  0.08053012,  0.1039151 ,
+                            0.08183516,  0.07629083],
+                          [ 0.61972284,  0.6279197 ,  2.7789102 ,  2.794995  ,
+                            2.7683432 ,  2.779642  ,  2.7876885 ,  1.8594146 ,
+                            -0.29416072, -0.27387783]], 
+                         dtype=np.float32)
 
-#     rng1, rng2 = jr.split(SEED, 2)
-#     arhmm = GaussianARHMM(3, 2, 1, seed=rng1)
-#     states, data = arhmm.sample(rng2, num_steps=3, num_samples=2)
-#     assert np.all(true_states == states)
-#     assert np.allclose(true_data, data)
+    rng1, rng2 = jr.split(SEED, 2)
+    fhmm = NormalFactorialHMM(num_states=(3, 4), seed=rng1)
+    states, data = fhmm.sample(rng2, num_steps=10, num_samples=2)
+    assert np.all(true_states_var0 == states[0])
+    assert np.all(true_states_var1 == states[1])
+    assert np.allclose(true_data, data, atol=1e-5)
 
 def test_normal_factorial_hmm_em_fit():
     rng1, rng2, rng3 = jr.split(SEED, 3)
