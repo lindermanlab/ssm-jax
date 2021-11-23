@@ -43,7 +43,9 @@ class MLP(nn.Module):
 
 
 class Identity(nn.Module):
-    """A layer which passes the input through unchanged."""
+    """
+    A layer which passes the input through unchanged.
+    """
     features: int
 
     def __call__(self, inputs):
@@ -51,7 +53,9 @@ class Identity(nn.Module):
 
 
 class Static(nn.Module):
-    """A layer which just returns some static parameters."""
+    """
+    A layer which just returns some static parameters.
+    """
     features: int
     kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.lecun_normal()
 

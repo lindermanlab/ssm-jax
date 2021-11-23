@@ -114,7 +114,8 @@ def smc(key,
     """
 
     # Check the args.
-    assert np.logical_not(np.logical_and(use_stop_gradient_resampling, use_resampling_gradients)), \
+    # Implement NAND using arithmetic.
+    assert use_stop_gradient_resampling + use_resampling_gradients != 2, \
         "[Error]: Cannot use both resampling gradients and stop gradient resampling."
 
     # Assign defaults.
@@ -1022,103 +1023,3 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
 
     return fig
 
-
-# # OLD SMCPosterior class.
-# class SMCPosterior(tfd.MixtureSameFamily):
-#     """
-#     Define a thin wrapper and constructor for a MixtureSameFamily distribution for constructing a representation
-#     of the SMC smoothing distribution.  Note that the rest of the SMC code considers (T x N x D), but here we think
-#     about things as (N x T x D), since this is essentially a mixture distribution over the N particles.
-#
-#     NOTE - there is some oddities about accessing the particles though log probs and stuff.
-#     i.e.
-#         self.log_prob(self.particles[:, 0, :]) returns the right thing.
-#         self.log_prob((4, )) return -inf, when it probably should return a type error...
-#
-#     To test:
-#     ```
-#     T = 10                                          # Timesteps.
-#     N = 5                                           # Number of particles.
-#     D = 2                                           # State dimension.
-#     p = np.arange(T * N * D).reshape((T, N, D))     # Create array.
-#     w = np.zeros((N, ))                             # Equally weight.
-#     dist = SMCPosterior(p, w)                       # Define the posterior.
-#     dist.log_prob(p[:, 0, :])                       # Evaluate the probability of a particle.
-#     ```
-#     """
-#
-#     def __init__(self, particles, weights=None):
-#         """
-#
-#         Args:
-#
-#             particles (ndarray, (time x num_particles x state_dim)):
-#                 ndarray of the particles.  Will form the atomic representations used in the mixture.
-#
-#             weights (ndarray, (n_particles, )):
-#                 The final particle weights.  If None, assumes weights are equal
-#
-#         """
-#
-#         # Inscribe some useful stuff.
-#         self._particles = particles
-#         self._weights = weights
-#         self._len = self.particles.shape[0]
-#         self._num_particles = self.particles.shape[1]
-#
-#         # If we haven't specified weights, assume that the weights are uniform.
-#         if weights is None:
-#             weights = np.ones((self.num_particles, )) / self.num_particles
-#
-#         # Construct the weighting distribution.
-#         assert self.num_particles == len(weights), "Must be the same number of weights as particles."
-#         smc_mixture_distribution = tfd.Categorical(logits=weights)
-#
-#         # # TO-DO - this needs to be made to accept arbitrary PyTrees.
-#         # particle_dist = tfd.Deterministic(jax.tree_map(lambda _x: np.moveaxis(_x, 1, 0), self.particles))
-#
-#         # Convert the weights into a set of deterministic distributions.
-#         particle_dist = tfd.Deterministic(np.moveaxis(particles, 1, 0))
-#
-#         # Construct the components.
-#         smc_components_distribution = tfd.Independent(particle_dist, reinterpreted_batch_ndims=2)
-#
-#         # Initialize this distribution by calling the super.
-#         super(SMCPosterior, self).__init__(smc_mixture_distribution, smc_components_distribution)
-#
-#     @classmethod
-#     def _parameter_properties(self, dtype, num_classes=None):
-#         """
-#         There is something weird in how i'm constructing the class, but it doesn't seem to make too much of a
-#         difference.  Without overriding the class property, TFP throws a rather unhelpful warning.
-#
-#         Need to double check that the dictionary that is returned here is correct.
-#
-#         see https://github.com/tensorflow/probability/issues/1458
-#
-#         :param dtype:
-#         :param num_classes:
-#         :return:
-#         """
-#         # td_properties = super().parameter_properties(dtype, num_classes=num_classes)
-#         # return td_properties
-#         return dict(
-#             particles=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
-#             weights=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
-#         )
-#
-#     @property
-#     def __len__(self):
-#         return self._len
-#
-#     @property
-#     def particles(self):
-#         return self._particles
-#
-#     @property
-#     def weights(self):
-#         return self._weights
-#
-#     @property
-#     def num_particles(self):
-#         return self._num_particles

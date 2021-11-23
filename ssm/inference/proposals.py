@@ -92,7 +92,7 @@ class IndependentGaussianProposal:
             return vmapped(*proposal_inputs)
 
 
-def wrap_proposal_structure(PROPOSAL_STRUCTURE, proposal, prop_param_vals):
+def wrap_proposal_structure(proposal, proposal_structure):
     """
     Function that produces another function that wraps the proposal.  This needs wrapping because we define a
     proposal as a function that takes just the inputs (as opposed to the inputs and the parameters of the proposal).
@@ -108,33 +108,35 @@ def wrap_proposal_structure(PROPOSAL_STRUCTURE, proposal, prop_param_vals):
 
     NOTE - both of the proposal functions also return a None, as there is no q_state to pass along.
 
-    :param PROPOSAL_STRUCTURE:      String indicating the type of proposal structure to use.
     :param proposal:                Proposal object.  Will wrap a call to the `.apply` method.
-    :param prop_param_vals:         Tuple of parameters (p, q, r).  We will wrap q here.
+    :param proposal_structure:      String indicating the type of proposal structure to use.
     :return: Function that can be called as fn(inputs).
     """
 
-    # If there is no proposal, then there is no structure to define.
-    if proposal is None:
-        return None
+    def rebuild_proposal(_param_vals):
+        # If there is no proposal, then there is no structure to define.
+        if proposal is None:
+            return None
 
-    # We fork depending on the proposal type.
-    # Proposal takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
-    if PROPOSAL_STRUCTURE == 'DIRECT':
+        # We fork depending on the proposal type.
+        # Proposal takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
+        if proposal_structure == 'DIRECT':
 
-        def _proposal(*_input):
-            z_dist, q_state = proposal.apply(prop_param_vals, _input)
-            return z_dist, q_state
+            def _proposal(*_input):
+                z_dist, q_state = proposal.apply(_param_vals, _input)
+                return z_dist, q_state
 
-    elif PROPOSAL_STRUCTURE == 'RESQ':
+        elif proposal_structure == 'RESQ':
 
-        def _proposal(*_input):
-            dataset, model, particles, t, p_dist, q_state = _input
-            q_dist, q_state = proposal.apply(prop_param_vals, _input)
-            z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist.mean() + q_dist.mean(),
-                                                          covariance_matrix=q_dist.covariance())
-            return z_dist, q_state
-    else:
-        raise NotImplementedError()
+            def _proposal(*_input):
+                dataset, model, particles, t, p_dist, q_state = _input
+                q_dist, q_state = proposal.apply(_param_vals, _input)
+                z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist.mean() + q_dist.mean(),
+                                                              covariance_matrix=q_dist.covariance())
+                return z_dist, q_state
+        else:
+            raise NotImplementedError()
 
-    return _proposal
+        return _proposal
+
+    return rebuild_proposal
