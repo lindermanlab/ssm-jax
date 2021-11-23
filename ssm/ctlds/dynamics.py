@@ -49,22 +49,25 @@ class StationaryCTDynamics(Dynamics):
                    diffusion_scale=diffusion_scale,
                    dynamics_distribution_prior=prior)
 
-    def distribution(self, state, covariates=None, metadata=None):
-        # Assume state is (B, S), covariates is (B,), metadata is None.
-
+    def compute_transition_params(self, covariates):
         zeros = np.zeros_like(self.drift_matrix)
         augmented_drift_matrix = (
             np.block([[self.drift_matrix, np.eye(self._state_dim)],
-                        [zeros,             zeros]]))
+                      [zeros,             zeros]]))
         augmented_transition_matrix = expm(augmented_drift_matrix * covariates)
         transition_matrix = augmented_transition_matrix[:self._state_dim, :self._state_dim]
         bias = augmented_transition_matrix[:self._state_dim, self._state_dim:] @ self.drift_bias
 
         hamiltonian = (
             np.block([[self.drift_matrix, self.diffusion_scale @ self.diffusion_scale.T],
-                        [zeros,             -self.drift_matrix.T]]))
+                      [zeros,             -self.drift_matrix.T]]))
         matrix_fraction_numerator = expm(hamiltonian * covariates)[:self._state_dim, self._state_dim:]
         noise_covariance = matrix_fraction_numerator @ transition_matrix.T
+        
+        return transition_matrix, bias, noise_covariance
+
+    def distribution(self, state, covariates=None, metadata=None):
+        transition_matrix, bias, noise_covariance = self.compute_transition_params(covariates)
         noise_covariance_tril = np.linalg.cholesky(noise_covariance)
 
         return ssmd.GaussianLinearRegression(transition_matrix, bias, noise_covariance_tril).predict(state)

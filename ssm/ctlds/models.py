@@ -7,8 +7,8 @@ from ssm.inference.em import em
 from ssm.inference.laplace_em import laplace_em
 from ssm.ctlds.base import CTLDS
 from ssm.ctlds.dynamics import StationaryCTDynamics
+from ssm.ctlds.emissions import GaussianEmissions
 from ssm.lds.initial import StandardInitialCondition
-from ssm.lds.emissions import GaussianEmissions, PoissonEmissions
 from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, random_log_rotation
 
 LDSPosterior = MultivariateNormalBlockTridiag
@@ -133,13 +133,9 @@ class GaussianCTLDS(CTLDS):
         Returns:
             posterior (LDSPosterior): the exact posterior over the latent states.
         """
-        raise NotImplementedError
         # Shorthand names for parameters
         m1 = self.initial_mean
         Q1 = self.initial_covariance
-        A = self.dynamics_matrix
-        b = self.dynamics_bias
-        Q = self.dynamics_noise_covariance
         C = self.emissions_matrix
         d = self.emissions_bias
         R = self.emissions_noise_covariance
@@ -149,18 +145,29 @@ class GaussianCTLDS(CTLDS):
         J_diag = np.dot(C.T, np.linalg.solve(R, C))  # from observations
         J_diag = np.tile(J_diag[None, :, :], (seq_len, 1, 1))
         J_diag = J_diag.at[0].add(np.linalg.inv(Q1))
-        J_diag = J_diag.at[:-1].add(np.dot(A.T, np.linalg.solve(Q, A)))
-        J_diag = J_diag.at[1:].add(np.linalg.inv(Q))
 
+        sequence_transition_params = [self._dynamics.compute_transition_params(covariate) for covariate in covariates[1:]]
+        J_lower_diag = np.zeros_like(J_diag)[1:]
+
+        for t in range(seq_len - 1):
+            A_t, _, Q_t = sequence_transition_params[t]
+            
+            J_diag = J_diag.at[t].add(np.dot(A_t.T, np.linalg.solve(Q_t, A_t)))
+            J_diag = J_diag.at[t + 1].add(np.linalg.inv(Q_t))
+            
+            J_lower_diag = J_lower_diag.at[t].add(-np.linalg.solve(Q_t, A_t))
+
+        
         # lower diagonal blocks of precision matrix
-        J_lower_diag = -np.linalg.solve(Q, A)
-        J_lower_diag = np.tile(J_lower_diag[None, :, :], (seq_len - 1, 1, 1))
 
         # linear potential
         h = np.dot(data - d, np.linalg.solve(R, C))  # from observations
         h = h.at[0].add(np.linalg.solve(Q1, m1))
-        h = h.at[:-1].add(-np.dot(A.T, np.linalg.solve(Q, b)))
-        h = h.at[1:].add(np.linalg.solve(Q, b))
+
+        for t in range(seq_len - 1):
+            A_t, b_t, Q_t = sequence_transition_params[t]
+            h = h.at[t].add(-np.dot(A_t.T, np.linalg.solve(Q_t, b_t)))
+            h = h.at[t + 1].add(np.linalg.solve(Q_t, b_t))
 
         return LDSPosterior.infer(J_diag, J_lower_diag, h)
 
@@ -193,11 +200,10 @@ class GaussianCTLDS(CTLDS):
         Returns:
             - lp (float): The marginal log likelihood of the data.
         """
-        raise NotImplementedError
         if posterior is None:
             posterior = self.e_step(data)
         states = posterior.mean()
-        lps = self.log_probability(states, data) - posterior.log_prob(states)
+        lps = self.log_probability(states, data, covariates) - posterior.log_prob(states)
         return lps
 
     @ensure_has_batch_dim()
@@ -241,17 +247,18 @@ class GaussianCTLDS(CTLDS):
             model (LDS): the fitted model
             posteriors (LDSPosterior): the fitted posteriors
         """
-        raise NotImplementedError
         model = self
         kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
 
         if method == "em":
-            elbos, lds, posteriors = em(model, data, **kwargs)
+            elbos, ctlds, posteriors = em(model, data, covariates, **kwargs)
         elif method == "laplace_em":
             if key is None:
                 raise ValueError("Laplace EM requires a PRNGKey. Please provide an rng to fit.")
-            elbos, lds, posteriors = laplace_em(key, model, data, **kwargs)
+            # TODO: update laplace_em to use covariates
+            raise NotImplementedError
+            elbos, ctlds, posteriors = laplace_em(key, model, data, covariates, **kwargs)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
-        return elbos, lds, posteriors
+        return elbos, ctlds, posteriors
