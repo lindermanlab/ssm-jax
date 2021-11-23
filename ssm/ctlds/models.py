@@ -1,5 +1,6 @@
 import jax.numpy as np
 import jax.random as jr
+from jax import vmap
 from jax.tree_util import register_pytree_node_class
 
 from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
@@ -146,29 +147,30 @@ class GaussianCTLDS(CTLDS):
         J_diag = np.tile(J_diag[None, :, :], (seq_len, 1, 1))
         J_diag = J_diag.at[0].add(np.linalg.inv(Q1))
 
-        sequence_transition_params = [self._dynamics.transition_params(covariate) for covariate in covariates[1:]]
-        J_lower_diag = np.zeros_like(J_diag)[1:]
-
-        for t in range(seq_len - 1):
-            A_t, _, Q_t = sequence_transition_params[t]
-            
-            J_diag = J_diag.at[t].add(np.dot(A_t.T, np.linalg.solve(Q_t, A_t)))
-            J_diag = J_diag.at[t + 1].add(np.linalg.inv(Q_t))
-            
-            J_lower_diag = J_lower_diag.at[t].add(-np.linalg.solve(Q_t, A_t))
-
-        
-        # lower diagonal blocks of precision matrix
-
         # linear potential
         h = np.dot(data - d, np.linalg.solve(R, C))  # from observations
         h = h.at[0].add(np.linalg.solve(Q1, m1))
+        
+        def _energy_from_transition(covariate):
+            A_t, b_t, Q_t = self._dynamics.transition_params(covariate)
+            
+            J_diag_curr = np.dot(A_t.T, np.linalg.solve(Q_t, A_t))
+            J_diag_next = np.linalg.inv(Q_t)
+            J_lower_diag_curr = -np.linalg.solve(Q_t, A_t)
+            
+            h_curr = -np.dot(A_t.T, np.linalg.solve(Q_t, b_t))
+            h_next = np.linalg.solve(Q_t, b_t)
 
-        for t in range(seq_len - 1):
-            A_t, b_t, Q_t = sequence_transition_params[t]
-            h = h.at[t].add(-np.dot(A_t.T, np.linalg.solve(Q_t, b_t)))
-            h = h.at[t + 1].add(np.linalg.solve(Q_t, b_t))
+            return J_diag_curr, J_diag_next, J_lower_diag_curr, h_curr, h_next
 
+        energy_terms = vmap(_energy_from_transition)(covariates[1:])
+        
+        J_diag = J_diag.at[:-1].add(energy_terms[0])
+        J_diag = J_diag.at[1:].add(energy_terms[1])
+        J_lower_diag = energy_terms[2]
+        h = h.at[:-1].add(energy_terms[3])
+        h = h.at[1:].add(energy_terms[4])
+                
         return LDSPosterior.infer(J_diag, J_lower_diag, h)
 
     @auto_batch(batched_args=("data", "posterior", "covariates", "metadata"))

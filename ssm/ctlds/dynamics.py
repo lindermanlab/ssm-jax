@@ -29,8 +29,6 @@ def compute_transition_params(drift_matrix, drift_bias, diffusion_scale, covaria
     
     return transition_matrix, bias, noise_covariance
 
-compute_transition_params_sequence = vmap(compute_transition_params, in_axes=(None, None, None, 0))
-    
 @register_pytree_node_class
 class StationaryCTDynamics(Dynamics):
     """
@@ -109,21 +107,22 @@ class StationaryCTDynamics(Dynamics):
             drift_matrix, drift_bias, diffusion_scale = unravel(flattened_params) 
             
             def _one_step_objective(stats, covariate):
+                # TODO: we only ever use Q_inv. Is there a faster way of computing this using the matrix 
+                # fraction decomposition? Is there a solvable ODE that Q_inv satisfies?
                 A, b, Q = compute_transition_params(drift_matrix, drift_bias, diffusion_scale, covariate)
                 xxT, x, yxT, y, yyT = stats
                 
-                Q_inv = np.linalg.inv(Q)
+                Qinv_A = np.linalg.solve(Q, A)
                 vol_term = -0.5 * np.linalg.slogdet(Q)[1]
-                quad_terms = (-0.5 * np.trace(Q_inv @ yyT) -
-                                0.5 * np.trace(A.T @ Q_inv @ A @ xxT) -
-                                np.trace(A.T @ Q_inv @ yxT))
-                linear_terms = -np.dot(np.dot(A.T @ Q_inv, b), x) + np.dot(np.dot(Q_inv, b), y)
+                quad_terms = (-0.5 * np.trace(np.linalg.solve(Q, yyT)) -
+                              0.5 * np.trace(A.T @ Qinv_A @ xxT) -
+                              np.trace(Qinv_A.T @ yxT))
+                linear_terms = -np.dot(np.dot(Qinv_A.T, b), x) + np.dot(np.linalg.solve(Q, b), y)
                 
-                transition_lp = vol_term + quad_terms + linear_terms
-                return transition_lp
+                return vol_term + quad_terms + linear_terms
             
             _single_element_objective = vmap(_one_step_objective)
-            return np.mean(vmap(_single_element_objective)(batched_stats, batched_covariates[:, 1:]))
+            return -np.mean(vmap(_single_element_objective)(batched_stats, batched_covariates[:, 1:]))
            
         optimize_results = jax.scipy.optimize.minimize(
             _objective,
