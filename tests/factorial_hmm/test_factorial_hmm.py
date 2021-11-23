@@ -4,6 +4,8 @@ import jax.random as jr
 import jax.numpy as np
 from jax import jit
 
+import numpy as onp
+
 from ssm.factorial_hmm import NormalFactorialHMM
 
 SEED = jr.PRNGKey(0)
@@ -47,8 +49,8 @@ def test_normal_factorial_hmm_sample_is_consistent():
     rng1, rng2 = jr.split(SEED, 2)
     fhmm = NormalFactorialHMM(num_states=(3, 4), seed=rng1)
     states, data = fhmm.sample(rng2, num_steps=10, num_samples=2)
-    assert np.all(true_states_var0 == states[0])
-    assert np.all(true_states_var1 == states[1])
+    assert np.array_equal(states[0], true_states_var0)
+    assert np.array_equal(states[1], true_states_var1)
     assert np.allclose(true_data, data, atol=1e-5)
 
 def test_normal_factorial_hmm_em_fit():
