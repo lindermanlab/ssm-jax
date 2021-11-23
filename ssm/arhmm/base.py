@@ -5,11 +5,12 @@ import jax.numpy as np
 import jax.random as jr
 from jax import vmap, lax
 from jax.tree_util import register_pytree_node_class
+from functools import partial
 
 import tensorflow_probability.substrates.jax as tfp
 
 from ssm.hmm.base import HMM
-from ssm.utils import tree_get, tree_concatenate, auto_batch
+from ssm.utils import tree_get, tree_concatenate, auto_batch, tree_map
 
 @register_pytree_node_class
 class AutoregressiveHMM(HMM):
@@ -142,33 +143,42 @@ class AutoregressiveHMM(HMM):
             if initial_state is None:
                 key1, key = jr.split(key, 2)
                 initial_covariates = tree_get(covariates, 0)
-                state = self.initial_distribution(covariates=initial_covariates,
-                                                  metadata=metadata).sample(seed=key1)
-            else:
-                state = initial_state
-
+                initial_state = self.initial_distribution(covariates=initial_covariates,
+                                                          metadata=metadata).sample(seed=key1)
             if history is None:
                 history = np.zeros((self.num_lags, *self.emissions_shape))
-            else:
-                history = history
+                
+            key1, key = jr.split(key, 2)
+            initial_emission = self.emissions_distribution(initial_state,
+                                                           covariates=initial_covariates,
+                                                           metadata=metadata,
+                                                           history=history).sample(seed=key1)
+            history = np.row_stack((history[1:], initial_emission))
 
             def _step(carry, key_and_covariates):
-                history, state = carry
+                history, prev_state = carry
                 key, covariates = key_and_covariates
                 key1, key2 = jr.split(key, 2)
+                state = self.dynamics_distribution(prev_state,
+                                                   covariates=covariates,
+                                                   metadata=metadata).sample(seed=key1)
                 emission = self.emissions_distribution(state,
                                                        covariates=covariates,
                                                        metadata=metadata,
-                                                       history=history).sample(seed=key1)
-                next_state = self.dynamics_distribution(state,
-                                                        covariates=covariates,
-                                                        metadata=metadata).sample(seed=key2)
+                                                       history=history).sample(seed=key2)
                 # next_history = tree_concatenate(tree_get(history, slice(1, None)), emission)
                 next_history = np.row_stack((history[1:], emission))
-                return (next_history, next_state), (state, emission)
+                return (next_history, state), (state, emission)
 
-            keys = jr.split(key, num_steps)
-            _, (states, emissions) = lax.scan(_step, (history, state), (keys, covariates))
+            keys = jr.split(key, num_steps - 1)
+            _, (states, emissions) = lax.scan(_step, 
+                                              (history, initial_state), 
+                                              (keys, tree_get(covariates, slice(1, None))))
+            
+            expand_dims_fn = partial(np.expand_dims, axis=0)
+            states = tree_concatenate(tree_map(expand_dims_fn, initial_state), states)
+            emissions = tree_concatenate(tree_map(expand_dims_fn, initial_emission), emissions)
+            
             return states, emissions
 
         if num_samples > 1:
