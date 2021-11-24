@@ -53,38 +53,6 @@ def do_fivo_sweep(_param_vals, _key, _rebuild_model, _rebuild_proposal, _dataset
     return - _lml, _smc_posteriors
 
 
-# def define_rebuild_model(_model, _p_params_accessors):
-#     """
-#     This function can take anything as arguments, but MUST return a function that takes EXACTLY the parameters of the
-#     model and in turn returns the model updated with the supplied parameters..
-#
-#     # TODO - this paradigm may need updating.
-#
-#     :param _model:
-#     :param _p_params_accessors:
-#     :return:
-#     """
-#
-#     def rebuild_model(_param_vals):
-#         _rebuilt_model = dc(_model)
-#         for _v, _a in zip(_param_vals, _p_params_accessors):
-#             _rebuilt_model = _a(_rebuilt_model, _v)
-#         return _rebuilt_model
-#
-#     return rebuild_model
-
-
-# def get_params_from_model(model, accessors):
-#     """
-#
-#     :param model:
-#     :param accessors:
-#     :return:
-#     """
-#     p_params = tuple(_a(model) for _a in accessors)
-#     return p_params
-
-
 def get_params_from_opt(_opt):
     """
     Pull the parameters (stored in the Flax optimizer target) out of the optimizer tuple.
@@ -92,6 +60,41 @@ def get_params_from_opt(_opt):
     :return: Tuple of parameters.
     """
     return tuple((_o.target if _o is not None else None) for _o in _opt)
+
+
+def rebuild_model_fn(_params_in, _default_model):
+    """
+    NOTE - there is no seed passed into this function.
+    :param _params_in:  NamedTuple.
+    :param _default_model:
+    :return:
+    """
+
+    # We cannot pass a new seed into this function or we may get different internal mechanics.
+    assert 'seed' not in _params_in._fields, \
+        "[Error]: Cannot pass in a new seed."
+
+    # Get the tuple of parameters used to set up the previous model.
+    _default_params = _default_model._parameters
+
+    # Override those parameters with hte new parameters.
+    _new_params = utils.mutate_named_tuple_by_key(_default_params, _params_in)
+
+    # Define the new model using the updated params.
+    _model = _default_model.__class__(*_new_params)
+    return _model
+
+
+def get_model_params_fn(_model, _keys=None):
+    """
+
+    :param _model:
+    :param _keys:
+    :return:
+    """
+    return utils.make_named_tuple(_model._parameters,
+                                  keys=_keys,
+                                  name=_model._parameters.__class__.__name__ + 'Tmp')
 
 
 def apply_gradient(full_loss_grad, optimizer):
