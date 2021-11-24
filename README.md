@@ -2,9 +2,9 @@
 
 [![Integration Tests](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/integration_tests.yml/badge.svg)](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/integration_tests.yml)
 [![Unit Tests](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/unit_tests.yml/badge.svg)](https://github.com/lindermanlab/ssm-jax-refactor/actions/workflows/unit_tests.yml)
+[![Documentation Status](https://readthedocs.org/projects/ssm-jax-refactor/badge/?version=latest)](https://ssm-jax-refactor.readthedocs.io/en/latest/?badge=latest)
 
-
-Refactoring the SSM code base to use Jax.
+Bayesian learning and inference for state space models (SSMs) using Google Research's JAX as a backend. 
 
 # Example
 
@@ -54,4 +54,4 @@ pip install -r requirements.txt
 
 # Documentation
 
-[Click here for documentation](https://web.stanford.edu/~schlager/ssm_jax/)
+[Click here for documentation](https://ssm-jax-refactor.readthedocs.io/en/latest/index.html)
