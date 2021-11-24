@@ -1,3 +1,5 @@
+import inspect
+
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
@@ -9,7 +11,8 @@ from ssm.lds.base import LDS
 from ssm.lds.initial import StandardInitialCondition
 from ssm.lds.dynamics import StationaryDynamics
 from ssm.lds.emissions import GaussianEmissions, PoissonEmissions
-from ssm.utils import Verbosity, format_dataset, random_rotation
+from ssm.utils import Verbosity, format_dataset, random_rotation, make_named_tuple
+
 
 LDSPosterior = MultivariateNormalBlockTridiag
 
@@ -50,6 +53,10 @@ class GaussianLDS(LDS):
             emission_scale_tril (np.ndarray, optional): [description]. Defaults to None.
             seed (jr.PRNGKey, optional): [description]. Defaults to None.
         """
+
+        self._parameters = make_named_tuple(dict_in=locals(),
+                                            keys=list(inspect.signature(self.__init__)._parameters.keys()),
+                                            name=str(self.__class__.__name__) + 'Tuple')
 
         if initial_state_mean is None:
             initial_state_mean = np.zeros(num_latent_dims)

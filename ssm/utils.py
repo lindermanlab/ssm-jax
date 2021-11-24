@@ -15,6 +15,8 @@ from functools import wraps
 import copy
 from jax.scipy import special as spsp
 from contextlib import contextmanager
+from typing import NamedTuple
+from jax.tree_util import register_pytree_node
 
 
 class Verbosity(IntEnum):
@@ -341,3 +343,67 @@ def lexp(_lmls, _axis=0):
     _lml = spsp.logsumexp(_lmls, axis=_axis) - np.log(_lmls.shape[_axis])
     return _lml
 
+
+def make_named_tuple(dict_in, keys=None, name='tup'):
+    """
+
+    :param dict:
+    :param keys:    For enforcing a particular ordering in the tuple.
+    :param name:
+    :return:
+    """
+    # Get all the keys if we haven't explicitly provided them.
+    if keys is None:
+        keys = dict_in.keys()
+
+    # Pick the elements off according to the keys.
+    list_in = [dict_in[_k] for _k in keys]
+
+    # Construct the named tuple class and create an object.
+    tup_class = NamedTuple(name, zip(keys, ['Any' for _ in range(len(list_in))]))
+
+    register_pytree_node(
+        tup_class,
+        lambda xs: (tuple(xs), None),  # tell JAX how to unpack to an iterable
+        lambda _, xs: tup_class(*xs)   # tell JAX how to pack back into a Point
+    )
+
+    tup = tup_class(*list_in)
+    return tup
+
+
+def mutate_named_tuple_by_key(tup, new_vals):
+    """
+    Mutate a named tuple by matching the keys of a dict/tuple to the tuple to be updated.
+
+    NOTE - if there are any fields that are provided in new_vals that aren't in tup this will create an error.
+
+    :param tup:
+    :param new_vals:
+    :return:
+    """
+
+    # Convert the type.
+    if type(new_vals) == NamedTuple:
+        new_vals = new_vals._asdict()
+
+    # Get the new keys
+    new_keys = new_vals.keys()
+    assert all([_k in tup._fields for _k in new_keys]), "[Error]: Unrecognised key to update."
+
+    # Iterate over the fields and create a list of elements.
+    updated_vals = {_k: new_vals.get(_k, getattr(tup, _k)) for _k in tup._fields}
+
+    return make_named_tuple(updated_vals, keys=tup._fields, name=tup.__class__.__name__)
+
+
+def mutate_named_tuple_by_idx(tup, new_vals, idxes):
+    """
+    Mutate a named tuple by inscribing new values at certain indices.
+    :param tup:
+    :param new_vals:
+    :param idxes:
+    :return:
+    """
+    assert len(new_vals) == len(idxes), "Must supply index-value pairs."
+    raise NotImplementedError
