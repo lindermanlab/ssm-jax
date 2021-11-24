@@ -232,8 +232,6 @@ def _single_smc(key,
     # initial proposal state if we are using p.
     if initialization_distribution is None:
         initialization_distribution = lambda *args: (model.initial_distribution(), None)
-    else:
-        raise NotImplementedError()
 
     # If no explicit proposal is provided, default to BPF.
     # The default BPF implementation uses just the current particles as inputs.
