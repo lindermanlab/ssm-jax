@@ -48,7 +48,7 @@ class StructuredMeanFieldSLDSPosterior():
             self.continuous_posterior.log_prob(value["continuous"])
 
     @classmethod
-    def initialize(cls, slds, data, covariates=None, metadata=None, scale=3.0):
+    def initialize(cls, slds, data, covariates=None, metadata=None, scale=10.0):
         """
         Initialize a structured mean field posterior given a model and data.
         """
