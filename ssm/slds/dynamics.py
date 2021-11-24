@@ -106,7 +106,7 @@ class StandardDynamics(Dynamics):
         sum_xxT = np.einsum('btk,btij->kij', Ez[:, 1:], ExxT[:, :-1])
         sum_yxT = np.einsum('btk,btij->kij', Ez[:, 1:], ExnxT)
         sum_yyT = np.einsum('btk,btij->kij', Ez[:, 1:], ExxT[:, 1:])
-        T = np.einsum('btk->k', Ez[1:])
+        T = np.einsum('btk->k', Ez[:, 1:])
         stats = (T, sum_xxT, sum_x, T, sum_yxT, sum_y, sum_yyT)
 
         if self._prior is not None:

@@ -17,6 +17,7 @@ def variational_em(key,
                    num_iters=100,
                    tol=1e-4,
                    verbosity=Verbosity.DEBUG,
+                   callback=None
     ):
     """Fit a model using generalized EM. The E-step can be approximate, as long as the
     posterior output by the E step is compatible with the model's M-step.
@@ -60,7 +61,10 @@ def variational_em(key,
     for itr in pbar:
         this_key, key = jr.split(key, 2)
         model, posterior, bound = update(this_key, model, posterior)
-        # assert np.isfinite(bound), "NaNs in log probability bound"
+        assert np.isfinite(bound), "NaNs in log probability bound"
+
+        if callback is not None:
+            callback(model, posterior, bound)
 
         bounds.append(bound)
         if verbosity > Verbosity.OFF:

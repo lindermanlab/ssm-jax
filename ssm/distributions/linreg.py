@@ -115,13 +115,15 @@ class GaussianLinearRegression(ExponentialFamilyDistribution,
         WTSib = np.einsum('...ij,...j->...i', transpose(self.weights), Sib)
         bTSib = np.einsum('...i,...i->...', self.bias, Sib)
 
-        ell = np.sum(-0.5 * Si * expected_data_squared)
-        ell += np.sum(SiW * expected_data_covariates)
-        ell += np.sum(-0.5 * WTSiW * expected_covariates_squared)
-        ell += np.sum(Sib * expected_data)
-        ell += np.sum(-WTSib * expected_covariates)
+
+        ell = np.sum(-0.5 * Si * expected_data_squared, axis=(-1, -2))
+        ell += np.sum(SiW * expected_data_covariates, axis=(-1, -2))
+        ell += np.sum(-0.5 * WTSiW * expected_covariates_squared, axis=(-1, -2))
+        ell += np.sum(Sib * expected_data, axis=-1)
+        ell += np.sum(-WTSib * expected_covariates, axis=-1)
         ell += -0.5 * np.linalg.slogdet(self.covariance)[1]
         ell += -0.5 * bTSib
+        ell += -0.5 * self.data_dimension * np.log(2 * np.pi)
         return ell
 
     @classmethod

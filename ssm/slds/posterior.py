@@ -184,15 +184,14 @@ class StructuredMeanFieldSLDSPosterior():
                 # TODO: extend expectations with covariates
                 raise NotImplementedError
 
-            expected_log_likelihoods = \
-                vmap(slds._emissions._distribution.expected_log_prob)(
-                    data, Ex,
-                    np.einsum('...i,...j->...ij', data, data),
-                    np.einsum('...i,...j->...ij', data, Ex),
-                    ExxT
-                )
+            expected_log_likelihoods = vmap(
+                lambda yi, Exi, ExixiT: \
+                    slds._emissions._distribution.expected_log_prob(
+                        yi, Exi, np.outer(yi, yi), np.outer(yi, Exi), ExixiT))(
+                            data, Ex, ExxT
+                        )
 
-            expected_log_likelihoods = expected_log_likelihoods.at[..., 1:, :].add(
+            expected_log_likelihoods = expected_log_likelihoods.at[1:, :].add(
                 vmap(slds._dynamics._distribution.expected_log_prob)(
                     Ex[1:], Ex[:-1], ExxT[1:], ExnxT, ExxT[:-1]))
 

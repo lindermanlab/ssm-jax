@@ -167,14 +167,20 @@ class SLDS(SSM):
             self, data, covariates=covariates, metadata=metadata)
 
         if method == "variational_em":
-            bounds, model, posterior = variational_em(
+            segmentations = [np.argmax(posterior.discrete_posterior.expected_states[0], axis=-1)]
+            def callback(model, posterior, bound):
+                segmentations.append(
+                    np.argmax(posterior.discrete_posterior.expected_states[0], axis=-1))
+
+            model, posterior, bound = variational_em(
                 key, self, data, posterior, covariates=covariates, metadata=metadata,
-                num_iters=num_iters, tol=tol, verbosity=verbosity)
+                num_iters=num_iters, tol=tol, verbosity=verbosity,
+                callback=callback)
+
+            return model, posterior, bound, segmentations
 
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
-
-        return bounds, model, posterior
 
     def __repr__(self):
         return f"<ssm.slds.{type(self).__name__} num_states={self.num_states} " \
