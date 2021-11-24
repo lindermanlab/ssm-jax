@@ -388,7 +388,7 @@ def _smc_forward_pass(key,
 
         # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
         y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
-                                         lambda _: 0.0,
+                                         lambda _: np.zeros((num_particles, )),
                                          lambda _: model.emissions_distribution(new_particles).log_prob(dataset[t]),
                                          None)
         incremental_log_weights = p_log_probability - q_log_probability + y_log_probability
