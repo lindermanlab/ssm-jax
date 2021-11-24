@@ -116,11 +116,11 @@ class SLDS(SSM):
                covariates=None,
                metadata=None,
                key: jr.PRNGKey=None):
-        self._discrete_initial_condition.m_step(data, posterior.discrete_posterior)
-        self._continuous_initial_condition.m_step(data, posterior.continuous_posterior)
-        self._transitions.m_step(data, posterior.discrete_posterior)
-        self._dynamics.m_step(data, posterior)
-        self._emissions.m_step(data, posterior)
+        self._discrete_initial_condition.m_step(data, posterior.discrete_posterior, covariates=covariates, metadata=metadata)
+        self._continuous_initial_condition.m_step(data, posterior.continuous_posterior, covariates=covariates, metadata=metadata)
+        self._transitions.m_step(data, posterior.discrete_posterior, covariates=covariates, metadata=metadata)
+        self._dynamics.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        self._emissions.m_step(data, posterior, covariates=covariates, metadata=metadata, key=key)
         return self
 
     @ensure_has_batch_dim()

@@ -1,10 +1,8 @@
-
 import jax.numpy as np
+from jax.nn import softplus
 
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
-
-from ssm.distributions.linreg import GaussianLinearRegression
 
 
 class GeneralizedLinearModel(tfp.distributions.Distribution):
@@ -51,6 +49,9 @@ class GeneralizedLinearModel(tfp.distributions.Distribution):
     def covariate_dimension(self):
         return self.weights.shape[-1]
 
+    def _event_shape(self):
+        return self.weights.shape[-2]
+
     @property
     def weights(self):
         return self._weights
@@ -60,7 +61,7 @@ class GeneralizedLinearModel(tfp.distributions.Distribution):
         return self._bias
 
     def _linear_prediction(self, covariates=None):
-        return covariates @ self.weights.T + self.bias
+        return np.einsum('...i,...ji->...j', covariates, self.weights) + self.bias
 
     @staticmethod
     def _mean_function(predicted_linear_response):
@@ -68,7 +69,7 @@ class GeneralizedLinearModel(tfp.distributions.Distribution):
         Function mapping the predicted linear response to the parameters of the noise distribution.
 
         Generally speaking, the parameters should be the mean, in which case this would be
-        the inverse of the link function g^{-1}. However, we may choose to parameterize our 
+        the inverse of the link function g^{-1}. However, we may choose to parameterize our
         distribution as, e.g., log mean, so this is a more general function.
         """
         return NotImplementedError
@@ -78,7 +79,8 @@ class GeneralizedLinearModel(tfp.distributions.Distribution):
 
     def predict(self, covariates=None):
         return self._get_noise_distribution(
-            self._mean_function(self._linear_prediction(covariates=covariates)))
+            self._mean_function(
+                self._linear_prediction(covariates=covariates)))
 
     def _sample(self, covariates=None, seed=None, sample_shape=()):
         d = self.predict(covariates)
@@ -117,18 +119,21 @@ class PoissonGLM(GeneralizedLinearModel):
 
 
     def _mean_function(self, predicted_linear_response):
-        """
-        The mean function is np.exp(predicted_linear_response) but we 
-        parameterize the noise distribution as `log_rate` so here we
-        just pass the predicted_linear_response.
-        """
-        return predicted_linear_response
+        # return np.exp(predicted_linear_response)
+        return softplus(predicted_linear_response)
 
     def _get_noise_distribution(self, params):
         return tfp.distributions.Independent(
-            tfp.distributions.Poisson(log_rate=params),
+            tfp.distributions.Poisson(rate=params),
             reinterpreted_batch_ndims=1
         )
+
+    # def predict(self, covariates=None):
+    #     # Override the predict function to use the log rate directly
+    #     return tfp.distributions.Independent(
+    #         tfp.distributions.Poisson(
+    #             log_rate=self._linear_prediction(covariates=covariates)),
+    #         reinterpreted_batch_ndims=1)
 
 
 class BernoulliGLM(GeneralizedLinearModel):
@@ -154,7 +159,7 @@ class BernoulliGLM(GeneralizedLinearModel):
         # pylint: disable=g-long-lambda
         return dict(
             weights=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
-            bias=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1)) 
+            bias=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1))
 
     def _mean_function(self, predicted_linear_response):
         """Mean function is sigmoid
@@ -165,57 +170,11 @@ class BernoulliGLM(GeneralizedLinearModel):
         return tfp.distributions.Independent(
             tfp.distributions.Bernoulli(probs=params),
             reinterpreted_batch_ndims=1
-        ) 
-
-
-class GaussianGLM(GeneralizedLinearModel):
-    def __init__(
-        self,
-        weights,
-        bias,
-        scale_tril,
-        validate_args=False,
-        allow_nan_stats=True,
-        name="GaussianGLM",
-    ):
-        self._scale_tril = scale_tril
-
-        parameters = dict(weights=weights,
-                          bias=bias,
-                          scale_tril=scale_tril)
-
-        super(GaussianGLM, self).__init__(
-            weights=weights,
-            bias=bias,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            parameters=parameters,
-            name=name,
         )
 
-    @classmethod
-    def _parameter_properties(cls, dtype, num_classes=None):
-        # pylint: disable=g-long-lambda
-        return dict(
-            weights=tfp.internal.parameter_properties.ParameterProperties(event_ndims=2),
-            bias=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1),
-            scale_tril=tfp.internal.parameter_properties.ParameterProperties(
-                event_ndims=2,
-                # shape_fn=lambda sample_shape: ps.concat([sample_shape, sample_shape[-1:]], axis=0),
-                # default_constraining_bijector_fn=lambda: tfp.bijectors.fill_scale_tril.FillScaleTriL(diag_shift=dtype_util.eps(dtype)))
-            )
-        )
-
-    @property
-    def scale_tril(self):
-        return self._scale_tril
-
-    @property
-    def scale(self):
-        return np.einsum('...ij,...ji->...ij', self.scale_tril, self.scale_tril)
-
-    def _mean_function(self, predicted_linear_response):
-        return predicted_linear_response
-
-    def _get_noise_distribution(self, mean):
-        return tfp.distributions.MultivariateNormalTriL(mean, self._scale_tril)
+    def predict(self, covariates=None):
+        # Override the predict function to use the logits directly
+        return tfp.distributions.Independent(
+            tfp.distributions.Bernoulli(
+                logits=self._linear_prediction(covariates=covariates)),
+            reinterpreted_batch_ndims=1)

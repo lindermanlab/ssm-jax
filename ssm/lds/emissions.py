@@ -8,7 +8,7 @@ import tensorflow_probability.substrates.jax as tfp
 tfd = tfp.distributions
 
 import ssm.distributions as ssmd
-from ssm.distributions import GaussianLinearRegression, glm
+from ssm.distributions import GaussianLinearRegression, PoissonGLM
 
 
 class Emissions:
@@ -22,7 +22,7 @@ class Emissions:
     """
     @property
     def emissions_shape(self):
-        raise NotImplementedError
+        return self._distribution.event_shape
 
     def distribution(self, state, covariates=None, metadata=None):
         """
@@ -101,10 +101,6 @@ class GaussianEmissions(Emissions):
         return cls(aux_data,
                    emissions_distribution=distribution,
                    emissions_distribution_prior=prior)
-
-    @property
-    def emissions_shape(self):
-        return (self.weights.shape[-2],)
 
     @property
     def weights(self):
@@ -203,24 +199,20 @@ class PoissonEmissions(Emissions):
     def __init__(self,
                  weights=None,
                  bias=None,
-                 emissions_distribution: glm.PoissonGLM=None,
+                 emissions_distribution: PoissonGLM=None,
                  emissions_distribution_prior: tfd.Distribution=None) -> None:
         assert (weights is not None and \
                 bias is not None) \
             or emissions_distribution is not None
 
         if weights is not None:
-            self._distribution = glm.PoissonGLM(weights, bias)
+            self._distribution = PoissonGLM(weights, bias)
         else:
             self._distribution = emissions_distribution
 
         if emissions_distribution_prior is None:
             pass  # TODO: implement default prior
         self._distribution_prior = emissions_distribution_prior
-
-    @property
-    def emissions_shape(self):
-        return (self.weights.shape[-2],)
 
     def tree_flatten(self):
         children = (self._distribution, self._distribution_prior)

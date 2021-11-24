@@ -1,4 +1,5 @@
 from ssm.distributions.expfam import register_prior, ExponentialFamilyDistribution, ConjugatePrior
+from ssm.distributions.glm import BernoulliGLM, PoissonGLM
 from ssm.distributions.niw import NormalInverseWishart
 from ssm.distributions.mniw import MatrixNormalInverseWishart
 from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag

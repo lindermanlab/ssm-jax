@@ -21,7 +21,7 @@ class Dynamics:
         """
         raise NotImplementedError
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
         # TODO: implement generic m-step
         raise NotImplementedError
 
@@ -91,7 +91,7 @@ class StandardDynamics(Dynamics):
         else:
             return d.predict(prev_continuous_state)
 
-    def m_step(self, data, posterior):
+    def m_step(self, data, posterior, covariates=None, metadata=None):
         # TODO: Compute expected sufficient statistics under q(z).
 
         # Manually extract the expected sufficient statistics from posterior

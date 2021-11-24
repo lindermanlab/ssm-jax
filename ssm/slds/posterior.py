@@ -92,16 +92,17 @@ class StructuredMeanFieldSLDSPosterior():
                slds,
                data,
                covariates=None,
-               metadata=None):
-        # Update continuous posterior q(x)
+               metadata=None,
+               key=None):
         from ssm.slds.models import GaussianSLDS
         if isinstance(slds, GaussianSLDS):
             self._cavi_update_continuous_posterior(slds, data, covariates, metadata)
+            self._cavi_update_discrete_posterior(slds, data, covariates, metadata)
         else:
             self._laplace_update_continuous_posterior(slds, data, covariates, metadata)
+            self._monte_carlo_update_discrete_posterior(key, slds, data, covariates, metadata)
 
         # Update discrete posterior q(z)
-        self._cavi_update_discrete_posterior(slds, data, covariates, metadata)
         return self
 
     def _cavi_update_continuous_posterior(self,
@@ -221,12 +222,53 @@ class StructuredMeanFieldSLDSPosterior():
                                               self.discrete_posterior.expected_states))
 
     def _cavi_update_discrete_posterior(self,
-                                        slds,
+                                        gaussian_slds,
                                         data,
                                         covariates=None,
                                         metadata=None):
 
         def _update_single(q_x, y, u, m):
+            # Shorthand names for parameters
+            log_initial_states_probs = gaussian_slds._discrete_initial_condition.log_initial_probs(
+                y, covariates=u, metadata=m)
+            log_transition_matrices = gaussian_slds._transitions.log_transition_matrices(
+                y, covariates=u, metadata=m)
+
+            # Compute the expected emissions and dynamics log probs under the continuous posterior
+            Ex = q_x.expected_states
+            ExxT = q_x.expected_states_squared
+            ExnxT = q_x.expected_states_next_states
+
+            if u is not None:
+                # TODO: extend expectations with covariates
+                raise NotImplementedError
+
+            expected_log_likelihoods = vmap(
+                lambda yi, Exi, ExixiT: \
+                    gaussian_slds._emissions._distribution.expected_log_prob(
+                        yi, Exi, np.outer(yi, yi), np.outer(yi, Exi), ExixiT))(
+                            y, Ex, ExxT
+                        )
+
+            expected_log_likelihoods = expected_log_likelihoods.at[1:, :].add(
+                vmap(gaussian_slds._dynamics._distribution.expected_log_prob)(
+                    Ex[1:], Ex[:-1], ExxT[1:], ExnxT, ExxT[:-1]))
+
+            return StationaryHMMPosterior.infer(
+                log_initial_states_probs, expected_log_likelihoods, log_transition_matrices
+            )
+
+        self._discrete_posterior = vmap(_update_single)(
+            self.continuous_posterior, data, covariates, metadata)
+
+    def _monte_carlo_update_discrete_posterior(self,
+                                               key,
+                                               slds,
+                                               data,
+                                               covariates=None,
+                                               metadata=None):
+
+        def _update_single(k, q_x, y, u, m):
             # Shorthand names for parameters
             log_initial_states_probs = slds._discrete_initial_condition.log_initial_probs(
                 y, covariates=u, metadata=m)
@@ -242,13 +284,12 @@ class StructuredMeanFieldSLDSPosterior():
                 # TODO: extend expectations with covariates
                 raise NotImplementedError
 
+            # approximate the emissions log likelihood with a sample of x ~ q(x)
+            x = q_x.sample(seed=k)
             expected_log_likelihoods = vmap(
-                lambda yi, Exi, ExixiT: \
-                    slds._emissions._distribution.expected_log_prob(
-                        yi, Exi, np.outer(yi, yi), np.outer(yi, Exi), ExixiT))(
-                            y, Ex, ExxT
-                        )
+                lambda yi, xi: slds._emissions._distribution.log_prob(yi, covariates=xi))(y, x)
 
+            # Compute the dynamics log prob exactly
             expected_log_likelihoods = expected_log_likelihoods.at[1:, :].add(
                 vmap(slds._dynamics._distribution.expected_log_prob)(
                     Ex[1:], Ex[:-1], ExxT[1:], ExnxT, ExxT[:-1]))
@@ -258,7 +299,8 @@ class StructuredMeanFieldSLDSPosterior():
             )
 
         self._discrete_posterior = vmap(_update_single)(
-            self.continuous_posterior, data, covariates, metadata)
+            jr.split(key, len(data)), self.continuous_posterior, data, covariates, metadata)
+
 
     def tree_flatten(self):
         children = (self.discrete_posterior, self.continuous_posterior)

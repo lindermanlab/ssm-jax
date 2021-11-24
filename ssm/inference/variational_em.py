@@ -55,9 +55,10 @@ def variational_em(key,
     """
     @jit
     def update(key, model, posterior):
-        model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
-        posterior = posterior.update(model, data, covariates=covariates, metadata=metadata)
-        bound = model.elbo(key, data, posterior, covariates=covariates, metadata=metadata)
+        k1, k2, k3 = jr.split(key, 3)
+        model = model.m_step(data, posterior, covariates=covariates, metadata=metadata, key=k1)
+        posterior = posterior.update(model, data, covariates=covariates, metadata=metadata, key=k2)
+        bound = model.elbo(k3, data, posterior, covariates=covariates, metadata=metadata)
         callback_output = callback(model, posterior) if callback else None
         return model, posterior, bound, callback_output
 
