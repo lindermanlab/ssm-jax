@@ -396,7 +396,7 @@ def mutate_named_tuple_by_key(tup, new_vals):
 
     # Iterate over the fields and update elements.
     for _k in new_vals.keys():
-        tup = tup._replace(new_vals.get(_k, getattr(tup, _k)))
+        tup = tup._replace(**{_k: new_vals.get(_k, getattr(tup, _k))})
 
     return tup
 
