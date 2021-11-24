@@ -356,6 +356,10 @@ def make_named_tuple(dict_in, keys=None, name='tup'):
     if keys is None:
         keys = dict_in.keys()
 
+    # Convert to a dict for easier indexing.
+    if type(dict_in) != dict:
+        dict_in = dict_in._asdict()
+
     # Pick the elements off according to the keys.
     list_in = [dict_in[_k] for _k in keys]
 
@@ -384,17 +388,17 @@ def mutate_named_tuple_by_key(tup, new_vals):
     """
 
     # Convert the type.
-    if type(new_vals) == NamedTuple:
+    if type(new_vals) != dict:
         new_vals = new_vals._asdict()
 
     # Get the new keys
-    new_keys = new_vals.keys()
-    assert all([_k in tup._fields for _k in new_keys]), "[Error]: Unrecognised key to update."
+    assert all([_k in tup._fields for _k in new_vals.keys()]), "[Error]: Unrecognised key to update."
 
-    # Iterate over the fields and create a list of elements.
-    updated_vals = {_k: new_vals.get(_k, getattr(tup, _k)) for _k in tup._fields}
+    # Iterate over the fields and update elements.
+    for _k in new_vals.keys():
+        tup = tup._replace(new_vals.get(_k, getattr(tup, _k)))
 
-    return make_named_tuple(updated_vals, keys=tup._fields, name=tup.__class__.__name__)
+    return tup
 
 
 def mutate_named_tuple_by_idx(tup, new_vals, idxes):

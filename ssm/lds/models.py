@@ -54,10 +54,7 @@ class GaussianLDS(LDS):
             seed (jr.PRNGKey, optional): [description]. Defaults to None.
         """
 
-        self._parameters = make_named_tuple(dict_in=locals(),
-                                            keys=list(inspect.signature(self.__init__)._parameters.keys()),
-                                            name=str(self.__class__.__name__) + 'Tuple')
-
+        # Define the default/sampled parameter values if we didn't explicitly pass them in.
         if initial_state_mean is None:
             initial_state_mean = np.zeros(num_latent_dims)
 
@@ -84,6 +81,12 @@ class GaussianLDS(LDS):
         if emission_scale_tril is None:
             emission_scale_tril = 1.0**2 * np.eye(num_emission_dims)
 
+        # Grab the parameter values.  This allows us to explicitly re-build the object.
+        self._parameters = make_named_tuple(dict_in=locals(),
+                                            keys=list(inspect.signature(self.__init__)._parameters.keys()),
+                                            name=str(self.__class__.__name__) + 'Tuple')
+
+        # Build out the object.
         initial_condition = StandardInitialCondition(initial_mean=initial_state_mean,
                                                      initial_scale_tril=initial_state_scale_tril)
         transitions = StationaryDynamics(weights=dynamics_weights,
