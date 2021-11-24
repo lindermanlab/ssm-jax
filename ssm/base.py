@@ -141,8 +141,8 @@ class SSM(object):
 
         (_, lp), _ = lax.scan(_step, (initial_state, lp),
                                 (tree_get(states, slice(1, None)),
-                                tree_get(data, slice(1, None)),
-                                tree_get(covariates, slice(1, None))))
+                                 tree_get(data, slice(1, None)),
+                                 tree_get(covariates, slice(1, None))))
         return lp
 
     @ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metadata"))

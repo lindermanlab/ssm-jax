@@ -1,10 +1,10 @@
 """
-General EM routines
+Variational expectation maximization (vEM) routines
 """
 import jax.numpy as np
 import jax.random as jr
 from jax import jit
-from ssm.utils import Verbosity, debug_rejit, ensure_has_batch_dim, ssm_pbar
+from ssm.utils import Verbosity, ensure_has_batch_dim, ssm_pbar
 
 
 @ensure_has_batch_dim(model_arg="model")
@@ -23,14 +23,17 @@ def variational_em(key,
     posterior output by the E step is compatible with the model's M-step.
 
     Assumes the model has the following methods for EM:
+        - `model.m_step(data, posterior)`
+        - `model.elbo(key, data, posterior)`
 
-        - `model.e_step(data)` (i.e. E-step)
-        - `model.m_step(dataset, posteriors)`
-        - `model.marginal_likelihood(data, posterior)`
+    and the posterior has the following method:
+        - `posterior.update(model, data)` (i.e. variational E-step)
 
     Args:
+        key (jr.PRNGKey): random number generator key used for stochastic m-steps and elbo calculations.
         model (ssm.base.SSM): the model to be fit
         data (PyTree): the observed data with leaf shape (B, T, ...).
+        posterior (PosteriorDistribution)
         covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
             Defaults to None.
         metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
@@ -38,11 +41,17 @@ def variational_em(key,
         num_iters (int, optional): number of iterations of EM fit. Defaults to 100.
         tol (float, optional): tolerance in marginal lp to declare convergence. Defaults to 1e-4.
         verbosity (ssm.utils.Verbosity, optional): verbosity of fit. Defaults to Verbosity.DEBUG.
+        callback: (function: ``model`` x ``posterior`` -> ``Any``, optional). If given, this
+            function will be called after every EM iteration and its outputs will be returned
+            as a list.
 
     Returns:
         bounds: log probabilities across EM iterations
         model: the fitted model
         posterior: the posterior over the inferred latent states
+
+    If callback is not None, this function also returns:
+        callback_outputs: list of callback outputs
     """
     @jit
     def update(key, model, posterior):

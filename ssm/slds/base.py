@@ -12,7 +12,7 @@ import ssm.lds.initial as lds_initial
 import ssm.slds.emissions as emissions
 import ssm.slds.dynamics as dynamics
 from ssm.slds.posterior import StructuredMeanFieldSLDSPosterior
-from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch
+from ssm.utils import Verbosity, ensure_has_batch_dim
 
 tfd = tfp.distributions
 

@@ -1,7 +1,8 @@
 import jax.numpy as np
 import jax.random as jr
-from jax import vmap
+from jax import lax, vmap, hessian, jacfwd, jacrev
 from jax.tree_util import tree_leaves, register_pytree_node_class
+import jax.scipy.optimize
 
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
@@ -92,21 +93,18 @@ class StructuredMeanFieldSLDSPosterior():
                data,
                covariates=None,
                metadata=None):
+        # Update continuous posterior q(x)
         from ssm.slds.models import GaussianSLDS
         if isinstance(slds, GaussianSLDS):
-            continuous_posterior = \
-                StructuredMeanFieldSLDSPosterior._cavi_update_continuous_posterior(
-                    self.discrete_posterior, slds, data, covariates, metadata)
+            self._cavi_update_continuous_posterior(slds, data, covariates, metadata)
         else:
-            raise NotImplementedError
+            self._laplace_update_continuous_posterior(slds, data, covariates, metadata)
 
-        discrete_posterior = StructuredMeanFieldSLDSPosterior._cavi_update_discrete_posterior(
-            continuous_posterior, slds, data, covariates, metadata)
-        return StructuredMeanFieldSLDSPosterior(
-            discrete_posterior, continuous_posterior)
+        # Update discrete posterior q(z)
+        self._cavi_update_discrete_posterior(slds, data, covariates, metadata)
+        return self
 
-    @staticmethod
-    def _cavi_update_continuous_posterior(discrete_posterior,
+    def _cavi_update_continuous_posterior(self,
                                           gaussian_slds,
                                           data,
                                           covariates=None,
@@ -138,9 +136,7 @@ class StructuredMeanFieldSLDSPosterior():
         RiCs = np.linalg.solve(Rs, Cs)
         CTRiCs = transpose(Cs) @ RiCs
 
-        def _update_single(data, q_z):
-            Ez = q_z.expected_states
-
+        def _update_single(y, Ez):
             # diagonal blocks of precision matrix
             J_diag = np.einsum('tk,kij->tij', Ez, CTRiCs)
             # J_diag = J_diag.at[0].add(np.einsum('k, kij->ij', Ez[0], Q0is))
@@ -152,35 +148,97 @@ class StructuredMeanFieldSLDSPosterior():
             J_lower_diag = np.einsum('tk,kij->tij', Ez[1:], -QiAs)
 
             # linear potential
-            h = np.einsum('tk, tkn, kni->ti', Ez, data[:, None, :] - ds, RiCs)
+            h = np.einsum('tk, tkn, kni->ti', Ez, y[:, None, :] - ds, RiCs)
             # h = h.at[0].add(np.einsum('k,ki->i', Ez[0], Q0im1s))
             h = h.at[0].add(Q0im0s)
             h = h.at[:-1].add(-np.einsum('tk,ki->ti', Ez[1:], ATQibs))
             h = h.at[1:].add(np.einsum('tk,ki->ti', Ez[1:], Qibs))
             return LDSPosterior.infer(J_diag, J_lower_diag, h)
 
-        return vmap(_update_single)(data, discrete_posterior)
+        self._continuous_posterior = vmap(_update_single)(
+            data, self.discrete_posterior.expected_states)
 
-    @staticmethod
-    def _cavi_update_discrete_posterior(continuous_posterior,
+    def _laplace_update_continuous_posterior(self,
+                                             slds,
+                                             data,
+                                             covariates=None,
+                                             metadata=None,
+                                             num_lbfgs_iters=50):
+
+        def _expected_log_prob(x, y, Ez):
+            # initial distribution log prob
+            lp = slds._continuous_initial_condition._distribution.log_prob(x[0])
+            # expected dynamics log prob
+            f = lambda xtm1, xt, Ezt: np.dot(Ezt, slds._dynamics._distribution.log_prob(xt, covariates=xtm1))
+            lp += vmap(f)(x[:-1], x[1:], Ez[1:]).sum()
+            # expected emissions log prob
+            f = lambda xt, yt, Ezt: np.dot(Ezt, slds._emissions._distribution.log_prob(yt, covariates=xt))
+            lp += vmap(f)(x, y, Ez).sum()
+            return lp
+
+        def _compute_mean(x0, y, Ez):
+            scale = x0.size
+            dim = x0.shape[-1]
+
+            objective = lambda x_flat: -1 * _expected_log_prob(x_flat.reshape(-1, dim), y, Ez) / scale
+            optimize_results = jax.scipy.optimize.minimize(
+                objective,
+                x0.ravel(),
+                method="l-bfgs-experimental-do-not-rely-on-this",
+                options=dict(maxiter=num_lbfgs_iters))
+            return optimize_results.x.reshape(-1, dim)
+
+        def _compute_precision_blocks(x, y, Ez):
+
+            # initial distribution hessian
+            J_init = -1 * hessian(slds._continuous_initial_condition._distribution.log_prob)(x[0])
+            # dynamics hessian
+            f = lambda xtm1, xt, Ezt: np.dot(Ezt, slds._dynamics._distribution.log_prob(xt, covariates=xtm1))
+            J_11 = -1 * vmap(hessian(f, argnums=0))(x[:-1], x[1:], Ez[1:])
+            J_22 = -1 * vmap(hessian(f, argnums=1))(x[:-1], x[1:], Ez[1:])
+            J_21 = -1 * vmap(jacfwd(jacrev(f, argnums=1), argnums=0))(x[:-1], x[1:], Ez[1:])
+            # emissions hessian
+            f = lambda xt, yt, Ezt: np.dot(Ezt, slds._emissions._distribution.log_prob(yt, covariates=xt))
+            J_obs = -1 * vmap(hessian(f, argnums=0))(x, y, Ez)
+
+            # combine into diagonal and lower diagonal blocks
+            J_diag = J_obs
+            J_diag = J_diag.at[0].add(J_init)
+            J_diag = J_diag.at[:-1].add(J_11)
+            J_diag = J_diag.at[1:].add(J_22)
+            J_lower_diag = J_21
+            return J_diag, J_lower_diag
+
+        def _update_single(args):
+            x0, y, Ez = args
+            x = _compute_mean(x0, y, Ez)
+            J_diag, J_lower_diag = _compute_precision_blocks(x, y, Ez)
+            return LDSPosterior.infer_from_precision_and_mean(J_diag, J_lower_diag, x)
+
+        self._continuous_posterior = lax.map(_update_single,
+                                             (self.continuous_posterior.expected_states,
+                                              data,
+                                              self.discrete_posterior.expected_states))
+
+    def _cavi_update_discrete_posterior(self,
                                         slds,
                                         data,
                                         covariates=None,
                                         metadata=None):
 
-        def _update_single(q_x, data, covariates, metadata):
+        def _update_single(q_x, y, u, m):
             # Shorthand names for parameters
             log_initial_states_probs = slds._discrete_initial_condition.log_initial_probs(
-                data, covariates=covariates, metadata=metadata)
+                y, covariates=u, metadata=m)
             log_transition_matrices = slds._transitions.log_transition_matrices(
-                data, covariates=covariates, metadata=metadata)
+                y, covariates=u, metadata=m)
 
             # Compute the expected emissions and dynamics log probs under the continuous posterior
             Ex = q_x.expected_states
             ExxT = q_x.expected_states_squared
             ExnxT = q_x.expected_states_next_states
 
-            if covariates is not None:
+            if u is not None:
                 # TODO: extend expectations with covariates
                 raise NotImplementedError
 
@@ -188,7 +246,7 @@ class StructuredMeanFieldSLDSPosterior():
                 lambda yi, Exi, ExixiT: \
                     slds._emissions._distribution.expected_log_prob(
                         yi, Exi, np.outer(yi, yi), np.outer(yi, Exi), ExixiT))(
-                            data, Ex, ExxT
+                            y, Ex, ExxT
                         )
 
             expected_log_likelihoods = expected_log_likelihoods.at[1:, :].add(
@@ -199,7 +257,8 @@ class StructuredMeanFieldSLDSPosterior():
                 log_initial_states_probs, expected_log_likelihoods, log_transition_matrices
             )
 
-        return vmap(_update_single)(continuous_posterior, data, covariates, metadata)
+        self._discrete_posterior = vmap(_update_single)(
+            self.continuous_posterior, data, covariates, metadata)
 
     def tree_flatten(self):
         children = (self.discrete_posterior, self.continuous_posterior)
