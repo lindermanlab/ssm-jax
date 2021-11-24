@@ -3,27 +3,15 @@ Proposal templates for SMC (+FIVO).
 """
 import jax
 import jax.numpy as np
-import matplotlib.pyplot as plt
 from jax.scipy import special as spsp
 from jax import vmap
 from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
-from typing import NamedTuple, Any
-from flax import optim
 from copy import deepcopy as dc
 
 # Import some ssm stuff.
-from ssm.utils import Verbosity, random_rotation
-from ssm.inference.smc import smc, _plot_single_sweep
-from ssm.inference.em import em
-import ssm.distributions as ssmd
 from ssm.inference.conditional_generators import build_independent_gaussian_generator
-# import ssm.snax.snax as snax
-import flax.linen as nn
-from ssm.lds.models import GaussianLDS
 import ssm.nn_util as nn_util
-
-# Set the default verbosity.
 
 
 class IndependentGaussianProposal:
@@ -34,12 +22,23 @@ class IndependentGaussianProposal:
     To define a different proposal FUNCTION here (as opposed to a proposal structure), change this class.
 
     This modules `.apply` method also wraps a call to the input generator, which takes the standard proposal
-    parametersization (dataset, model, particles, t, p_dist, q_state) and flattens it into the right form.
+    parameterization (dataset, model, particles, t, p_dist, q_state) and flattens it into the right form.
 
-    :param n_proposals:
-    :param stock_proposal_input_without_q_state:
-    :param dummy_output:
-    :return:
+    Args:
+        - n_proposals (int):
+            Number of independent proposals to define.  Here must be equal to one (other definitions may use multiple
+            proposals independently indexed by discrete state/time etc.
+
+        - stock_proposal_input_without_q_state (tuple):
+            Tuple of the stock proposal input used in SMC, without the `q_state` (as this state must be defined here).
+            Of type: (dataset, model, particles, time, p_dist).
+
+        - dummy_output (ndarray):
+            Correctly shaped ndarray of dummy values used to define the output layer.
+
+    Returns:
+        - None
+
     """
 
     def __init__(self, n_proposals, stock_proposal_input_without_q_state, dummy_output):
@@ -67,18 +66,47 @@ class IndependentGaussianProposal:
                                                              head_log_var_fn=head_log_var_fn, )
 
     def init(self, key):
+        """
+        Initialize the parameters of the proposal distribution.
+
+        Args:
+            - key (jax.PRNGKey):    Seed to seed initialization.
+
+        Returns:
+            - parameters:           FrozenDict of the parameters of the initialized proposal.
+
+        """
         return self.proposal.init(key, self._dummy_processed_input)
 
     def apply(self, params, inputs):
+        """
+
+        Args:
+            params (FrozenDict):    FrozenDict of the parameters of the proposal.
+
+            inputs (tuple):         Tuple of standard inputs to the proposal in SMC:
+                                    (dataset, model, particles, time, p_dist)
+
+        Returns:
+            (Tuple): (TFP distribution over latent state, updated q internal state).
+
+        """
         proposal_inputs = self._proposal_input_generator(*inputs)
         q_dist = self.proposal.apply(params, proposal_inputs)
         return q_dist, None
 
     def _proposal_input_generator(self, *_inputs):
         """
-        Inputs of the form: (dataset, model, particle[SINGLE], t, p_dist, q_state).
-        :param _inputs:
-        :return:
+        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
+        can be input into the proposal.
+
+        Args:
+            *_inputs (tuple):       Tuple of standard inputs to the proposal in SMC:
+                                    (dataset, model, particles, time, p_dist)
+
+        Returns:
+            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
+
         """
 
         dataset, _, particles, t, _, _ = _inputs  # NOTE - this part of q can't actually use model or p_dist.
@@ -108,9 +136,13 @@ def rebuild_proposal(proposal, proposal_structure):
 
     NOTE - both of the proposal functions also return a None, as there is no q_state to pass along.
 
-    :param proposal:                Proposal object.  Will wrap a call to the `.apply` method.
-    :param proposal_structure:      String indicating the type of proposal structure to use.
-    :return: Function that can be called as fn(inputs).
+    Args:
+        proposal:               Proposal object.  Will wrap a call to the `.apply` method.
+        proposal_structure:     String indicating the type of proposal structure to use.
+
+    Returns:
+        (Callable):             Function that can be called as fn(inputs).
+
     """
 
     def _rebuild_proposal(_param_vals):

@@ -20,7 +20,6 @@ from typing import NamedTuple
 from jax.tree_util import register_pytree_node
 
 
-
 class Verbosity(IntEnum):
     """
     Convenience alias class for Verbosity values.
@@ -52,6 +51,7 @@ def tree_get(tree, idx):
     """
     return tree_map(lambda x: x[idx], tree)
 
+
 def tree_concatenate(tree1, tree2, axis=0):
     """Concatenate leaves of two pytrees along specified axis.
 
@@ -64,6 +64,7 @@ def tree_concatenate(tree1, tree2, axis=0):
         [type]: [description]
     """
     return tree_map(lambda x, y: np.concatenate((x, y), axis=axis), tree1, tree2)
+
 
 def tree_all_equal(tree1, tree2):
     """Check Pytree equality when tree leaves are arrays.
@@ -80,6 +81,7 @@ def tree_all_equal(tree1, tree2):
         tree_multimap(lambda x, y: np.all(x == y), tree1, tree2),
         True
     )
+
 
 def ssm_pbar(num_iters, verbose, description, *args):
     """
@@ -532,8 +534,12 @@ def debug_rejit(func):
 def possibly_disable_jit(disable_jit=False):
     """
     Define a little context manager for whether we disable JIT or not.
-    :param disable_jit:
-    :return:
+
+    Args:
+        disable_jit (bool):
+
+    Returns: None
+
     """
     if disable_jit:
         with jax.disable_jit():
@@ -545,8 +551,14 @@ def possibly_disable_jit(disable_jit=False):
 def lexp(_lmls, _axis=0):
     """
     Compute the log-expectation of a ndarray of log probabilities.
-    :param _lmls:
-    :return:
+
+    Args:
+        - _lmls (ndarray):
+        - _axis (int):
+
+    Returns:
+        - (ndarray):
+
     """
     _lml = spsp.logsumexp(_lmls, axis=_axis) - np.log(_lmls.shape[_axis])
     return _lml
@@ -554,11 +566,22 @@ def lexp(_lmls, _axis=0):
 
 def make_named_tuple(dict_in, keys=None, name='tup'):
     """
+    Convert the dictionary `dict_in` into a named tuple, with object name `name`.  Optionally specify an
+    ordered iterable `keys` to only inscribe certain key-value pairs from dict_in, in the order that they are
+    specified in `keys`.
 
-    :param dict:
-    :param keys:    For enforcing a particular ordering in the tuple.
-    :param name:
-    :return:
+    Args:
+        - dict:
+            Dictionary of key-value pairs that can be inscribed into a named tuple.
+
+        - keys:
+            Iterable of strings, defining the keys of the tuple. Use for enforcing a particular ordering in the tuple.
+
+        - name:
+            Name of the NamedTuple object.
+
+    Returns:
+        - Named tuple with fields defined by keys, or if keys is not specified, the keys of dict_in.
     """
     # Get all the keys if we haven't explicitly provided them.
     if keys is None:
@@ -586,13 +609,16 @@ def make_named_tuple(dict_in, keys=None, name='tup'):
 
 def mutate_named_tuple_by_key(tup, new_vals):
     """
-    Mutate a named tuple by matching the keys of a dict/tuple to the tuple to be updated.
+    Mutate a named tuple by replacing the fields of tuple.
 
     NOTE - if there are any fields that are provided in new_vals that aren't in tup this will create an error.
 
-    :param tup:
-    :param new_vals:
-    :return:
+    Args:
+        - tup:         Named tuple to whose fields are to be updated.
+        - new_vals:    Named tuple or dictionary of new key-value pairs.  All keys must be present in tup.
+
+    Returns:
+        - `tup`, with values updated to those specified by `new_vals`.
     """
 
     # Convert the type.
