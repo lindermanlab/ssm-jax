@@ -200,23 +200,15 @@ def laplace_em(
             posterior = laplace_approximation(model, data, states, laplace_mode_fit_method, num_laplace_mode_iters)
             return posterior
 
-        # def _elbo_single(args):
-        #     elbo_rng, data, posterior = args
-        #     elbo = ssm.elbo(elbo_rng, data, posterior)
-        #     return elbo
-
         # laplace e step
         posterior = lax.map(_laplace_e_step_single, (data, states))
         states = posterior.mean()
 
         # compute elbo
-        elbo_key = jr.split(elbo_key, data.shape[0])
-        # elbos = lax.map(_elbo_single, (elbo_rng, dataset, posteriors))
         elbos = model.elbo(elbo_key, data, posterior)
         elbo = np.mean(elbos)
 
         # m step (approx update for emissions)
-        m_step_key = jr.split(key, data.shape[0])  # TODO: check rng stuff here
         model.m_step(data, posterior, key=m_step_key)  # m step
 
         return key, model, posterior, states, elbo
