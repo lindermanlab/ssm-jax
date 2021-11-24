@@ -12,7 +12,7 @@ from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.utils import Verbosity, ssm_pbar
 
 
-def _compute_laplace_mean(ssm, x0, data, method="L-BFGS", num_iters=50, learning_rate=1e-3):
+def _compute_laplace_mean(model, x0, data, method="L-BFGS", num_iters=50, learning_rate=1e-3):
     """Find the mode of the log joint probability for the Laplace approximation.
 
     Here, we seek to find
@@ -47,7 +47,7 @@ def _compute_laplace_mean(ssm, x0, data, method="L-BFGS", num_iters=50, learning
         # scipy minimize expects x to be shape (n,) so we flatten / unflatten
         def _objective(x_flattened):
             x = x_flattened.reshape(-1, dim)
-            return -1 * np.sum(ssm.log_probability(x, data)) / scale
+            return -1 * np.sum(model.log_probability(x, data)) / scale
 
         optimize_results = jax.scipy.optimize.minimize(
             _objective,
@@ -60,7 +60,7 @@ def _compute_laplace_mean(ssm, x0, data, method="L-BFGS", num_iters=50, learning
 
     elif method == "Adam":
 
-        _objective = lambda x: -1 * np.sum(ssm.log_probability(x, data)) / scale
+        _objective = lambda x: -1 * np.sum(model.log_probability(x, data)) / scale
         opt_init, opt_update, get_params = optimizers.adam(learning_rate)
         opt_state = opt_init(x0)
 
@@ -80,14 +80,14 @@ def _compute_laplace_mean(ssm, x0, data, method="L-BFGS", num_iters=50, learning
     return x_mode
 
 
-def _compute_laplace_precision_blocks(ssm, states, data):
+def _compute_laplace_precision_blocks(model, states, data):
     """Get the negative Hessian at the given states for the Laplace approximation.
 
     Since we know the Hessian has a block tridiagonal structure, we can compute it in a piecewise
     fashion by taking the Hessian of the different components of the joint log probability of the SSM.
 
     Args:
-        ssm (SSM): The SSM model object. It must have continuous latent states.
+        model (SSM): The SSM model object. It must have continuous latent states.
         states (array, (num_timesteps, latent_dim)): The states at which to evaluate the Hessian.
         data (array, (num_timesteps, obs_dim)): The observed data.
 
@@ -98,16 +98,16 @@ def _compute_laplace_precision_blocks(ssm, states, data):
             The lower diagonal blocks of the tridiagonal negative Hessian.
     """
     # initial distribution
-    J_init = -1 * hessian(ssm.initial_distribution().log_prob)(states[0])
+    J_init = -1 * hessian(model.initial_distribution().log_prob)(states[0])
 
     # dynamics
-    f = lambda xt, xtp1: ssm.dynamics_distribution(xt).log_prob(xtp1)
+    f = lambda xt, xtp1: model.dynamics_distribution(xt).log_prob(xtp1)
     J_11 = -1 * vmap(hessian(f, argnums=0))(states[:-1], states[1:])
     J_22 = -1 * vmap(hessian(f, argnums=1))(states[:-1], states[1:])
     J_21 = -1 * vmap(jacfwd(jacrev(f, argnums=1), argnums=0))(states[:-1], states[1:])
 
     # emissions
-    f = lambda x, y: ssm.emissions_distribution(x).log_prob(y)
+    f = lambda x, y: model.emissions_distribution(x).log_prob(y)
     J_obs = -1 * vmap(hessian(f, argnums=0))(states, data)
 
     # debug only if this flag is set
@@ -127,29 +127,33 @@ def _compute_laplace_precision_blocks(ssm, states, data):
     return J_diag, J_lower_diag
 
 
-def laplace_approximation(ssm, data, initial_states, laplace_mode_fit_method="L-BFGS", num_laplace_mode_iters=10):
+# recognition network :: model, data --> approximate posterior
+
+
+
+def laplace_approximation(model, data, initial_states, laplace_mode_fit_method="L-BFGS", num_laplace_mode_iters=10):
     """
     Laplace approximation to the posterior distribution for state space models
     with continuous latent states.
     """
     # Find the mean and precision of the Laplace approximation
     most_likely_states = _compute_laplace_mean(
-        ssm, initial_states, data,
+        model, initial_states, data,
         num_iters=num_laplace_mode_iters,
         method=laplace_mode_fit_method)
 
     # The precision is given by the negative hessian at the mode
     J_diag, J_lower_diag = _compute_laplace_precision_blocks(
-        ssm, most_likely_states, data)
+        model, most_likely_states, data)
 
     return MultivariateNormalBlockTridiag.infer_from_precision_and_mean(
         J_diag, J_lower_diag, most_likely_states)
 
 
 def laplace_em(
-    rng,
-    ssm,
-    dataset,
+    key,
+    model,
+    data,
     num_iters: int=100,
     num_elbo_samples: int=1,
     num_approx_m_iters: int=100,
@@ -188,12 +192,12 @@ def laplace_em(
     """
 
     @jit
-    def step(rng, ssm, states):
-        rng, elbo_rng, m_step_rng = jr.split(rng, 3)
+    def step(key, model, states):
+        key, elbo_key, m_step_key = jr.split(key, 3)
 
         def _laplace_e_step_single(args):
             data, states = args
-            posterior = laplace_approximation(ssm, data, states, laplace_mode_fit_method, num_laplace_mode_iters)
+            posterior = laplace_approximation(model, data, states, laplace_mode_fit_method, num_laplace_mode_iters)
             return posterior
 
         # def _elbo_single(args):
@@ -202,20 +206,20 @@ def laplace_em(
         #     return elbo
 
         # laplace e step
-        posteriors = lax.map(_laplace_e_step_single, (dataset, states))
-        states = posteriors.mean()
+        posterior = lax.map(_laplace_e_step_single, (data, states))
+        states = posterior.mean()
 
         # compute elbo
-        elbo_rng = jr.split(elbo_rng, dataset.shape[0])
+        elbo_key = jr.split(elbo_key, data.shape[0])
         # elbos = lax.map(_elbo_single, (elbo_rng, dataset, posteriors))
-        elbos = ssm.elbo(elbo_rng, dataset, posteriors)
+        elbos = model.elbo(elbo_key, data, posterior)
         elbo = np.mean(elbos)
 
         # m step (approx update for emissions)
-        m_step_rng = jr.split(rng, dataset.shape[0])  # TODO: check rng stuff here
-        ssm.m_step(dataset, posteriors, rng=m_step_rng)  # m step
+        m_step_key = jr.split(key, data.shape[0])  # TODO: check rng stuff here
+        model.m_step(data, posterior, key=m_step_key)  # m step
 
-        return rng, ssm, posteriors, states, elbo
+        return key, model, posterior, states, elbo
 
     # Run the Laplace EM algorithm to convergence
     elbos = []
@@ -224,10 +228,10 @@ def laplace_em(
         pbar.set_description("[jit compiling...]")
 
     # Initialize the latent states to all zeros
-    states = np.zeros((dataset.shape[0], dataset.shape[1], ssm.latent_dim))
+    states = np.zeros((data.shape[0], data.shape[1], model.latent_dim))
 
     for itr in pbar:
-        rng, ssm, posteriors, states, elbo = step(rng, ssm, states)
+        key, model, posteriors, states, elbo = step(key, model, states)
         elbos.append(elbo)
         if verbosity:
             pbar.set_description("ELBO: {:.3f}".format(elbo))
@@ -240,4 +244,4 @@ def laplace_em(
                 pbar.refresh()
                 break
 
-    return np.array(elbos), ssm, posteriors
+    return np.array(elbos), model, posteriors
