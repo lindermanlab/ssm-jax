@@ -132,7 +132,8 @@ class SLDS(SSM):
             method: str="variational_em",
             num_iters: int=100,
             tol: float=1e-4,
-            verbosity: Verbosity=Verbosity.DEBUG):
+            verbosity: Verbosity=Verbosity.DEBUG,
+            callback=None):
         r"""Fit the HMM to a dataset using the specified method and initialization.
 
         Args:
@@ -167,17 +168,9 @@ class SLDS(SSM):
             self, data, covariates=covariates, metadata=metadata)
 
         if method == "variational_em":
-            segmentations = [np.argmax(posterior.discrete_posterior.expected_states[0], axis=-1)]
-            def callback(model, posterior, bound):
-                segmentations.append(
-                    np.argmax(posterior.discrete_posterior.expected_states[0], axis=-1))
-
-            model, posterior, bound = variational_em(
+            return variational_em(
                 key, self, data, posterior, covariates=covariates, metadata=metadata,
-                num_iters=num_iters, tol=tol, verbosity=verbosity,
-                callback=callback)
-
-            return model, posterior, bound, segmentations
+                num_iters=num_iters, tol=tol, verbosity=verbosity, callback=callback)
 
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")

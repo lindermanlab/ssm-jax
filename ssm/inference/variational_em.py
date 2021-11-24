@@ -49,10 +49,12 @@ def variational_em(key,
         model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
         posterior = posterior.update(model, data, covariates=covariates, metadata=metadata)
         bound = model.elbo(key, data, posterior, covariates=covariates, metadata=metadata)
-        return model, posterior, bound
+        callback_output = callback(model, posterior) if callback else None
+        return model, posterior, bound, callback_output
 
     # Run the EM algorithm to convergence
     bounds = []
+    callback_outputs = [callback(model, posterior) if callback else None]
     pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
 
     if verbosity > Verbosity.OFF:
@@ -60,13 +62,11 @@ def variational_em(key,
 
     for itr in pbar:
         this_key, key = jr.split(key, 2)
-        model, posterior, bound = update(this_key, model, posterior)
-        assert np.isfinite(bound), "NaNs in log probability bound"
-
-        if callback is not None:
-            callback(model, posterior, bound)
-
+        model, posterior, bound, callback_output = update(this_key, model, posterior)
         bounds.append(bound)
+        callback_outputs.append(callback_output)
+
+        assert np.isfinite(bound), "NaNs in log probability bound"
         if verbosity > Verbosity.OFF:
             pbar.set_description("LP: {:.3f}".format(bound))
 
@@ -78,4 +78,8 @@ def variational_em(key,
                 pbar.refresh()
                 break
 
-    return np.array(bounds), model, posterior
+    bounds = np.array(bounds)
+    if callback is not None:
+        return bounds, model, posterior, callback_outputs
+    else:
+        return bounds, model, posterior
