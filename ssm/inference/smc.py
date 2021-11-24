@@ -387,7 +387,12 @@ def _smc_forward_pass(key,
         # Compute the incremental importance weight.
         p_log_probability = p_dist.log_prob(new_particles)
         q_log_probability = q_dist.log_prob(new_particles)
-        y_log_probability = model.emissions_distribution(new_particles).log_prob(dataset[t])
+
+        # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
+        y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
+                                         lambda _: 0.0,
+                                         lambda _: model.emissions_distribution(new_particles).log_prob(dataset[t]),
+                                         None)
         incremental_log_weights = p_log_probability - q_log_probability + y_log_probability
 
         # Update the log weights.
@@ -452,9 +457,7 @@ def _smc_forward_pass(key,
     return filtering_particles, log_marginal_likelihood, ancestors, resampled, log_weights
 
 
-def _smc_backward_pass(filtering_particles,
-                       ancestors,
-                       verbosity=default_verbosity):
+def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosity):
     r"""Do the backwards pass (pruning) given a SINGLE forward pass.
 
     Args:
