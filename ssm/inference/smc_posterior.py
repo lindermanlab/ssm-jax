@@ -146,7 +146,7 @@ class SMCPosterior(tfd.Distribution):
         smc_mixture_distribution = tfd.Categorical(logits=self.final_particle_weights)
 
         # Convert the weights into a set of deterministic distributions.
-        particle_dist = tfd.Deterministic(np.moveaxis(self.particles, 0, 1))
+        particle_dist = tfd.Deterministic(np.moveaxis(self.particles, -3, -2))
 
         # Construct the components.
         smc_components_distribution = tfd.Independent(particle_dist, reinterpreted_batch_ndims=2)
@@ -199,8 +199,9 @@ class SMCPosterior(tfd.Distribution):
         # return self.mean()
         raise NotImplementedError()
 
-    # def _log_prob(self, data, **kwargs):
-    #     raise NotImplementedError()
+    def _log_prob(self, data, **kwargs):
+        there is a reasonably substantial bug in here somewhere.
+        return self._gen_dist().log_prob(data)
 
     def _sample_n(self, n, seed=None, **kwargs):
         """
@@ -233,7 +234,7 @@ class SMCPosterior(tfd.Distribution):
 
     @property
     def filtering_particles(self):
-        return self._filtering_particles
+        return self._filtering_particles  # .
 
     @property
     def accumulated_incremental_importance_weights(self):
