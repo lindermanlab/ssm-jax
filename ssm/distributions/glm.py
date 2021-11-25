@@ -120,7 +120,7 @@ class PoissonGLM(GeneralizedLinearModel):
 
     def _mean_function(self, predicted_linear_response):
         # return np.exp(predicted_linear_response)
-        return softplus(predicted_linear_response)
+        return softplus(predicted_linear_response) + 1e-4
 
     def _get_noise_distribution(self, params):
         return tfp.distributions.Independent(

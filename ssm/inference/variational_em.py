@@ -46,7 +46,7 @@ def variational_em(key,
             as a list.
 
     Returns:
-        bounds: log probabilities across EM iterations
+        bounds: evidence lower bounds across EM iterations
         model: the fitted model
         posterior: the posterior over the inferred latent states
 
@@ -76,7 +76,7 @@ def variational_em(key,
         bounds.append(bound)
         callback_outputs.append(callback_output)
 
-        assert np.isfinite(bound), "NaNs in log probability bound"
+        assert np.isfinite(bound), "NaNs in evidence lower bound"
         if verbosity > Verbosity.OFF:
             pbar.set_description("LP: {:.3f}".format(bound))
 

@@ -135,7 +135,7 @@ class PoissonEmissions(Emissions):
     def biases(self):
         return self._distribution.bias
 
-    def distribution(self, state, covariates=None, metadat=None):
+    def distribution(self, state, covariates=None, metadata=None):
         z = state["discrete"]
         x = state["continuous"]
         if covariates is not None:

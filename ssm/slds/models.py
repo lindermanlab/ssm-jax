@@ -89,7 +89,7 @@ class GaussianSLDS(SLDS):
             emission_biases = np.zeros((num_states, emission_dim))
 
         if emission_scale_trils is None:
-            emission_scale_trils = np.tile(1.0**2 * np.eye(emission_dim), (num_states, 1, 1))
+            emission_scale_trils = np.tile(1.0 * np.eye(emission_dim), (num_states, 1, 1))
 
         # Initialize the components
         discrete_initial_condition = \
