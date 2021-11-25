@@ -40,21 +40,21 @@ class GaussianLDS(LDS):
         Args:
             num_latent_dims (int): number of latent dims.
             num_emission_dims (int): number of emission dims.
-            initial_state_mean (np.ndarray, optional): initial state mean. 
+            initial_state_mean (np.ndarray, optional): initial state mean.
                 Defaults to zero vector.
-            initial_state_scale_tril (np.ndarray, optional): 
+            initial_state_scale_tril (np.ndarray, optional):
                 initial state lower-triangular factor of covariance.
                 Defaults to identity matrix.
-            dynamics_weights (np.ndarray, optional): weights in dynamics GLM. 
+            dynamics_weights (np.ndarray, optional): weights in dynamics GLM.
                 Defaults to a random rotation.
-            dynamics_bias (np.ndarray, optional): bias in dynamics GLM. 
+            dynamics_bias (np.ndarray, optional): bias in dynamics GLM.
                 Defaults to zero vector.
             dynamics_scale_tril (np.ndarray, optional): dynamics GLM lower triangular
-                initial state lower-triangular factor of covariance. 
+                initial state lower-triangular factor of covariance.
                 Defaults to 0.1**2 * identity matrix.
-            emission_weights (np.ndarray, optional): weights in emissions GLM. 
+            emission_weights (np.ndarray, optional): weights in emissions GLM.
                 Defaults to a random rotation.
-            emission_bias (np.ndarray, optional): bias in emissions GLM. 
+            emission_bias (np.ndarray, optional): bias in emissions GLM.
                 Defaults to zero vector.
             emission_scale_tril (np.ndarray, optional): emissions GLM slower-triangular
                 factor of covariance. Defaults to the identity matrix.
@@ -75,7 +75,7 @@ class GaussianLDS(LDS):
             dynamics_bias = np.zeros(num_latent_dims)
 
         if dynamics_scale_tril is None:
-            dynamics_scale_tril = 0.1**2 * np.eye(num_latent_dims)
+            dynamics_scale_tril = 0.1 * np.eye(num_latent_dims)
 
         if emission_weights is None:
             seed, rng = jr.split(seed, 2)
@@ -85,7 +85,7 @@ class GaussianLDS(LDS):
             emission_bias = np.zeros(num_emission_dims)
 
         if emission_scale_tril is None:
-            emission_scale_tril = 1.0**2 * np.eye(num_emission_dims)  # TODO: do we want 0.1**2 here?
+            emission_scale_tril = 1.0 * np.eye(num_emission_dims)
 
         initial_condition = StandardInitialCondition(initial_mean=initial_state_mean,
                                                      initial_scale_tril=initial_state_scale_tril)
@@ -145,7 +145,7 @@ class GaussianLDS(LDS):
         seq_len = data.shape[0]
 
         # diagonal blocks of precision matrix
-        J_diag = np.dot(C.T, np.linalg.solve(R, C))  # from observations
+        J_diag = np.dot(C.T, np.linalg.solve(R, C))
         J_diag = np.tile(J_diag[None, :, :], (seq_len, 1, 1))
         J_diag = J_diag.at[0].add(np.linalg.inv(Q1))
         J_diag = J_diag.at[:-1].add(np.dot(A.T, np.linalg.solve(Q, A)))
@@ -156,7 +156,7 @@ class GaussianLDS(LDS):
         J_lower_diag = np.tile(J_lower_diag[None, :, :], (seq_len - 1, 1, 1))
 
         # linear potential
-        h = np.dot(data - d, np.linalg.solve(R, C))  # from observations
+        h = np.dot(data - d, np.linalg.solve(R, C))
         h = h.at[0].add(np.linalg.solve(Q1, m1))
         h = h.at[:-1].add(-np.dot(A.T, np.linalg.solve(Q, b)))
         h = h.at[1:].add(np.linalg.solve(Q, b))
@@ -220,7 +220,7 @@ class GaussianLDS(LDS):
                 Defaults to None.
             metadata (PyTreeDef, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-            method (str, optional): model fit method. Must be one of ["em", "laplace_em"]. 
+            method (str, optional): model fit method. Must be one of ["em", "laplace_em"].
                 Defaults to "em".
             key (jr.PRNGKey, optional): Random seed.
                 Defaults to None.
@@ -281,21 +281,21 @@ class PoissonLDS(LDS):
         Args:
             num_latent_dims (int): number of latent dims.
             num_emission_dims (int): number of emission dims.
-            initial_state_mean (np.ndarray, optional): initial state mean. 
+            initial_state_mean (np.ndarray, optional): initial state mean.
                 Defaults to zero vector.
-            initial_state_scale_tril (np.ndarray, optional): 
+            initial_state_scale_tril (np.ndarray, optional):
                 initial state lower-triangular factor of covariance.
                 Defaults to identity matrix.
-            dynamics_weights (np.ndarray, optional): weights in dynamics GLM. 
+            dynamics_weights (np.ndarray, optional): weights in dynamics GLM.
                 Defaults to a random rotation.
-            dynamics_bias (np.ndarray, optional): bias in dynamics GLM. 
+            dynamics_bias (np.ndarray, optional): bias in dynamics GLM.
                 Defaults to zero vector.
             dynamics_scale_tril (np.ndarray, optional): dynamics GLM lower triangular
-                initial state lower-triangular factor of covariance. 
+                initial state lower-triangular factor of covariance.
                 Defaults to 0.1**2 * identity matrix.
-            emission_weights (np.ndarray, optional): weights in emissions GLM. 
+            emission_weights (np.ndarray, optional): weights in emissions GLM.
                 Defaults to a random rotation.
-            emission_bias (np.ndarray, optional): bias in emissions GLM. 
+            emission_bias (np.ndarray, optional): bias in emissions GLM.
                 Defaults to zero vector.
             seed (jr.PRNGKey, optional): random seed. Defaults to None.
         """

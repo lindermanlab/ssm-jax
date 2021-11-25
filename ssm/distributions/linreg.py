@@ -67,22 +67,64 @@ class GaussianLinearRegression(ExponentialFamilyDistribution,
         return self._bias
 
     @property
-    def scale_tril(self):
-        return self._scale_tril
+    def covariance(self):
+        return np.einsum('...ij,...ji->...ij', self.scale_tril, self.scale_tril)
 
     @property
-    def scale(self):
-        return np.einsum('...ij,...ji->...ij', self.scale_tril, self.scale_tril)
+    def scale_tril(self):
+        return self._scale_tril
 
     def predict(self, covariates=None):
         mean = np.einsum('...i,...ji->...j', covariates, self.weights) + self.bias
         return tfp.distributions.MultivariateNormalTriL(mean, self.scale_tril)
+
+    def _event_shape(self):
+        return self.bias.shape[-1]
 
     def _sample_n(self, n, covariates=None, seed=None):
         return self.predict(covariates).sample(sample_shape=n, seed=seed)
 
     def _log_prob(self, data, covariates=None, **kwargs):
         return self.predict(covariates).log_prob(data)
+
+    def expected_log_prob(self,
+                          expected_data,
+                          expected_covariates,
+                          expected_data_squared,
+                          expected_data_covariates,
+                          expected_covariates_squared):
+        """
+        Helper function to compute the expected log probability
+        under a Gaussian distribution (x, y) with given expectations.
+
+        We have
+        ..math:
+            E_q[\log p(y \mid x)] =
+                \langle -1/2 \Sigma^{-1}, E_q[yy^\top] \rangle +
+                \langle \Sigma^{-1}W, E_q[yx^\top] \rangle +
+                \langle -1/2 W^\top \Sigma^{-1} W, E_q[xx^\top] \rangle +
+                \langle \Sigma^{-1}b, E_q[y] \rangle +
+                \langle -W^\top \Sigma^{-1}b, E_q[x] \rangle +
+                -1/2 \log |\Sigma| -1/2 b^\top \Sigma^{-1} b
+        """
+        transpose = lambda x: np.swapaxes(x, -1, -2)
+        Si = np.linalg.inv(self.covariance)
+        SiW = np.einsum('...ij,...jk->...ik', Si, self.weights)
+        Sib = np.einsum('...ij,...j->...i', Si, self.bias)
+        WTSiW = np.einsum('...ij,...jk->...ik', transpose(self.weights), SiW)
+        WTSib = np.einsum('...ij,...j->...i', transpose(self.weights), Sib)
+        bTSib = np.einsum('...i,...i->...', self.bias, Sib)
+
+
+        ell = np.sum(-0.5 * Si * expected_data_squared, axis=(-1, -2))
+        ell += np.sum(SiW * expected_data_covariates, axis=(-1, -2))
+        ell += np.sum(-0.5 * WTSiW * expected_covariates_squared, axis=(-1, -2))
+        ell += np.sum(Sib * expected_data, axis=-1)
+        ell += np.sum(-WTSib * expected_covariates, axis=-1)
+        ell += -0.5 * np.linalg.slogdet(self.covariance)[1]
+        ell += -0.5 * bTSib
+        ell += -0.5 * self.data_dimension * np.log(2 * np.pi)
+        return ell
 
     @classmethod
     def from_params(cls, params):
@@ -122,7 +164,7 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
     """
     def __repr__(self) -> str:
         return "<GaussianLinearRegressionPrior batch_shape={} event_shape={}>".\
-            format(self.loc.shape[:-2], self.loc.shape[-2:])
+            format(self._loc.shape[:-2], self._loc.shape[-2:])
 
     def _mode(self):
         r"""Solve for the mode. Recall,
@@ -137,8 +179,8 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
         .. math::
             \Sigma^* = \Psi_0 / (\nu_0 + d + 2)
         """
-        weights_and_bias = self.loc
-        scale = np.einsum("...,...ij->...ij", 1 / (self.df + self.dim[0] + self.dim[1] + 2), self.scale)
+        weights_and_bias = self._loc
+        scale = np.einsum("...,...ij->...ij", 1 / (self._df + self.dim[0] + self.dim[1] + 2), self._scale)
         return dict(weights=weights_and_bias[...,:,:-1],
                     bias=weights_and_bias[...,:,-1],
                     scale_tril=np.linalg.cholesky(scale))
@@ -148,17 +190,17 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
         """Compute pseudo-observations from standard NIW parameters."""
         T = lambda X: np.swapaxes(X, -1, -2)
         row_dim, col_dim = self.dim
-        Vi = np.linalg.inv(self.scale_column)
-        MVi = T(Vi @ T(self.loc))
-        MViMT = MVi @ T(self.loc)
+        Vi = np.linalg.inv(self._scale_column)
+        MVi = T(Vi @ T(self._loc))
+        MViMT = MVi @ T(self._loc)
 
-        s1 = self.df + row_dim + col_dim + 1    # 1
+        s1 = self._df + row_dim + col_dim + 1    # 1
         s2 = Vi[...,:-1,:-1]                    # xx^T
         s3 = Vi[...,:-1,-1]                     # x
         s4 = Vi[...,-1,-1]                      # 1
         s5 = MVi[...,:,:-1]                     # yx^T
         s6 = MVi[...,:, -1]                     # y
-        s7 = self.scale + MViMT                 # yy^T
+        s7 = self._scale + MViMT                 # yy^T
         return s1, s2, s3, s4, s5, s6, s7
 
     @classmethod

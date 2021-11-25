@@ -8,7 +8,7 @@ import tensorflow_probability.substrates.jax as tfp
 tfd = tfp.distributions
 
 import ssm.distributions as ssmd
-from ssm.distributions import GaussianLinearRegression, glm
+from ssm.distributions import GaussianLinearRegression, PoissonGLM
 
 
 class Emissions:
@@ -20,6 +20,10 @@ class Emissions:
 
     where u_t are optional covariates.
     """
+    @property
+    def emissions_shape(self):
+        return self._distribution.event_shape
+
     def distribution(self, state, covariates=None, metadata=None):
         """
         Return the conditional distribution of emission y_t
@@ -195,14 +199,14 @@ class PoissonEmissions(Emissions):
     def __init__(self,
                  weights=None,
                  bias=None,
-                 emissions_distribution: glm.PoissonGLM=None,
+                 emissions_distribution: PoissonGLM=None,
                  emissions_distribution_prior: tfd.Distribution=None) -> None:
         assert (weights is not None and \
                 bias is not None) \
             or emissions_distribution is not None
 
         if weights is not None:
-            self._distribution = glm.PoissonGLM(weights, bias)
+            self._distribution = PoissonGLM(weights, bias)
         else:
             self._distribution = emissions_distribution
 
@@ -229,7 +233,7 @@ class PoissonEmissions(Emissions):
     @property
     def bias(self):
         return self._distribution.bias
-    
+
     def distribution(self, state, covariates=None, metadata=None):
         if covariates is not None:
             return self._distribution.predict(np.concatenate([state, covariates]))

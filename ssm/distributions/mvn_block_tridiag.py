@@ -11,44 +11,73 @@ tfd = tfp.distributions
 def block_tridiag_mvn_log_normalizer(J_diag, J_lower_diag, h):
     """ TODO
     """
-    # extract dimensions
-    num_timesteps, dim = J_diag.shape[:2]
-
     # Pad the L's with one extra set of zeros for the last predict step
+    dim = J_diag.shape[-1]
     J_lower_diag_pad = np.concatenate((J_lower_diag, np.zeros((1, dim, dim))), axis=0)
 
-    def marginalize(carry, t):
+    def marginalize(carry, args):
         Jp, hp, lp = carry
+        Jdt, Jldt, ht = args
 
         # Condition
-        Jc = J_diag[t] + Jp
-        hc = h[t] + hp
+        Jc = Jdt + Jp
+        hc = ht + hp
 
-        # Predict -- Cholesky approach seems unstable!
-        sqrt_Jc = np.linalg.cholesky(Jc)
+        # Update log normalizer
+        sqrt_Jc = np.linalg.cholesky(Jc + 1e-6 * np.eye(dim))
         trm1 = solve_triangular(sqrt_Jc, hc, lower=True)
-        trm2 = solve_triangular(sqrt_Jc, J_lower_diag_pad[t].T, lower=True)
         log_Z = 0.5 * dim * np.log(2 * np.pi)
         log_Z += -np.sum(np.log(np.diag(sqrt_Jc)))  # sum these terms only to get approx log|J|
         log_Z += 0.5 * np.dot(trm1.T, trm1)
+
+        # Predict with Cholesky decomposition
+        trm2 = solve_triangular(sqrt_Jc, Jldt.T, lower=True)
         Jp = -np.dot(trm2.T, trm2)
         hp = -np.dot(trm2.T, trm1)
 
-        # Alternative predict step:
-        # log_Z = 0.5 * dim * np.log(2 * np.pi)
-        # log_Z += -0.5 * np.linalg.slogdet(Jc)[1]
-        # log_Z += 0.5 * np.dot(hc, np.linalg.solve(Jc, hc))
-        # Jp = -np.dot(J_lower_diag_pad[t], np.linalg.solve(Jc, J_lower_diag_pad[t].T))
-        # hp = -np.dot(J_lower_diag_pad[t], np.linalg.solve(Jc, hc))
-
+        # Update carry
         new_carry = Jp, hp, lp + log_Z
         return new_carry, (Jc, hc)
 
     # Initialize
     Jp0 = np.zeros((dim, dim))
     hp0 = np.zeros((dim,))
-    (_, _, log_Z), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, 0), np.arange(num_timesteps))
+    (_, _, log_Z), (filtered_Js, filtered_hs) = \
+        lax.scan(marginalize, (Jp0, hp0, 0), (J_diag, J_lower_diag_pad, h))
     return log_Z, (filtered_Js, filtered_hs)
+
+
+# def block_tridiag_mvn_log_normalizer(J_diag, J_lower_diag, h):
+#     """ TODO
+#     """
+#     # extract dimensions
+#     num_timesteps, dim = J_diag.shape[:2]
+
+#     # Pad the L's with one extra set of zeros for the last predict step
+#     J_lower_diag_pad = np.concatenate((J_lower_diag, np.zeros((1, dim, dim))), axis=0)
+
+#     def marginalize(carry, t):
+#         Jp, hp, lp = carry
+
+#         # Condition
+#         Jc = J_diag[t] + Jp
+#         hc = h[t] + hp
+
+#         # Alternative predict step:
+#         log_Z = 0.5 * dim * np.log(2 * np.pi)
+#         log_Z += -0.5 * np.linalg.slogdet(Jc)[1]
+#         log_Z += 0.5 * np.dot(hc, np.linalg.solve(Jc, hc))
+#         Jp = -np.dot(J_lower_diag_pad[t], np.linalg.solve(Jc, J_lower_diag_pad[t].T))
+#         hp = -np.dot(J_lower_diag_pad[t], np.linalg.solve(Jc, hc))
+
+#         new_carry = Jp, hp, lp + log_Z
+#         return new_carry, (Jc, hc)
+
+#     # Initialize
+#     Jp0 = np.zeros((dim, dim))
+#     hp0 = np.zeros((dim,))
+#     (_, _, log_Z), (filtered_Js, filtered_hs) = lax.scan(marginalize, (Jp0, hp0, 0), np.arange(num_timesteps))
+#     return log_Z, (filtered_Js, filtered_hs)
 
 
 class MultivariateNormalBlockTridiag(tfd.Distribution):
@@ -301,15 +330,17 @@ class MultivariateNormalBlockTridiag(tfd.Distribution):
             # Transpose to be (num_samples, num_timesteps, dim)
             return np.transpose(x, (1, 0, 2))
 
-        # TODO: Handle arbitrary batch shapes
-        if filtered_Js.ndim == 4:
-            # batch mode
-            samples = vmap(sample_single)(seed, filtered_Js, filtered_hs, J_lower_diag)
+        if len(self.batch_shape) == 0:
+            samples = sample_single(seed, filtered_Js, filtered_hs, J_lower_diag)
+        elif len(self.batch_shape) == 1:
+            num_batches = self.batch_shape[0]
+            samples = vmap(sample_single)(jr.split(seed, num_batches), filtered_Js, filtered_hs, J_lower_diag)
             # Transpose to be (num_samples, num_batches, num_timesteps, dim)
             samples = np.transpose(samples, (1, 0, 2, 3))
         else:
-            # non-batch mode
-            samples = sample_single(seed, filtered_Js, filtered_hs, J_lower_diag)
+            # TODO: Handle arbitrary batch shapes
+            raise NotImplementedError
+
         return samples
 
     def _entropy(self):

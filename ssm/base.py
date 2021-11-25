@@ -7,6 +7,7 @@ respectively.
 
 The base ``SSM`` object provides template functionality for a state space model.
 """
+from jax._src.tree_util import tree_leaves
 import jax.numpy as np
 import jax.random as jr
 from jax import lax, vmap
@@ -15,7 +16,7 @@ from jax.tree_util import tree_map
 
 import tensorflow_probability.substrates.jax as tfp
 
-from ssm.utils import tree_get, auto_batch, tree_concatenate
+from ssm.utils import ensure_has_batch_dim, tree_get, auto_batch, tree_concatenate
 
 
 class SSM(object):
@@ -117,8 +118,6 @@ class SSM(object):
             lp: log joint probability :math:`\log p(x, y)`
                 of shape :math:`(\text{batch]},)`
         """
-
-
         lp = 0
 
         # Get the first timestep probability
@@ -142,11 +141,11 @@ class SSM(object):
 
         (_, lp), _ = lax.scan(_step, (initial_state, lp),
                                 (tree_get(states, slice(1, None)),
-                                tree_get(data, slice(1, None)),
-                                tree_get(covariates, slice(1, None))))
+                                 tree_get(data, slice(1, None)),
+                                 tree_get(covariates, slice(1, None))))
         return lp
 
-    @auto_batch(batched_args=("key", "data", "posterior", "covariates", "metadata"))
+    @ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metadata"))
     def elbo(self,
              key,
              data,
@@ -163,7 +162,7 @@ class SSM(object):
 
         While in some cases the expectation can be computed in closed form, in
         general we will approximate it with ordinary Monte Carlo.
-        
+
         Args:
             key (jr.PRNGKey): random seed
             data (PyTree): observed data with leaf shape ([B, T, D])
@@ -172,17 +171,24 @@ class SSM(object):
             metadata (PyTree, optional): optional metadata with leaf shape ([B, ...]).
                 Defaults to None.
             num_samples (int): number of samples to evaluate the ELBO
-    
+
         Returns:
             elbo: the evidence lower bound of shape ([B,])
-        
-        """
-        def _elbo_single(_key):
-            sample = posterior.sample(seed=_key)
-            return self.log_probability(sample, data, covariates, metadata) - posterior.log_prob(sample)
 
-        elbos = vmap(_elbo_single)(jr.split(key, num_samples))
-        return np.mean(elbos)
+        """
+        def _elbo_single(_key, _data, _posterior, _covariates, _metadata):
+            def _elbo_single_sample(_this_key):
+                sample = _posterior.sample(seed=_this_key)
+                return self.log_probability(sample, _data, _covariates, _metadata) \
+                    - _posterior.log_prob(sample)
+            elbos = vmap(_elbo_single_sample)(jr.split(_key, num_samples))
+            return np.mean(elbos)
+
+        num_batches = tree_leaves(data)[0].shape[0]
+        elbos = vmap(_elbo_single)(
+            jr.split(key, num_batches), data, posterior, covariates, metadata)
+
+        return elbos.sum()
 
     def sample(self,
                key: jr.PRNGKey,
@@ -222,7 +228,7 @@ class SSM(object):
                 initial_covariates = tree_get(covariates, 0)
                 initial_state = self.initial_distribution(covariates=initial_covariates,
                                                           metadata=metadata).sample(seed=key1)
-            
+
             key1, key = jr.split(key, 2)
             initial_emission = self.emissions_distribution(initial_state,
                                                            covariates=initial_covariates,
@@ -240,16 +246,16 @@ class SSM(object):
                 return state, (state, emission)
 
             keys = jr.split(key, num_steps-1)
-            _, (states, emissions) = lax.scan(_step, 
-                                              initial_state, 
+            _, (states, emissions) = lax.scan(_step,
+                                              initial_state,
                                               (keys, tree_get(covariates, slice(1, None))))
-            
+
             # concatentate the initial samples to the scanned samples
             # TODO: should we make a tree_vstack?
             expand_dims_fn = partial(np.expand_dims, axis=0)
             states = tree_concatenate(tree_map(expand_dims_fn, initial_state), states)
             emissions = tree_concatenate(tree_map(expand_dims_fn, initial_emission), emissions)
-            
+
             return states, emissions
 
         if num_samples > 1:

@@ -86,8 +86,7 @@ class StationaryDynamics(Dynamics):
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         distribution, prior = children
-        return cls(aux_data,
-                   dynamics_distribution=distribution,
+        return cls(dynamics_distribution=distribution,
                    dynamics_distribution_prior=prior)
 
     @property

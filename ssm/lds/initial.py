@@ -20,13 +20,13 @@ class InitialCondition:
     def distribution(self, covariates=None, metadata=None):
         """
         Return the distribution of x_1 (potentially given covariates u_t)
-        
-        Args: 
+
+        Args:
             covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-                
+
         Returns:
             distribution (tfd.Distribution): distribution of z_1
         """
@@ -51,15 +51,19 @@ class StandardInitialCondition(InitialCondition):
         initial_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
         super(StandardInitialCondition, self).__init__()
 
-        assert (initial_mean is not None and initial_scale_tril is not None) or initial_distribution is not None
+        assert (initial_mean is not None and initial_scale_tril is not None) \
+            or initial_distribution is not None
 
         if initial_mean is not None:
-            self._distribution = ssmd.MultivariateNormalTriL(loc=initial_mean, scale_tril=initial_scale_tril)
+            self._distribution = ssmd.MultivariateNormalTriL(loc=initial_mean,
+                                                             scale_tril=initial_scale_tril)
         else:
             self._distribution = initial_distribution
 
         if initial_distribution_prior is None:
-            pass  # TODO: implement default prior
+            dim = self._distribution.event_shape[0]
+            initial_distribution_prior = \
+                ssmd.NormalInverseWishart(np.zeros(dim), 1.0, dim, 1e-4 * np.eye(dim))
         self._prior = initial_distribution_prior
 
     def tree_flatten(self):
@@ -77,24 +81,28 @@ class StandardInitialCondition(InitialCondition):
     def mean(self):
         return self._distribution.loc
 
+    @property
+    def covariance(self):
+        return self._distribution.covariance()
+
     def distribution(self, covariates=None, metadata=None):
         """
         Return the distribution of x_1.
-        
-        Args: 
+
+        Args:
             covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-                
+
         Returns:
             distribution (tfd.Distribution): distribution of z_1
         """
         return self._distribution
 
     def m_step(self, dataset, posteriors, covariates=None, metadata=None):
-        """Update the initial distribution in an M step given posteriors over the latent states. 
-        
+        """Update the initial distribution in an M step given posteriors over the latent states.
+
         Update is performed in place.
 
         Args:
@@ -105,13 +113,13 @@ class StandardInitialCondition(InitialCondition):
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
         """
-        def compute_stats_and_counts(data, posterior):
+        def compute_stats_and_counts(posterior):
             Ex = posterior.expected_states[0]
             ExxT = posterior.expected_states_squared[0]
             stats = (1.0, Ex, ExxT, 1.0)
             return stats
 
-        stats = vmap(compute_stats_and_counts)(dataset, posteriors)
+        stats = vmap(compute_stats_and_counts)(posteriors)
         stats = tree_util.tree_map(sum, stats)  # sum out batch for each leaf
 
         if self._prior is not None:
