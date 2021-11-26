@@ -22,6 +22,7 @@ def smc(key,
         dataset,
         initialization_distribution=None,
         proposal=None,
+        tilt=None,
         num_particles=50,
         resampling_criterion=None,
         resampling_function=None,
@@ -70,6 +71,9 @@ def smc(key,
             Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
             as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be
             defined by closing over a proposal class as appropriate.
+
+        tilt:
+
 
         num_particles (int, No size, default=50):
             Number of particles to use.
@@ -123,7 +127,7 @@ def smc(key,
 
     # Close over the static arguments.
     single_smc_closed = lambda _k, _d: \
-        _single_smc(_k, model, _d, initialization_distribution, proposal, num_particles,
+        _single_smc(_k, model, _d, initialization_distribution, proposal, tilt, num_particles,
                     resampling_criterion, resampling_function, use_stop_gradient_resampling,
                     use_resampling_gradients, verbosity=verbosity)
 
@@ -142,6 +146,7 @@ def _single_smc(key,
                 dataset,
                 initialization_distribution,
                 proposal,
+                tilt,
                 num_particles,
                 resampling_criterion,
                 resampling_function,
@@ -189,6 +194,9 @@ def _single_smc(key,
             Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
             as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be
             defined by closing over a proposal class as appropriate.
+
+        tilt:
+
 
         num_particles (int, No size, default=50):
             Number of particles to use.
@@ -242,6 +250,14 @@ def _single_smc(key,
     if proposal is None:
         proposal = lambda *args: (model.dynamics_distribution(args[2]), None)
 
+    # If there is no tilt provided (indicated by `tilt is None`) then set the tilt to be
+    # a function that takes arbitrary args and returns a log-prob of zero.
+    # Note that the tilt is implemented as a function that accepts arguments and returns
+    # a number representing the tilt value.  This is as opposed to the proposal that
+    # implements this as a function that returns a distribution.
+    if tilt is None:
+        tilt = lambda *_: 0.0
+
     # Do the forward pass.
     filtering_particles, log_marginal_likelihood, ancestry, resampled, accumulated_log_incr_weights = \
         _smc_forward_pass(key,
@@ -249,6 +265,7 @@ def _single_smc(key,
                           dataset,
                           initialization_distribution,
                           proposal,
+                          tilt,
                           num_particles,
                           resampling_criterion,
                           resampling_function,
@@ -275,6 +292,7 @@ def _smc_forward_pass(key,
                       dataset,
                       initialization_distribution,
                       proposal,
+                      tilt,
                       num_particles,
                       resampling_criterion,
                       resampling_function,
@@ -309,6 +327,9 @@ def _smc_forward_pass(key,
             make use of them.  Allows more expressive proposals to be constructed.  The proposal must be a function that
             can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may
             need to be defined by closing over a proposal class as appropriate.
+
+        tilt:
+
 
         num_particles (int, No size):
             Number of particles to use.
@@ -349,11 +370,13 @@ def _smc_forward_pass(key,
     key, subkey1, subkey2 = jr.split(key, num=3)
     initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
 
-    # Resample particles under the zeroth observation.
+    # Resample particles under the (tilted) zeroth observation.
     p_log_probability = model.initial_distribution().log_prob(initial_particles)
     q_log_probability = initial_distribution.log_prob(initial_particles)
     y_log_probability = model.emissions_distribution(initial_particles).log_prob(dataset[0])
-    initial_incremental_log_weights = y_log_probability + p_log_probability - q_log_probability
+    r_log_probability = tilt(dataset, model, initial_particles, 0)
+
+    initial_incremental_log_weights = y_log_probability + p_log_probability - q_log_probability + r_log_probability
 
     # Do an initial resampling step.
     initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
@@ -385,13 +408,22 @@ def _smc_forward_pass(key,
         # Compute the incremental importance weight.
         p_log_probability = p_dist.log_prob(new_particles)
         q_log_probability = q_dist.log_prob(new_particles)
+        r_previous = tilt(dataset, model, particles, t-1)
+
+        # There is no tilt at the final timestep.
+        r_current = jax.lax.cond(t == (len(dataset)-1),
+                                 lambda *_args: 0.0,
+                                 lambda *_args: tilt(dataset, model, new_particles, t),
+                                 None)
 
         # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
         y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
                                          lambda _: np.zeros((num_particles, )),
                                          lambda _: model.emissions_distribution(new_particles).log_prob(dataset[t]),
                                          None)
-        incremental_log_weights = p_log_probability - q_log_probability + y_log_probability
+
+        # Compute the incremental importance weights.
+        incremental_log_weights = p_log_probability - q_log_probability + y_log_probability - r_previous + r_current
 
         # Update the log weights.
         accumulated_log_weights += incremental_log_weights

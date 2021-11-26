@@ -21,7 +21,14 @@ import ssm.utils as utils
 default_verbosity = Verbosity.DEBUG
 
 
-def do_fivo_sweep(_param_vals, _key, _rebuild_model, _rebuild_proposal, _dataset, _num_particles, **_smc_kw_args):
+def do_fivo_sweep(_param_vals,
+                  _key,
+                  _rebuild_model,
+                  _rebuild_proposal,
+                  _rebuild_tilt,
+                  _dataset,
+                  _num_particles,
+                  **_smc_kw_args):
     """
     Do a single FIVO sweep.  This essentially just wraps a call to the SMC sweep, but where the model and proposal
     are rebuilt on-the-fly from the parameter values passed in.  The returned log-expected-marginal is then imbued with
@@ -56,6 +63,9 @@ def do_fivo_sweep(_param_vals, _key, _rebuild_model, _rebuild_proposal, _dataset
 
     # Reconstruct the proposal.
     _proposal = _rebuild_proposal(_param_vals[1])
+
+    # Reconstruct the tilt.
+    _tilt = _rebuild_tilt(_param_vals[2])
 
     # Do the sweep.
     _smc_posteriors = smc(_key, _model, _dataset, proposal=_proposal, num_particles=_num_particles, **_smc_kw_args)
@@ -147,7 +157,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, p_lr=0.001, q_lr=0.001):
+def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.001, q_lr=0.001, r_lr=0.001):
     """
     Build out the appropriate optimizer.
 
@@ -156,8 +166,10 @@ def define_optimizer(p_params=None, q_params=None, p_lr=0.001, q_lr=0.001):
     Args:
         - p_params (NamedTuple):    Named tuple of the parameters of the SSM.
         - q_params (NamedTuple):    Named tuple of the parameters of the proposal.
+        - r_params (NamedTuple):    Named tuple of the parameters of the tilt.
         - p_lr (float):             Float learning rate for p.
         - q_lr (float):             Float learning rate for q.
+        - r_lr (float):             Float learning rate for r.
 
     Returns:
         - (Tuple[opt]):             Tuple of updated optimizers.
@@ -175,6 +187,12 @@ def define_optimizer(p_params=None, q_params=None, p_lr=0.001, q_lr=0.001):
     else:
         q_opt = None
 
-    opt = [p_opt, q_opt]
+    if r_params is not None:
+        r_opt_def = optim.Adam(learning_rate=r_lr)
+        r_opt = r_opt_def.create(r_params)
+    else:
+        r_opt = None
+
+    opt = [p_opt, q_opt, r_opt]
     return opt
 
