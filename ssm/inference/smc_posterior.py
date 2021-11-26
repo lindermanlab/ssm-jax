@@ -200,7 +200,7 @@ class SMCPosterior(tfd.Distribution):
         raise NotImplementedError()
 
     def _log_prob(self, data, **kwargs):
-        there is a reasonably substantial bug in here somewhere.
+        raise NotImplementedError("There is a problem with this evaluation. ")
         return self._gen_dist().log_prob(data)
 
     def _sample_n(self, n, seed=None, **kwargs):

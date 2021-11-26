@@ -77,7 +77,7 @@ def test_smc_gaussian_lds_runs():
 
     # Define the proposal to use.
     # TODO - find a better place to store this.
-    from ssm.inference._test_fivo import lds_define_proposal
+    from tests.inference._test_fivo import lds_define_proposal
     proposal_structure = 'RESQ'
     key, subkey = jr.split(key)
     proposal, proposal_params, rebuild_prop_fn = lds_define_proposal(subkey, model, data, proposal_structure)
