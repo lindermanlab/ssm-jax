@@ -110,7 +110,7 @@ class IndependentGaussianProposal:
         """
 
         dataset, _, particles, t, _, _ = _inputs  # NOTE - this part of q can't actually use model or p_dist.
-        proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=0, axis=0, keepdims=False), _inputs[2])
+        proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=t, axis=0, keepdims=False), _inputs[2])
 
         is_batched = (_inputs[1].latent_dim != particles.shape[0])
         if not is_batched:
