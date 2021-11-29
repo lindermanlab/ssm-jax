@@ -44,7 +44,10 @@ class IndependentGaussianProposal:
     def __init__(self, n_proposals, stock_proposal_input_without_q_state, dummy_output,
                  trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
 
-        assert n_proposals == 1, 'Can only use a single proposal.'
+        # Work out the number of tilts.
+        assert (n_proposals == 1) or (n_proposals == len(stock_proposal_input_without_q_state[0])), \
+            'Can only use a single proposal or as many proposals as there are timepoints.'
+        self.n_proposals = n_proposals
 
         # Re-build the full input that will be provided.
         q_state = None
@@ -77,7 +80,9 @@ class IndependentGaussianProposal:
             - parameters:           FrozenDict of the parameters of the initialized proposal.
 
         """
-        return self.proposal.init(key, self._dummy_processed_input)
+        # return self.proposal.init(key, self._dummy_processed_input)
+        return jax.vmap(self.proposal.init, in_axes=(0, None))\
+            (jr.split(key, self.n_proposals), self._dummy_processed_input)
 
     def apply(self, params, inputs):
         """
@@ -92,8 +97,15 @@ class IndependentGaussianProposal:
             (Tuple): (TFP distribution over latent state, updated q internal state).
 
         """
+        # Pull out the time and the appropriate tilt.
+        if self.n_proposals == 1:
+            t_params = params[0]
+        else:
+            t = inputs[3]
+            t_params = jax.tree_map(lambda args: args[t], params)
+
         proposal_inputs = self._proposal_input_generator(*inputs)
-        q_dist = self.proposal.apply(params, proposal_inputs)
+        q_dist = self.proposal.apply(t_params, proposal_inputs)
         return q_dist, None
 
     def _proposal_input_generator(self, *_inputs):

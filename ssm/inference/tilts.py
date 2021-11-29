@@ -28,7 +28,7 @@ class IndependentGaussianTilt:
 
         # Work out the number of tilts.
         assert (n_tilts == 1) or (n_tilts == len(tilt_input[0]) - 1), \
-            'Can only use a single proposal or as many proposals as there are transitions.'
+            'Can only use a single tilt or as many tilt as there are transitions.'
         self.n_tilts = n_tilts
 
         # Re-build the output that we will score under the tilt.
