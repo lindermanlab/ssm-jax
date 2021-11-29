@@ -68,10 +68,14 @@ def do_fivo_sweep(_param_vals,
     _tilt = _rebuild_tilt(_param_vals[2])
 
     # Do the sweep.
-    _smc_posteriors = smc(_key, _model, _dataset, proposal=_proposal, num_particles=_num_particles, **_smc_kw_args)
+    _smc_posteriors = smc(_key, _model, _dataset,
+                          proposal=_proposal, tilt=_tilt, num_particles=_num_particles, **_smc_kw_args)
 
     # Compute the log of the expected marginal.
-    _lml = utils.lexp(_smc_posteriors.log_normalizer)
+    # TODO - this should take the mean of the log normalizers in FIVO, but this isn't actually the expected log
+    #  likelihood...
+    # _lml = utils.lexp(_smc_posteriors.log_normalizer)
+    _lml = np.mean(_smc_posteriors.log_normalizer)
 
     return - _lml, _smc_posteriors
 

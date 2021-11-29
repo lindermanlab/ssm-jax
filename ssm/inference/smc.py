@@ -256,7 +256,7 @@ def _single_smc(key,
     # a number representing the tilt value.  This is as opposed to the proposal that
     # implements this as a function that returns a distribution.
     if tilt is None:
-        tilt = lambda *_: 0.0
+        tilt = lambda *_: np.zeros(num_particles)
 
     # Do the forward pass.
     filtering_particles, log_marginal_likelihood, ancestry, resampled, accumulated_log_incr_weights = \
@@ -373,8 +373,13 @@ def _smc_forward_pass(key,
     # Resample particles under the (tilted) zeroth observation.
     p_log_probability = model.initial_distribution().log_prob(initial_particles)
     q_log_probability = initial_distribution.log_prob(initial_particles)
-    y_log_probability = model.emissions_distribution(initial_particles).log_prob(dataset[0])
     r_log_probability = tilt(dataset, model, initial_particles, 0)
+
+    # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
+    y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
+                                     lambda _: np.zeros((num_particles,)),
+                                     lambda _: model.emissions_distribution(initial_particles).log_prob(dataset[0]),
+                                     None)
 
     initial_incremental_log_weights = y_log_probability + p_log_probability - q_log_probability + r_log_probability
 
@@ -412,7 +417,7 @@ def _smc_forward_pass(key,
 
         # There is no tilt at the final timestep.
         r_current = jax.lax.cond(t == (len(dataset)-1),
-                                 lambda *_args: 0.0,
+                                 lambda *_args: np.zeros(len(new_particles)),
                                  lambda *_args: tilt(dataset, model, new_particles, t),
                                  None)
 
@@ -751,7 +756,7 @@ def do_resample(key,
     return resampled_particles, ancestors, resamp_log_ws, should_resample
 
 
-def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=None):
+def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=None, _obs=None):
     """
     Some stock code for plotting the results of an SMC sweep.
 
@@ -794,6 +799,10 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
         plt.fill_between(ts, single_sweep_lsd[:, _i], single_sweep_usd[:, _i], color=_c, alpha=0.1)
 
         plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
+
+    if _obs is not None:
+        for _i, _c in zip(range(_obs.shape[1]), color_names):
+            plt.scatter(ts, _obs[:, _i], c=_c, marker='.', label=gen_label(_i, 'Observed'))
 
     plt.title(tag)
     plt.grid(True)

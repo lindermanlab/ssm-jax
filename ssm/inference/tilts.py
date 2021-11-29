@@ -20,23 +20,20 @@ class IndependentGaussianTilt:
 
     """
 
-    def __init__(self, n_tilts, tilt_input):
-
-        assert n_tilts == 1, 'Can only use a single proposal.'
+    def __init__(self, n_tilts, tilt_input,
+                 trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
 
         # Re-build the full input that will be used to condition the tilt.
         self._dummy_processed_input = self._tilt_input_generator(*tilt_input)
 
+        # Work out the number of tilts.
+        assert (n_tilts == 1) or (n_tilts == len(tilt_input[0]) - 1), \
+            'Can only use a single proposal or as many proposals as there are transitions.'
+        self.n_tilts = n_tilts
+
         # Re-build the output that we will score under the tilt.
         dummy_output = self._tilt_output_generator(*tilt_input)
         output_dim = dummy_output.shape[0]
-
-        # Define a more conservative initialization.
-        w_init_mean = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
-
-        trunk_fn = None  # MLP(features=(3, 4, 5), kernel_init=w_init)
-        head_mean_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)
-        head_log_var_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)
 
         # Build out the function approximator.
         self.tilt = build_independent_gaussian_generator(self._dummy_processed_input,
@@ -56,9 +53,10 @@ class IndependentGaussianTilt:
             - parameters:           FrozenDict of the parameters of the initialized tilt.
 
         """
-        return self.tilt.init(key, self._dummy_processed_input)
+        return jax.vmap(self.tilt.init, in_axes=(0, None))\
+            (jr.split(key, self.n_tilts), self._dummy_processed_input)
 
-    def apply(self, params, inputs, data):
+    def apply(self, params, inputs):
         """
 
         Args:
@@ -74,9 +72,16 @@ class IndependentGaussianTilt:
 
         """
 
+        # Pull out the time and the appropriate tilt.
+        if self.n_tilts == 1:
+            t_params = params[0]
+        else:
+            t = inputs[3]
+            t_params = jax.tree_map(lambda args: args[t], params)
+
         # Generate a tilt distribution.
         tilt_inputs = self._tilt_input_generator(*inputs)
-        r_dist = self.tilt.apply(params, tilt_inputs)
+        r_dist = self.tilt.apply(t_params, tilt_inputs)
 
         # Now score under that distribution.
         tilt_outputs = self._tilt_output_generator(*inputs)

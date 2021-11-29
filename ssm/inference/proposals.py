@@ -41,7 +41,8 @@ class IndependentGaussianProposal:
 
     """
 
-    def __init__(self, n_proposals, stock_proposal_input_without_q_state, dummy_output):
+    def __init__(self, n_proposals, stock_proposal_input_without_q_state, dummy_output,
+                 trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
 
         assert n_proposals == 1, 'Can only use a single proposal.'
 
@@ -51,12 +52,12 @@ class IndependentGaussianProposal:
         self._dummy_processed_input = self._proposal_input_generator(*full_input)
         output_dim = nn_util.vectorize_pytree(dummy_output).shape[0]
 
-        # Define a more conservative initialization.
-        w_init_mean = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
-
-        trunk_fn = None  # MLP(features=(3, 4, 5), kernel_init=w_init)
-        head_mean_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)
-        head_log_var_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)
+        # # Define a more conservative initialization.
+        # w_init_mean = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
+        #
+        # trunk_fn = None  # MLP(features=(3, 4, 5), kernel_init=w_init)
+        # head_mean_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)
+        # head_log_var_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)
 
         # Build out the function approximator.
         self.proposal = build_independent_gaussian_generator(self._dummy_processed_input,
@@ -110,7 +111,17 @@ class IndependentGaussianProposal:
         """
 
         dataset, _, particles, t, _, _ = _inputs  # NOTE - this part of q can't actually use model or p_dist.
-        proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=0, axis=0, keepdims=False), _inputs[2])
+
+        # TODO - this has been set up for GDM.
+        proposal_inputs = (jax.lax.dynamic_index_in_dim(dataset, index=len(dataset)-1, axis=0, keepdims=False),
+                           _inputs[2])
+
+        # TODO - should be:
+        # proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=t, axis=0, keepdims=False), _inputs[2])
+
+        # TODO - was:
+        # proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=0, axis=0, keepdims=False), _inputs[2])
+
 
         is_batched = (_inputs[1].latent_dim != particles.shape[0])
         if not is_batched:
