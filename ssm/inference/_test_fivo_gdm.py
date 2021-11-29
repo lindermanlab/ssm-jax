@@ -105,7 +105,7 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
 
     # Define a more conservative initialization.
     w_init_mean = lambda *args: (jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init_mean)
+    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init_mean, use_bias=False)  # TODO - ADD BIAS
     head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init_mean)
 
     # Check whether we have a valid number of tilts.
@@ -145,7 +145,7 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
 
     # Define a more conservative initialization.
     w_init_mean = lambda *args: (jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init_mean)
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init_mean, use_bias=False)  # TODO - ADD BIAS
     head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init_mean)
 
     # Check whether we have a valid number of proposals.
@@ -176,7 +176,7 @@ def gdm_define_true_model_and_data(key):
     num_timesteps = 10
 
     # Create a more reasonable emission scale.
-    transition_scale_tril = 1.0 * np.eye(latent_dim)
+    dynamics_scale_tril = 1.0 * np.eye(latent_dim)
     emission_scale_tril = 1.0 * np.eye(emissions_dim)
     true_dynamics_weights = np.eye(latent_dim)
     true_emission_weights = np.eye(emissions_dim)
@@ -187,7 +187,7 @@ def gdm_define_true_model_and_data(key):
     true_model = GaussianLDS(num_latent_dims=latent_dim,
                              num_emission_dims=emissions_dim,
                              seed=subkey,
-                             dynamics_scale_tril=transition_scale_tril,
+                             dynamics_scale_tril=dynamics_scale_tril,
                              dynamics_weights=true_dynamics_weights,
                              emission_weights=true_emission_weights,
                              emission_scale_tril=emission_scale_tril)
@@ -221,40 +221,40 @@ def gdm_do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_lik
     print(_str)
     if opt[0] is not None:
         if len(opt[0].target) > 0:
-            print()
+            # print()
             print('\tModel')
             true_bias = true_model.dynamics_bias.flatten()
             pred_bias = opt[0].target[0].flatten()
-            print('\t\tTrue: dynamics bias:  ', '  '.join(['{: >9.3f}'.format(_s) for _s in true_bias]))
-            print('\t\tPred: dynamics bias:  ', '  '.join(['{: >9.3f}'.format(_s) for _s in pred_bias]))
+            print('\t\tTrue: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in true_bias]))
+            print('\t\tPred: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in pred_bias]))
 
     if opt[1] is not None:
         q_param = opt[1].target._dict['params']
         q_mean_w = q_param['head_mean_fn']['kernel']
-        q_mean_b = q_param['head_mean_fn']['bias']
+        # q_mean_b = q_param['head_mean_fn']['bias']  # TODO - ADD THIS BACK IF WE ARE USING THE BIAS
         q_lvar_w = q_param['head_log_var_fn']['kernel']
         q_lvar_b = q_param['head_log_var_fn']['bias']
 
-        print()
+        # print()
         print('\tProposal')
-        print('\t\tQ mean weight:          ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_mean_w.flatten()]))
-        print('\t\tQ mean bias:            ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_mean_b.flatten()]))
-        print('\t\tQ log weight:           ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(q_lvar_w.flatten())]))
-        print('\t\tQ log-var bias (->0):   ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_lvar_b.flatten()]))
+        print('\t\tQ mean weight:           ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_mean_w.flatten()]))
+        # print('\t\tQ mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_mean_b.flatten()]))
+        print('\t\tQ var(log) weight (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_lvar_w.flatten()]))
+        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(q_lvar_b.flatten())]))
 
     if opt[2] is not None:
         r_param = opt[2].target._dict['params']
         r_mean_w = r_param['head_mean_fn']['kernel']
-        r_mean_b = r_param['head_mean_fn']['bias']
+        # r_mean_b = r_param['head_mean_fn']['bias']  # TODO - ADD THIS BACK IF WE ARE USING THE BIAS
         r_lvar_w = r_param['head_log_var_fn']['kernel']
         r_lvar_b = r_param['head_log_var_fn']['bias']
 
-        print()
+        # print()
         print('\tTilt:')
-        print('\t\tR mean weight:          ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_mean_w.flatten()]))
-        print('\t\tR mean bias      (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_mean_b.flatten()]))
-        print('\t\tR log-var weight (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_lvar_w.flatten()]))
-        print('\t\tR var bias:             ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(r_lvar_b.flatten())]))
+        print('\t\tR mean weight:           ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_mean_w.flatten()]))
+        # print('\t\tR mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_mean_b.flatten()]))
+        print('\t\tR var(log) weight (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_lvar_w.flatten()]))
+        print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(r_lvar_b.flatten())]))
     print()
     print()
     print()

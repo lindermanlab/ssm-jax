@@ -31,7 +31,7 @@ from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
 from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
 
 
-def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_sweep_jitted, _num_particles=5000, dset=0):
+def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_sweep_jitted, _num_particles=5000, _dset=0):
     """
     Do an test of the true model and the initialized model.
     :param key:
@@ -41,40 +41,39 @@ def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_swee
     :param opt:
     :param _do_fivo_sweep_jitted:
     :param _num_particles:
-    :param dset:
+    :param _dset:
     :return:
     """
     true_lml, em_log_marginal_likelihood = 0.0, 0.0
-    dset = 0
 
     # # Test against EM (which for the LDS is exact).
     # em_posterior = jax.vmap(true_model.e_step)(dataset)
     # em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
     # em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
-    # sweep_em_mean = em_posterior.mean()[dset]
-    # sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset]
+    # sweep_em_mean = em_posterior.mean()[_dset]
+    # sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[_dset]
     # sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
-    # _plot_single_sweep(sweep_em_statistics, true_states[0],
-    #                    tag='EM smoothing', preprocessed=True, _obs=dataset[dset])
+    # _plot_single_sweep(sweep_em_statistics, true_states[_dset],
+    #                    tag='EM smoothing', preprocessed=True, _obs=dataset[_dset])
 
     # Test SMC in the true model..
     key, subkey = jr.split(key)
     smc_posterior = smc(subkey, true_model, dataset, num_particles=_num_particles)
     true_lml = - utils.lexp(smc_posterior.log_normalizer)
-    _plot_single_sweep(smc_posterior.filtering_particles[dset], true_states[dset],
-                       tag='True BPF Filtering.', _obs=dataset[dset])
-    _plot_single_sweep(smc_posterior.particles[dset], true_states[dset],
-                       tag='True BPF Smoothing.', _obs=dataset[dset])
+    _plot_single_sweep(smc_posterior.filtering_particles[_dset], true_states[_dset],
+                       tag='True BPF Filtering.', _obs=dataset[_dset])
+    _plot_single_sweep(smc_posterior.particles[_dset], true_states[_dset],
+                       tag='True BPF Smoothing.', _obs=dataset[_dset])
 
     # Test SMC in the initial model.
     initial_params = dc(fivo.get_params_from_opt(opt))
     key, subkey = jr.split(key)
     initial_lml, sweep_posteriors = _do_fivo_sweep_jitted(subkey, fivo.get_params_from_opt(opt),
                                                           _num_particles=_num_particles)
-    filt_fig = _plot_single_sweep(sweep_posteriors.particles[dset], true_states[dset],
-                                  tag='Initial Filtering.', _obs=dataset[dset])
-    sweep_fig = _plot_single_sweep(sweep_posteriors.particles[dset], true_states[dset],
-                                   tag='Initial Smoothing.', _obs=dataset[dset])
+    filt_fig = _plot_single_sweep(sweep_posteriors.particles[_dset], true_states[_dset],
+                                  tag='Initial Filtering.', _obs=dataset[_dset])
+    sweep_fig = _plot_single_sweep(sweep_posteriors.particles[_dset], true_states[_dset],
+                                   tag='Initial Smoothing.', _obs=dataset[_dset])
 
     # Do some print.
     do_print(0, initial_lml, true_model, true_lml, opt, em_log_marginal_likelihood)
@@ -82,6 +81,8 @@ def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_swee
 
 
 def main():
+
+    # NOTE - FIVO should actually use multinomial resampling.  Therefore, test this.
 
     # Give the option of disabling JIT to allow for better inspection and debugging.
     with possibly_disable_jit(DISABLE_JIT):
@@ -92,10 +93,11 @@ def main():
         em_log_marginal_likelihood = 0.0
         filt_fig = None
         sweep_fig = None
+        dset = 1
 
         # Define the parameters to be used during optimization.
         USE_SGR = True
-        num_particles = 50
+        num_particles = 25
         opt_steps = 100000
 
         # Define the experiment.
@@ -134,7 +136,8 @@ def main():
 
         # Test the initial models.
         true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig = \
-            initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _num_particles=500)
+            initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted,
+                               _num_particles=5000, _dset=dset)
 
         # Main training loop.
         for _step in range(opt_steps):
@@ -145,17 +148,16 @@ def main():
                                                                           num_particles)
             opt = fivo.apply_gradient(grad, opt, )
 
-            coldstart = 10
-            if (_step % 1000 == 0) or (_step < coldstart):
+            coldstart = 2
+            if (_step % 2500 == 0) or (_step < coldstart):
 
                 if _step > coldstart:
                     pred_lml_to_print, pred_sweep = do_fivo_sweep_jitted(subkey, fivo.get_params_from_opt(opt),
-                                                                         _num_particles=500)
-                    dset = 0
+                                                                         _num_particles=5000)
                     filt_fig = _plot_single_sweep(pred_sweep.filtering_particles[dset], true_states[dset],
                                                   tag='{} Filtering.'.format(_step), fig=filt_fig, _obs=dataset[dset])
-                    # sweep_fig = _plot_single_sweep(pred_sweep.particles[dset], true_states[dset],
-                    #                                tag='{} Smoothing.'.format(_step), fig=sweep_fig, _obs=dataset[dset])
+                    sweep_fig = _plot_single_sweep(pred_sweep.particles[dset], true_states[dset],
+                                                   tag='{} Smoothing.'.format(_step), fig=sweep_fig, _obs=dataset[dset])
                 else:
                     pred_lml_to_print = pred_lml
 

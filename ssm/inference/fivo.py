@@ -67,9 +67,26 @@ def do_fivo_sweep(_param_vals,
     # Reconstruct the tilt.
     _tilt = _rebuild_tilt(_param_vals[2])
 
+    # Build up the initial distribution using some dummy particles with all zeros.
+    if _param_vals[1] is not None:
+        _dummy_particles = _model.initial_distribution().sample(seed=_key, batch_shape=(_num_particles, ))
+        _dummy_particles = jax.tree_map(lambda arg: 0.0*arg, _dummy_particles)
+        _initial_dist = lambda _dataset, _model: _proposal(_dataset,
+                                                           _model,
+                                                           _dummy_particles,
+                                                           0,
+                                                           _model.initial_distribution(),
+                                                           None)
+    else:
+        _initial_dist = None
+
     # Do the sweep.
     _smc_posteriors = smc(_key, _model, _dataset,
-                          proposal=_proposal, tilt=_tilt, num_particles=_num_particles, **_smc_kw_args)
+                          proposal=_proposal,
+                          tilt=_tilt,
+                          num_particles=_num_particles,
+                          initialization_distribution=_initial_dist,
+                          **_smc_kw_args)
 
     # Compute the log of the expected marginal.
     # TODO - this should take the mean of the log normalizers in FIVO, but this isn't actually the expected log
