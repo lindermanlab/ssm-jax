@@ -21,7 +21,7 @@ class Emissions:
     @property
     def num_states(self):
         return self._num_states
-    
+
     @property
     def emissions_shape(self):
         raise NotImplementedError
@@ -84,6 +84,10 @@ class ExponentialFamilyEmissions(Emissions):
                    emissions_distribution_prior=prior)
 
     @property
+    def static_parameters(self):
+        return dict()
+
+    @property
     def emissions_shape(self):
         return self._distribution.event_shape
 
@@ -117,9 +121,10 @@ class ExponentialFamilyEmissions(Emissions):
                 Defaults to None.
         """
         conditional = self._emissions_distribution_class.compute_conditional(
-            dataset, weights=posteriors.expected_states, prior=self._prior)
+            dataset, weights=posteriors.expected_states, prior=self._prior,
+            **self.static_parameters)
         self._distribution = self._emissions_distribution_class.from_params(
-            conditional.mode())
+            conditional.mode(), **self.static_parameters)
 
 
 @register_pytree_node_class
@@ -129,9 +134,9 @@ class BernoulliEmissions(ExponentialFamilyEmissions):
     def __init__(self,
                  num_states: int,
                  probs: np.ndarray=None,
-                 emissions_distribution: ssmd.MultivariateNormalTriL=None,
-                 emissions_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
-        """Gaussian Emissions for HMM.
+                 emissions_distribution: ssmd.IndependentBernoulli=None,
+                 emissions_distribution_prior: ssmd.Beta=None) -> None:
+        """Independent Bernoulli emissions for HMM.
 
         Can be initialized by specifying parameters or by passing in a pre-initialized
         ``emissions_distribution`` object.
@@ -140,9 +145,9 @@ class BernoulliEmissions(ExponentialFamilyEmissions):
             num_states (int): number of discrete states
             probs (np.ndarray, optional): state-dependent emission probabilities. Defaults to None.
             covariances (np.ndarray, optional): state-dependent emission covariances. Defaults to None.
-            emissions_distribution (ssmd.MultivariateNormalTriL, optional): initialized emissions distribution.
+            emissions_distribution (ssmd.IndependentBernoulli, optional): initialized emissions distribution.
                 Defaults to None.
-            emissions_distribution_prior (ssmd.NormalInverseWishart, optional): initialized emissions distribution prior.
+            emissions_distribution_prior (ssmd.Beta, optional): initialized emissions distribution prior.
                 Defaults to None.
         """
 
@@ -158,6 +163,49 @@ class BernoulliEmissions(ExponentialFamilyEmissions):
                                                  emissions_distribution,
                                                  emissions_distribution_prior)
 
+
+@register_pytree_node_class
+class BinomialEmissions(ExponentialFamilyEmissions):
+    _emissions_distribution_class = ssmd.IndependentBinomial
+
+    def __init__(self,
+                 num_states: int,
+                 total_counts: np.ndarray=None,
+                 probs: np.ndarray=None,
+                 emissions_distribution: ssmd.ExponentialFamilyDistribution=None,
+                 emissions_distribution_prior: ssmd.Beta=None) -> None:
+        """Independent binomial emissions for HMM.
+
+        Can be initialized by specifying parameters or by passing in a pre-initialized
+        ``emissions_distribution`` object.
+
+        Args:
+            num_states (int): number of discrete states
+            probs (np.ndarray, optional): state-dependent emission probabilities. Defaults to None.
+            covariances (np.ndarray, optional): state-dependent emission covariances. Defaults to None.
+            emissions_distribution (ssmd.IndependentBinomial, optional): initialized emissions distribution.
+                Defaults to None.
+            emissions_distribution_prior (ssmd.Beta, optional): initialized emissions distribution prior.
+                Defaults to None.
+        """
+
+        assert (probs is not None and total_counts is not None) \
+            or emissions_distribution is not None
+
+        if probs is not None and total_counts is not None:
+            emissions_distribution = \
+                ssmd.IndependentBinomial(total_counts=total_counts, probs=probs)
+
+        if emissions_distribution_prior is None:
+            emissions_distribution_prior = ssmd.Beta(1.1, 1.1)
+
+        super(BinomialEmissions, self).__init__(num_states,
+                                                emissions_distribution,
+                                                emissions_distribution_prior)
+
+    @property
+    def static_parameters(self):
+        return dict(total_counts=self._distribution.total_counts)
 
 @register_pytree_node_class
 class GaussianEmissions(ExponentialFamilyEmissions):

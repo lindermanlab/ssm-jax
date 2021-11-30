@@ -9,7 +9,7 @@ import ssm.distributions as ssmd
 from ssm.hmm.base import HMM
 from ssm.hmm.initial import StandardInitialCondition
 from ssm.hmm.transitions import Transitions, StationaryTransitions
-from ssm.hmm.emissions import BernoulliEmissions, GaussianEmissions, PoissonEmissions
+from ssm.hmm.emissions import BernoulliEmissions, BinomialEmissions, GaussianEmissions, PoissonEmissions
 
 import warnings
 
@@ -68,6 +68,68 @@ class BernoulliHMM(HMM):
                                            transitions,
                                            emissions)
 
+
+@register_pytree_node_class
+class BinomialHMM(HMM):
+    def __init__(self,
+                 num_states: int,
+                 num_emission_dims: int=None,
+                 initial_state_probs: np.ndarray=None,
+                 transition_matrix: np.ndarray=None,
+                 emission_total_counts: np.ndarray=None,
+                 emission_probs: np.ndarray=None,
+                 seed: jr.PRNGKey=None):
+        r"""HMM with conditionally independent binomial emissions.
+
+        .. math::
+            p(x_t | z_t = k) \sim \prod_{d=1}^D \mathrm{Bin}(x_{td} \mid p_{kd})
+
+        where :math:`p_{kd}` is the probability of seeing a one in dimension :math:`d`
+        given discrete latent state :math:`k`.
+
+        The BinomialHMM can be initialized by specifying each parameter explicitly,
+        or you can simply specify the ``num_states``, ``num_emission_dims``, and ``seed``
+        to create a BinomialHMM with generic, randomly initialized parameters.
+
+        Args:
+            num_states (int): number of discrete latent states
+            num_emission_dims (int, optional): number of emission dims. Defaults to None.
+            initial_state_probs (np.ndarray, optional): initial state probabilities
+                with shape :math:`(\text{num\_states},)`. Defaults to None.
+            transition_matrix (np.ndarray, optional): transition matrix
+                with shape :math:`(\text{num\_states}, \text{num\_states})`. Defaults to None.
+            emission_total_counts (np.ndarray, optional): specifies emission total counts
+                with shape :math:`(\text{num\_states}, \text{emission\_dims})`. Defaults to None.
+            emission_probs (np.ndarray, optional): specifies emission probabilities
+                with shape :math:`(\text{num\_states}, \text{emission\_dims})`. Defaults to None.
+            seed (jr.PRNGKey, optional): random seed. Defaults to None.
+        """
+
+        if initial_state_probs is None:
+            initial_state_probs = np.ones(num_states) / num_states
+
+        if transition_matrix is None:
+            transition_matrix = np.ones((num_states, num_states)) / num_states
+
+        if emission_total_counts is None:
+            warnings.warn("BinomialHMM constructor should specify `emission_total_counts`! Defaulting to all ones.")
+            emission_total_counts = np.ones(num_emission_dims)
+
+        if emission_probs is None:
+            assert seed is not None and num_emission_dims is not None, \
+                "You must either specify the emission_means or give a dimension and seed (PRNGKey) "\
+                "so that they can be initialized randomly."
+
+            probs_prior = ssmd.Beta(1, 1)
+            emission_probs = probs_prior.sample(seed=seed, sample_shape=(num_states, num_emission_dims))
+
+        initial_condition = StandardInitialCondition(num_states, initial_probs=initial_state_probs)
+        transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
+        emissions = BinomialEmissions(num_states, total_counts=emission_total_counts, probs=emission_probs)
+        super(BinomialHMM, self).__init__(num_states,
+                                           initial_condition,
+                                           transitions,
+                                           emissions)
 
 @register_pytree_node_class
 class GaussianHMM(HMM):

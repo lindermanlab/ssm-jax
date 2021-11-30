@@ -9,6 +9,8 @@ from ssm.distributions.wrappers import *
 # Register conjugate priors
 register_prior(Bernoulli, Beta)
 register_prior(IndependentBernoulli, Beta)
+register_prior(Binomial, Beta)
+register_prior(IndependentBinomial, Beta)
 register_prior(Categorical, Dirichlet)
 register_prior(GaussianLinearRegression, GaussianLinearRegressionPrior)
 register_prior(MultivariateNormalFullCovariance, NormalInverseWishart)

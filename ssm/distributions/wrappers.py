@@ -11,6 +11,8 @@ from ssm.utils import one_hot
 __all__ = ["Bernoulli",
            "IndependentBernoulli",
            "Beta",
+           "Binomial",
+           "IndependentBinomial",
            "Categorical",
            "Dirichlet",
            "Gamma",
@@ -77,6 +79,60 @@ class Beta(ConjugatePrior, tfd.Beta):
     @property
     def natural_parameters(self):
         return (self.concentration1, self.concentration0)
+
+
+class Binomial(ExponentialFamilyDistribution, tfd.Binomial):
+    @classmethod
+    def from_params(cls, params, total_count):
+        # it's important to be consistent with how we init classes
+        # to avoid re-jit (i.e. logits then probs causes recompile)
+        return cls(total_count=total_count, logits=np.log(params))
+
+    @staticmethod
+    def sufficient_statistics(datapoint, total_count):
+        return datapoint, total_count - datapoint
+
+
+class IndependentBinomial(ExponentialFamilyDistribution, tfd.Independent):
+        def __init__(self, total_counts, logits=None, probs=None) -> None:
+            parameters = dict(locals())
+            super(IndependentBinomial, self).__init__(
+                tfd.Binomial(total_count=total_counts,
+                             logits=logits,
+                             probs=probs),
+                reinterpreted_batch_ndims=1)
+
+            # Ensure that the subclass (not base class) parameters are stored.
+            self._parameters = parameters
+
+        def _parameter_properties(self, dtype=np.float32, num_classes=None):
+            return dict(
+                total_counts=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1),
+                probs=tfp.internal.parameter_properties.ParameterProperties(
+                    default_constraining_bijector_fn=tfb.Sigmoid,
+                    is_preferred=False,
+                    event_ndims=1),
+                logits=tfp.internal.parameter_properties.ParameterProperties(event_ndims=1))
+
+        @property
+        def total_counts(self):
+            return self._parameters["total_counts"]
+
+        @property
+        def probs(self):
+            return self._parameters["probs"]
+
+        @property
+        def logits(self):
+            return self._parameters["logits"]
+
+        @classmethod
+        def from_params(cls, params, total_counts):
+            return cls(total_counts=total_counts, probs=params)
+
+        @staticmethod
+        def sufficient_statistics(datapoint, total_counts):
+            return datapoint, total_counts - datapoint
 
 
 class Categorical(ExponentialFamilyDistribution, tfd.Categorical):

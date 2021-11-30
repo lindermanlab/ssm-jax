@@ -75,13 +75,13 @@ class ExponentialFamilyDistribution:
         return get_prior(cls).from_natural_parameters(stats)
 
     @classmethod
-    def compute_conditional(cls, data, weights=None, prior=None):
+    def compute_conditional(cls, data, weights=None, prior=None, **kwargs):
         # Flatten the data and weights so we can vmap over them
         flatten = lambda x: x.reshape(-1, x.shape[-1])
         flat_data = flatten(data)
 
         # Collect sufficient statistics for each data point
-        stats = vmap(cls.sufficient_statistics)(flat_data)
+        stats = vmap(partial(cls.sufficient_statistics, **kwargs))(flat_data)
 
         # Sum the (weighted) sufficient statistics
         if weights is not None:
