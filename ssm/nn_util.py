@@ -1,3 +1,5 @@
+# Stolen from Andy's smc branch
+
 import jax
 import jax.numpy as np
 import flax.linen as nn
