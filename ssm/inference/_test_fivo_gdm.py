@@ -3,6 +3,7 @@ import jax.numpy as np
 import matplotlib.pyplot as plt
 from jax import random as jr
 import flax.linen as nn
+from typing import NamedTuple
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
@@ -105,8 +106,8 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
 
     # Define a more conservative initialization.
     w_init_mean = lambda *args: (jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init_mean, use_bias=False)  # TODO - ADD BIAS
-    head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init_mean)
+    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init_mean, bias_init=nn.initializers.normal(), use_bias=False)  # TODO - ADD BIAS, use_bias=False
+    head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init_mean, bias_init=nn.initializers.normal())
 
     # Check whether we have a valid number of tilts.
     n_tilts = len(dataset[0]) - 1
@@ -145,8 +146,8 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
 
     # Define a more conservative initialization.
     w_init_mean = lambda *args: (jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init_mean, use_bias=False)  # TODO - ADD BIAS
-    head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init_mean)
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init_mean, bias_init=nn.initializers.normal(), use_bias=False) # TODO - ADD BIAS, use_bias=False
+    head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init_mean, bias_init=nn.initializers.normal())
 
     # Check whether we have a valid number of proposals.
     n_props = len(dataset[0])
@@ -172,7 +173,7 @@ def gdm_define_true_model_and_data(key):
     """
     latent_dim = 1
     emissions_dim = 1
-    num_trials = 100
+    num_trials = 10000
     num_timesteps = 10
 
     # Create a more reasonable emission scale.
@@ -202,6 +203,41 @@ def gdm_define_true_model_and_data(key):
     return true_model, true_states, dataset
 
 
+def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
+                param_figs):
+
+    fsize = (12, 8)
+    idx_to_str = lambda _idx: ['Model (p): ', 'Proposal (q): ', 'Tilt (r): '][_idx]
+
+    for _p, _hist in enumerate(_param_hist):
+
+        if len(_hist[0]) > 0:
+
+            n_param = len(_hist[0].keys())
+
+            if param_figs[_p] is None:
+                param_figs[_p] = plt.subplots(n_param, 1, figsize=fsize, sharex=True, squeeze=True)
+
+            for _i, _k in enumerate(_hist[0].keys()):
+                to_plot = []
+                for _pt in _param_hist[_p]:
+                    to_plot.append(_pt[_k].flatten())
+                to_plot = np.array(to_plot)
+
+                if hasattr(param_figs[_p][1], '__len__'):
+                    plt.sca(param_figs[_p][1][_i])
+                else:
+                    plt.sca(param_figs[_p][1])
+                plt.cla()
+                plt.plot(to_plot)
+                plt.title(idx_to_str(_p) + str(_k))
+                plt.grid(True)
+                plt.tight_layout()
+                plt.pause(0.00001)
+
+    return param_figs
+
+
 def gdm_do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_likelihood=None):
     """
     Do menial print stuff.
@@ -228,33 +264,44 @@ def gdm_do_print(_step, pred_lml, true_model, true_lml, opt, em_log_marginal_lik
             print('\t\tTrue: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in true_bias]))
             print('\t\tPred: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in pred_bias]))
 
-    if opt[1] is not None:
-        q_param = opt[1].target._dict['params']
-        q_mean_w = q_param['head_mean_fn']['kernel']
-        # q_mean_b = q_param['head_mean_fn']['bias']  # TODO - ADD THIS BACK IF WE ARE USING THE BIAS
-        q_lvar_w = q_param['head_log_var_fn']['kernel']
-        q_lvar_b = q_param['head_log_var_fn']['bias']
-
-        # print()
-        print('\tProposal')
-        print('\t\tQ mean weight:           ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_mean_w.flatten()]))
-        # print('\t\tQ mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_mean_b.flatten()]))
-        print('\t\tQ var(log) weight (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_lvar_w.flatten()]))
-        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(q_lvar_b.flatten())]))
-
     if opt[2] is not None:
         r_param = opt[2].target._dict['params']
-        r_mean_w = r_param['head_mean_fn']['kernel']
-        # r_mean_b = r_param['head_mean_fn']['bias']  # TODO - ADD THIS BACK IF WE ARE USING THE BIAS
-        r_lvar_w = r_param['head_log_var_fn']['kernel']
-        r_lvar_b = r_param['head_log_var_fn']['bias']
-
-        # print()
         print('\tTilt:')
+
+        r_mean_w = r_param['head_mean_fn']['kernel']
         print('\t\tR mean weight:           ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_mean_w.flatten()]))
-        # print('\t\tR mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_mean_b.flatten()]))
+
+        try:
+            r_mean_b = r_param['head_mean_fn']['bias']  # ADD THIS BACK IF WE ARE USING THE BIAS
+            print('\t\tR mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_mean_b.flatten()]))
+        except:
+            pass
+
+        r_lvar_w = r_param['head_log_var_fn']['kernel']
         print('\t\tR var(log) weight (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_lvar_w.flatten()]))
+
+        r_lvar_b = r_param['head_log_var_fn']['bias']
         print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(r_lvar_b.flatten())]))
+
+    if opt[1] is not None:
+        q_param = opt[1].target._dict['params']
+        print('\tProposal')
+
+        q_mean_w = q_param['head_mean_fn']['kernel']
+        print('\t\tQ mean weight:           ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_mean_w.flatten()]))
+
+        try:
+            q_mean_b = q_param['head_mean_fn']['bias']  # ADD THIS BACK IF WE ARE USING THE BIAS
+            print('\t\tQ mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_mean_b.flatten()]))
+        except:
+            pass
+
+        q_lvar_w = q_param['head_log_var_fn']['kernel']
+        print('\t\tQ var(log) weight (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_lvar_w.flatten()]))
+
+        q_lvar_b = q_param['head_log_var_fn']['bias']
+        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(q_lvar_b.flatten())]))
+
     print()
     print()
     print()

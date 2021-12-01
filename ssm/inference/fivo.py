@@ -68,7 +68,7 @@ def do_fivo_sweep(_param_vals,
     _tilt = _rebuild_tilt(_param_vals[2])
 
     # Build up the initial distribution using some dummy particles with all zeros.
-    if _param_vals[1] is not None:
+    if False:  # _param_vals[1] is not None:  # TODO
         _dummy_particles = _model.initial_distribution().sample(seed=_key, batch_shape=(_num_particles, ))
         _dummy_particles = jax.tree_map(lambda arg: 0.0*arg, _dummy_particles)
         _initial_dist = lambda _dataset, _model: _proposal(_dataset,
@@ -178,7 +178,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.001, q_lr=0.001, r_lr=0.001):
+def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.0001, q_lr=0.001, r_lr=0.001):
     """
     Build out the appropriate optimizer.
 

@@ -18,6 +18,7 @@ from jax.scipy import special as spsp
 from contextlib import contextmanager
 from typing import NamedTuple
 from jax.tree_util import register_pytree_node
+from flax.core.frozen_dict import FrozenDict
 
 
 class Verbosity(IntEnum):
@@ -588,7 +589,7 @@ def make_named_tuple(dict_in, keys=None, name='tup'):
         keys = dict_in.keys()
 
     # Convert to a dict for easier indexing.
-    if type(dict_in) != dict:
+    if (type(dict_in) != dict) and (type(dict_in) != FrozenDict):
         dict_in = dict_in._asdict()
 
     # Pick the elements off according to the keys.

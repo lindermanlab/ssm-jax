@@ -363,40 +363,41 @@ def _smc_forward_pass(key,
             Full matrix of resampled ancestor indices.
     """
 
-    # Generate the initial distribution.
-    initial_distribution, initial_q_state = initialization_distribution(dataset, model)
-
-    # Initialize the sweep using the initial distribution.
-    key, subkey1, subkey2 = jr.split(key, num=3)
-    initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
-
-    # Resample particles under the (tilted) zeroth observation.
-    p_log_probability = model.initial_distribution().log_prob(initial_particles)
-    q_log_probability = initial_distribution.log_prob(initial_particles)
-    r_log_probability = tilt(dataset, model, initial_particles, 0)
-
-    # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
-    y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
-                                     lambda _: np.zeros((num_particles,)),
-                                     lambda _: model.emissions_distribution(initial_particles).log_prob(dataset[0]),
-                                     None)
-
-    initial_incremental_log_weights = y_log_probability + p_log_probability - q_log_probability + r_log_probability
-
-    # Do an initial resampling step.
-    initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
-        do_resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
-                    resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
-
-    # # Use this to no do an initial resampling step.
-    # initial_distribution = model.initial_distribution()
+    # # Generate the initial distribution.
+    # initial_distribution, initial_q_state = initialization_distribution(dataset, model)
+    #
+    # # Initialize the sweep using the initial distribution.
     # key, subkey1, subkey2 = jr.split(key, num=3)
     # initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
-    # y_log_probability = model.emissions_distribution(initial_particles).log_prob(dataset[0])
-    # initial_incremental_log_weights = y_log_probability
-    # initial_resampled_particles = initial_particles
-    # accumulated_log_weights = initial_incremental_log_weights
-    # initial_resampled = False
+    #
+    # # Resample particles under the (tilted) zeroth observation.
+    # p_log_probability = model.initial_distribution().log_prob(initial_particles)
+    # q_log_probability = initial_distribution.log_prob(initial_particles)
+    # r_log_probability = tilt(dataset, model, initial_particles, 0)
+    #
+    # # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
+    # y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
+    #                                  lambda _: np.zeros((num_particles,)),
+    #                                  lambda _: model.emissions_distribution(initial_particles).log_prob(dataset[0]),
+    #                                  None)
+    #
+    # initial_incremental_log_weights = y_log_probability + p_log_probability - q_log_probability + r_log_probability
+    #
+    # # Do an initial resampling step.
+    # initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
+    #     do_resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
+    #                 resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
+
+    # Use this to no do an initial resampling step.
+    initial_distribution = model.initial_distribution()
+    key, subkey1, subkey2 = jr.split(key, num=3)
+    initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
+    y_log_probability = np.zeros(num_particles, )  # TODO - model.emissions_distribution(initial_particles).log_prob(dataset[0])
+    initial_incremental_log_weights = y_log_probability * 0.0  # TODO
+    initial_resampled_particles = initial_particles * 0.0  # TODO
+    accumulated_log_weights = initial_incremental_log_weights * 0.0  # TODO
+    initial_resampled = False
+    initial_q_state = None
 
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
@@ -413,12 +414,18 @@ def _smc_forward_pass(key,
         # Compute the incremental importance weight.
         p_log_probability = p_dist.log_prob(new_particles)
         q_log_probability = q_dist.log_prob(new_particles)
-        r_previous = tilt(dataset, model, particles, t-1)
+
+        # TODO - this needs to be reverted once using initial resampling again.
+        r_previous = jax.lax.cond(t == 0,  # Was t=1 when we were using range(1,T).
+                                  lambda *args: np.zeros(num_particles, ),
+                                  lambda *args: tilt(dataset, model, particles, t-1),# TODO Was t-2 when we were using
+                                  # range(1,T).
+                                  None)
 
         # There is no tilt at the final timestep.
         r_current = jax.lax.cond(t == (len(dataset)-1),
                                  lambda *_args: np.zeros(len(new_particles)),
-                                 lambda *_args: tilt(dataset, model, new_particles, t),
+                                 lambda *_args: tilt(dataset, model, new_particles, t),# TODO Was t-1
                                  None)
 
         # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
@@ -442,17 +449,20 @@ def _smc_forward_pass(key,
                 (resampled_particles, accumulated_log_weights, should_resample, ancestors, q_state))
 
     # Scan over the dataset.
+    # TODO - changed from np.arange(1, len(dataset)) to np.arange(0, len(dataset))
+    # This is because we want to hijack the first transition?
     _, (filtering_particles, log_weights, resampled, ancestors, q_states) = jax.lax.scan(
         smc_step,
         (key, initial_resampled_particles, accumulated_log_weights, initial_q_state),
-        np.arange(1, len(dataset)))
+        np.arange(0, len(dataset)))
 
-    # Need to prepend the initial timestep.
-    filtering_particles = np.concatenate((initial_resampled_particles[None, :], filtering_particles))
-    log_weights = np.concatenate((initial_incremental_log_weights[None, :], log_weights))
-    resampled = np.concatenate((np.asarray([initial_resampled]), resampled))
-    ancestors = np.concatenate((np.arange(num_particles)[None, :], ancestors))
-    q_states = np.concatenate((np.asarray([initial_q_state]), q_states)) if q_states is not None else None
+    # # Need to prepend the initial timestep.
+    # TODO - add this back for when using the initial step.
+    # filtering_particles = np.concatenate((initial_resampled_particles[None, :], filtering_particles))
+    # log_weights = np.concatenate((initial_incremental_log_weights[None, :], log_weights))
+    # resampled = np.concatenate((np.asarray([initial_resampled]), resampled))
+    # ancestors = np.concatenate((np.arange(num_particles)[None, :], ancestors))
+    # q_states = np.concatenate((np.asarray([initial_q_state]), q_states)) if q_states is not None else None
 
     # Average over particle dimension.
     p_hats = spsp.logsumexp(log_weights, axis=1) - np.log(num_particles)
@@ -684,7 +694,7 @@ def do_resample(key,
                 log_weights,
                 particles,
                 resampling_criterion=always_resample_criterion,
-                resampling_function=systematic_resampling,
+                resampling_function=multinomial_resampling,  # TODO - changed from systematic to multinomial.
                 num_particles=None,
                 use_stop_gradient_resampling=False):
     r"""Do resampling.
@@ -790,9 +800,10 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
     ts = np.arange(len(true_states))
 
     if fig is not None:
-        plt.close(fig)
-
-    fig = plt.figure(figsize=(14, 6))
+        plt.figure(fig.number)
+        plt.clf()
+    else:
+        fig = plt.figure(figsize=(14, 6))
 
     for _i, _c in zip(range(single_sweep_median.shape[1]), color_names):
         plt.plot(ts, single_sweep_median[:, _i], c=_c, label=gen_label(_i, 'Predicted'))
