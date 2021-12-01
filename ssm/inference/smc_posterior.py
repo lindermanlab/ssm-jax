@@ -25,6 +25,49 @@ class SMCPosterior(tfd.Distribution):
                  allow_nan_stats=True,
                  name="SMCPosterior", ):
         """
+        See from_params.
+        """
+
+        self._smoothing_particles = smoothing_particles
+        self._log_accumulated_weights = log_weights
+        self._ancestry = ancestry
+        self._filtering_particles = filtering_particles
+        self._log_marginal_likelihood = log_marginal_likelihood
+        self._resampled = resampled
+
+        # We would detect the dtype dynamically but that would break vmap
+        # see https://github.com/tensorflow/probability/issues/1271
+        dtype = np.float32
+        super(SMCPosterior, self).__init__(
+            dtype=dtype,
+            validate_args=validate_args,
+            allow_nan_stats=allow_nan_stats,
+            reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
+            parameters=dict(smoothing_particles=self._smoothing_particles,
+                            log_weights=self._log_accumulated_weights,
+                            ancestry=self._ancestry,
+                            filtering_particles=self._filtering_particles,
+                            log_marginal_likelihood=self._log_marginal_likelihood,
+                            resampled=self._resampled,),
+            name=name,
+        )
+
+    @classmethod
+    def from_params(cls,
+                    smoothing_particles,
+                    log_weights,
+                    ancestry,
+                    filtering_particles,
+                    log_marginal_likelihood,
+                    resampled,):
+        """
+
+        Preprocess and instantiate a SMCPosterior object.
+
+        The SMC sweep often works with objects that are (time x particles x state), whereas the underlying distribution
+        objects need items to be of shape (particles x time x state).  This re-ordering causes chaos in the __init__
+        when jitting, so always instantiate through this function.  Also provides a place for some validation of
+        arguments etc.
 
         # TODO - this currently required that smoothing_particles is a tensor.  Needs to be converted to allow PyTrees.
 
@@ -47,6 +90,8 @@ class SMCPosterior(tfd.Distribution):
             resampled (ndarray, (time, )):
                 Whether particles were resampled at that time bin.
 
+        Returns: Object of type SMCPosterior.
+
         """
 
         # # Validate the args.
@@ -63,31 +108,38 @@ class SMCPosterior(tfd.Distribution):
         # assert filtering_particles.shape == smoothing_particles.shape, \
         #     "[Error]: Filtering particles and smoothing particles must have same shape."
 
-        # Note that these require the batch dimension (T) to be the first dimension.
-        self._ancestry = ancestry
-        self._smoothing_particles = smoothing_particles
-        self._filtering_particles = filtering_particles
-        self._log_accumulated_weights = log_weights
-        self._log_marginal_likelihood = log_marginal_likelihood
-        self._resampled = resampled
+        smoothing_particles = np.moveaxis(smoothing_particles, -3, -2)
+        log_weights = np.moveaxis(log_weights, -2, -1)
+        ancestry = np.moveaxis(ancestry, -2, -1)
+        filtering_particles = np.moveaxis(filtering_particles, -3, -2)
 
-        # We would detect the dtype dynamically but that would break vmap
-        # see https://github.com/tensorflow/probability/issues/1271
-        dtype = np.float32
-        super(SMCPosterior, self).__init__(
-            dtype=dtype,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            reparameterization_type=reparameterization.NOT_REPARAMETERIZED,
-            parameters=dict(smoothing_particles=self._smoothing_particles,
-                            log_weights=self._log_accumulated_weights,
-                            ancestry=self._ancestry,
-                            filtering_particles=self._filtering_particles,
-                            log_marginal_likelihood=self._log_marginal_likelihood,
-                            resampled=self._resampled,),
-            name=name,
-        )
+        return cls(smoothing_particles,
+                   log_weights,
+                   ancestry,
+                   filtering_particles,
+                   log_marginal_likelihood,
+                   resampled,)
 
+    def __len__(self):
+        raise NotImplementedError("Len on this object is so ambiguous we disable it.")
+
+    def __getitem__(self, item):
+        assert len(self.log_normalizer.shape) > 0, "Cannot directly index inside single posterior."
+        return SMCPosterior(**jax.tree_map(lambda args: args[item], self._parameters))
+
+    def tree_flatten(self):
+        children = (self._smoothing_particles,
+                    self._log_accumulated_weights,
+                    self._ancestry,
+                    self._filtering_particles,
+                    self._log_marginal_likelihood,
+                    self._resampled, )
+        aux_data = None
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
 
     @classmethod
     def _parameter_properties(self, dtype, num_classes=None):
@@ -113,13 +165,7 @@ class SMCPosterior(tfd.Distribution):
         )
 
     def _event_shape_tensor(self):
-        # If there are only three dimensions, then the particle dimension is the batch dimension.
-        if len(self._smoothing_particles.shape) == 3:
-            return tf.TensorShape((self._smoothing_particles.shape[0],
-                                   self._smoothing_particles.shape[2]))
-        else:
-            # Otherwise, the leading dimension in the batch dim.
-            return tf.TensorShape(self._smoothing_particles.shape[1:])
+        return tf.TensorShape(self._smoothing_particles.shape[1:])
 
     def _event_shape(self):
         return self._event_shape_tensor()
@@ -127,61 +173,84 @@ class SMCPosterior(tfd.Distribution):
     def _batch_shape(self):
         return tf.TensorShape(self._smoothing_particles.shape[0])
 
-    def tree_flatten(self):
-        children = (self._smoothing_particles,
-                    self._log_accumulated_weights,
-                    self._ancestry,
-                    self._filtering_particles,
-                    self._log_marginal_likelihood,
-                    self._resampled, )
-        aux_data = None
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        return cls(*children)
-
-    def _gen_dist(self):
-        # Construct the weighting distribution.
-        smc_mixture_distribution = tfd.Categorical(logits=self.final_particle_weights)
-
-        # Convert the weights into a set of deterministic distributions.
-        particle_dist = tfd.Deterministic(np.moveaxis(self.particles, -3, -2))
-
-        # Construct the components.
-        smc_components_distribution = tfd.Independent(particle_dist, reinterpreted_batch_ndims=2)
-
-        return tfd.MixtureSameFamily(smc_mixture_distribution, smc_components_distribution)
-
-    # Define the properties and class methods.
-    # These definitions predominantly follow the order of HMM -> Posterior.py -> _HMMPosterior .
-
-    def __len__(self):
-        raise NotImplementedError("Len on this object is so ambiguous we disable it.")
-
     @property
     def state_dimension(self):
         return self._smoothing_particles.shape[-1]
 
     @property
-    def num_particles(self):
+    def num_timesteps(self):
         return self._smoothing_particles.shape[-2]
 
     @property
-    def num_timesteps(self):
+    def num_particles(self):
         return self._smoothing_particles.shape[-3]
-
-    @property
-    def is_stationary(self):
-        """
-        This property doesn't really make sense here.
-        :return:
-        """
-        raise NotImplementedError()
 
     @property
     def log_normalizer(self):
         return self._log_marginal_likelihood
+
+    def _gen_dist(self):
+        smc_mixture_dist = tfd.Categorical(logits=self.final_particle_weights)   # Construct the weighting distribution.
+        particle_dist = tfd.Deterministic(self.particles)  # Convert the particles into a set of deterministic dists.
+        smc_components_dist = tfd.Independent(particle_dist, reinterpreted_batch_ndims=2)  # Construct the components.
+        return tfd.MixtureSameFamily(smc_mixture_dist, smc_components_dist)
+
+    def _log_prob(self, data, **kwargs):
+        """
+        IMPORTANT: This is a wild function.  TODO - we need to write a really clear docstring for this.
+
+        Args:
+            data:
+            **kwargs:
+
+        Returns:
+
+        """
+        return self._gen_dist().log_prob(data)
+
+    def _sample_n(self, n, seed=None, **kwargs):
+        """
+        Generate the distribution object and then route this call through to the underlying distribution.
+
+        Args:
+            n (int):            Number of i.i.d. samples to draw.
+            seed (JaxPRNGKey):  Seed the sample.
+            **kwargs:           Not used here.
+
+        Returns (ndarray, shape=(n x self._event_shape)):  Sampled values.
+
+        """
+        return self._gen_dist()._sample_n(n, seed=seed)
+
+    @property
+    def particles(self):
+        return self._smoothing_particles
+
+    @property
+    def final_particle_weights(self):
+        return self._log_accumulated_weights[..., :, -1]
+
+    @property
+    def resampled(self):
+        return self._resampled
+
+    @property
+    def filtering_particles(self):
+        return self._filtering_particles
+
+    @property
+    def accumulated_incremental_importance_weights(self):
+        return self._weights
+
+    @property
+    def incremental_importance_weights(self):
+        """
+        TODO - we need to implement this such that we can get the raw \alpha values out.  This requires parsing the
+        resampled vector to see if they have been forcibly zeroed.
+        Returns:
+
+        """
+        raise NotImplementedError()
 
     def _mean(self):
         """
@@ -199,43 +268,10 @@ class SMCPosterior(tfd.Distribution):
         # return self.mean()
         raise NotImplementedError()
 
-    def _log_prob(self, data, **kwargs):
-        raise NotImplementedError("There is a problem with this evaluation. ")
-        return self._gen_dist().log_prob(data)
-
-    def _sample_n(self, n, seed=None, **kwargs):
+    @property
+    def is_stationary(self):
         """
-        Generate the distribution object and then route this call through to the underlying distribution.
-        :param n:
-        :param seed:
-        :param kwargs:
+        This property doesn't really make sense here.
         :return:
         """
-        return self._gen_dist()._sample_n(n, seed=seed)
-
-    # These properties are then SMCPosterior specific.
-
-    @property
-    def particles(self):
-        return self._smoothing_particles
-
-    @property
-    def incremental_importance_weights(self):
         raise NotImplementedError()
-        # return self._
-
-    @property
-    def final_particle_weights(self):
-        return self._log_accumulated_weights[..., -1, :]
-
-    @property
-    def resampled(self):
-        return self._resampled
-
-    @property
-    def filtering_particles(self):
-        return self._filtering_particles  # .
-
-    @property
-    def accumulated_incremental_importance_weights(self):
-        return self._weights

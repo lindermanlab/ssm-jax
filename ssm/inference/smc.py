@@ -260,12 +260,12 @@ def _single_smc(key,
     smoothing_particles = _smc_backward_pass(filtering_particles, ancestry, verbosity)
 
     # Now inscribe the results into an SMCPosterior object for modularity.
-    smc_posterior = SMCPosterior(smoothing_particles,
-                                 accumulated_log_incr_weights,
-                                 ancestry,
-                                 filtering_particles,
-                                 log_marginal_likelihood,
-                                 resampled)
+    smc_posterior = SMCPosterior.from_params(smoothing_particles,
+                                             accumulated_log_incr_weights,
+                                             ancestry,
+                                             filtering_particles,
+                                             log_marginal_likelihood,
+                                             resampled)
 
     return smc_posterior
 
