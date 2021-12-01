@@ -10,13 +10,11 @@ import ssm.nn_util as nn_util
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
 import ssm.inference.proposals as proposals
-import ssm.inference.tilts as tilts
 
 
 def lds_define_test(subkey):
 
     proposal_structure = None  # 'RESQ'         # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
-    tilt_structure = None  # 'DIRECT'
 
     # Define the true model.
     key, subkey = jr.split(subkey)
@@ -30,16 +28,11 @@ def lds_define_test(subkey):
     key, subkey = jr.split(key)
     proposal, proposal_params, rebuild_prop_fn = lds_define_proposal(subkey, model, dataset, proposal_structure)
 
-    # Define the tilt.
-    key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = lds_define_tilt(subkey, model, dataset, tilt_structure)
-
     # Return this big pile of stuff.
     ret_model = (true_model, true_states, dataset)
     ret_test = (model, get_model_params, rebuild_model_fn)
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
-    ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
-    return ret_model, ret_test, ret_prop, ret_tilt
+    return ret_model, ret_test, ret_prop
 
 
 def lds_define_test_model(subkey, true_model, ):
@@ -69,37 +62,6 @@ def lds_define_test_model(subkey, true_model, ):
     rebuild_model_fn = lambda _params: fivo.rebuild_model_fn(_params, default_model)
 
     return default_model, get_free_model_params_fn, rebuild_model_fn
-
-
-def lds_define_tilt(subkey, model, dataset, tilt_structure):
-    """
-
-    Args:
-        subkey:
-        model:
-        dataset:
-
-    Returns:
-
-    """
-
-    if tilt_structure is None:
-        _empty_rebuild = lambda *args: None
-        return None, None, _empty_rebuild
-
-    raise NotImplementedError("TODO - the tilt is not set up for general T yet...")
-
-    # Tilt functions take in (dataset, model, particles, t-1).
-    dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
-    stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0)
-
-    # Define the proposal itself.
-    tilt = tilts.IndependentGaussianTilt(n_tilts=1, tilt_input=stock_tilt_input)
-    tilt_params = tilt.init(subkey)
-
-    # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, tilt_structure)
-    return tilt, tilt_params, rebuild_tilt_fn
 
 
 def lds_define_proposal(subkey, model, dataset, proposal_structure):

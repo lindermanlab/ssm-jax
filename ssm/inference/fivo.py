@@ -25,7 +25,6 @@ def do_fivo_sweep(_param_vals,
                   _key,
                   _rebuild_model,
                   _rebuild_proposal,
-                  _rebuild_tilt,
                   _dataset,
                   _num_particles,
                   **_smc_kw_args):
@@ -64,34 +63,13 @@ def do_fivo_sweep(_param_vals,
     # Reconstruct the proposal.
     _proposal = _rebuild_proposal(_param_vals[1])
 
-    # Reconstruct the tilt.
-    _tilt = _rebuild_tilt(_param_vals[2])
-
-    # Build up the initial distribution using some dummy particles with all zeros.
-    if False:  # _param_vals[1] is not None:  # TODO
-        _dummy_particles = _model.initial_distribution().sample(seed=_key, batch_shape=(_num_particles, ))
-        _dummy_particles = jax.tree_map(lambda arg: 0.0*arg, _dummy_particles)
-        _initial_dist = lambda _dataset, _model: _proposal(_dataset,
-                                                           _model,
-                                                           _dummy_particles,
-                                                           0,
-                                                           _model.initial_distribution(),
-                                                           None)
-    else:
-        _initial_dist = None
-
     # Do the sweep.
     _smc_posteriors = smc(_key, _model, _dataset,
                           proposal=_proposal,
-                          tilt=_tilt,
                           num_particles=_num_particles,
-                          initialization_distribution=_initial_dist,
                           **_smc_kw_args)
 
-    # Compute the log of the expected marginal.
-    # TODO - this should take the mean of the log normalizers in FIVO, but this isn't actually the expected log
-    #  likelihood...
-    # _lml = utils.lexp(_smc_posteriors.log_normalizer)
+    # Compute the mean of the log marginal.
     _lml = np.mean(_smc_posteriors.log_normalizer)
 
     return - _lml, _smc_posteriors
@@ -178,7 +156,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.0001, q_lr=0.001, r_lr=0.001):
+def define_optimizer(p_params=None, q_params=None, p_lr=0.0001, q_lr=0.001):
     """
     Build out the appropriate optimizer.
 
@@ -187,10 +165,8 @@ def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.0001, q
     Args:
         - p_params (NamedTuple):    Named tuple of the parameters of the SSM.
         - q_params (NamedTuple):    Named tuple of the parameters of the proposal.
-        - r_params (NamedTuple):    Named tuple of the parameters of the tilt.
         - p_lr (float):             Float learning rate for p.
         - q_lr (float):             Float learning rate for q.
-        - r_lr (float):             Float learning rate for r.
 
     Returns:
         - (Tuple[opt]):             Tuple of updated optimizers.
@@ -208,12 +184,6 @@ def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.0001, q
     else:
         q_opt = None
 
-    if r_params is not None:
-        r_opt_def = optim.Adam(learning_rate=r_lr)
-        r_opt = r_opt_def.create(r_params)
-    else:
-        r_opt = None
-
-    opt = [p_opt, q_opt, r_opt]
+    opt = [p_opt, q_opt]
     return opt
 

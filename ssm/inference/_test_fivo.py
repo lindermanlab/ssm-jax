@@ -24,12 +24,9 @@ default_verbosity = Verbosity.DEBUG
 
 DISABLE_JIT = False
 
-# from ssm.inference._test_fivo_lds import lds_do_print as do_print
-# from ssm.inference._test_fivo_lds import lds_define_test as define_test
-
-from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
-from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
-from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
+from ssm.inference._test_fivo_lds import lds_do_print as do_print
+from ssm.inference._test_fivo_lds import lds_define_test as define_test
+# from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
 
 
 def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_sweep_jitted, _num_particles=5000, _dset_to_plot=0):
@@ -47,15 +44,15 @@ def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_swee
     """
     true_lml, em_log_marginal_likelihood = 0.0, 0.0
 
-    # # Test against EM (which for the LDS is exact).
-    # em_posterior = jax.vmap(true_model.e_step)(dataset)
-    # em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
-    # em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
-    # sweep_em_mean = em_posterior.mean()[_dset_to_plot]
-    # sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[_dset_to_plot]
-    # sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
-    # _plot_single_sweep(sweep_em_statistics, true_states[_dset_to_plot],
-    #                    tag='EM smoothing', preprocessed=True, _obs=dataset[_dset_to_plot])
+    # Test against EM (which for the LDS is exact).
+    em_posterior = jax.vmap(true_model.e_step)(dataset)
+    em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
+    em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
+    sweep_em_mean = em_posterior.mean()[_dset_to_plot]
+    sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[_dset_to_plot]
+    sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
+    _plot_single_sweep(sweep_em_statistics, true_states[_dset_to_plot],
+                       tag='EM smoothing', preprocessed=True, _obs=dataset[_dset_to_plot])
 
     # Test SMC in the true model..
     key, subkey = jr.split(key)
@@ -104,20 +101,6 @@ def log_params(_param_hist, _cur_params):
     else:
         _param_hist[1].append(None)
 
-    if _cur_params[2] is not None:
-        _p = _cur_params[2]['params']._dict
-        _p_flat = {}
-        for _ko in _p.keys():
-            for _ki in _p[_ko].keys():
-                _k = _ko + '_' + _ki
-                if ('var' in _k) and ('bias' in _k):
-                    _p_flat[_k + '_EXP'] = np.exp(_p[_ko][_ki])
-                else:
-                    _p_flat[_k] = _p[_ko][_ki]
-        _param_hist[2].append(_p_flat)
-    else:
-        _param_hist[2].append(None)
-
     return _param_hist
 
 
@@ -151,12 +134,10 @@ def main():
         true_model, true_states, dataset = ret_vals[0]                  # Unpack true model.
         model, get_model_free_params, rebuild_model_fn = ret_vals[1]    # Unpack test model.
         proposal, proposal_params, rebuild_prop_fn = ret_vals[2]        # Unpack proposal.
-        tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                # Unpack tilt.
 
         # Build up the optimizer.
         opt = fivo.define_optimizer(p_params=get_model_free_params(model),
-                                    q_params=proposal_params,
-                                    r_params=tilt_params)
+                                    q_params=proposal_params)
 
         # Close over constant parameters.
         do_fivo_sweep_closed = lambda _key, _params, _num_particles, _num_datasets, _datasets: \
@@ -164,7 +145,6 @@ def main():
                                _key,
                                rebuild_model_fn,
                                rebuild_prop_fn,
-                               rebuild_tilt_fn,
                                _datasets,
                                _num_particles,
                                **{'use_stop_gradient_resampling': USE_SGR})
@@ -183,9 +163,9 @@ def main():
                                _num_particles=5000, _dset_to_plot=dset_to_plot)
 
         # Define some storage.
-        param_hist = [[], [], []]  # Model, proposal, tilt.
+        param_hist = [[], []]  # Model, proposal.
         loss_hist = []
-        param_figures = [None, None, None]  # Model, proposal, tilt.
+        param_figures = [None, None]  # Model, proposal.
 
         # Main training loop.
         for _step in range(opt_steps):
@@ -228,8 +208,10 @@ def main():
                                                    tag='{} Smoothing.'.format(_step), fig=sweep_fig, _obs=dataset[dset_to_plot])
 
                 do_print(_step, pred_lml_to_print, true_model, true_lml, opt, em_log_marginal_likelihood)
-                param_figures = do_plot(param_hist, loss_hist, em_log_marginal_likelihood, true_lml,
-                                        get_model_free_params(true_model), param_figures)
+
+                # # TODO - remake some parameter plotting scripts.
+                # param_figures = do_plot(param_hist, loss_hist, em_log_marginal_likelihood, true_lml,
+                #                         get_model_free_params(true_model), param_figures)
 
 
 if __name__ == '__main__':

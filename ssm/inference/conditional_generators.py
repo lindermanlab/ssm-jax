@@ -1,5 +1,5 @@
 """
-Learnable parameter generators for use as proposal distributions / tilt distributions.
+Learnable parameter generators for use as proposal distributions.
 """
 import jax
 import jax.numpy as np
