@@ -396,10 +396,18 @@ def _smc_forward_pass(key,
         # Update the log weights.
         accumulated_log_weights += incremental_log_weights
 
-        # Resample particles.
+        # Close over the resampling function.
+        closed_do_resample = lambda _crit: do_resample(subkey2, accumulated_log_weights, new_particles, _crit,
+                                                       resampling_function,
+                                                       use_stop_gradient_resampling=use_stop_gradient_resampling)
+
+        # Resample particles depending on the resampling function chosen.
+        # We don't want to resample on the final timestep, so dont...
         resampled_particles, ancestors, resampled_log_weights, should_resample = \
-            do_resample(subkey2, accumulated_log_weights, new_particles, resampling_criterion,
-                        resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
+            jax.lax.cond(t == (len(dataset) - 1),
+                         lambda *args: closed_do_resample(never_resample_criterion),
+                         lambda *args: closed_do_resample(resampling_criterion),
+                         None)
 
         return ((key, resampled_particles, resampled_log_weights, q_state),
                 (resampled_particles, accumulated_log_weights, should_resample, ancestors, q_state))
@@ -555,6 +563,11 @@ def _compute_resampling_grad(log_weights, log_marginal_likelihood, ancestors, ra
 def always_resample_criterion(unused_log_weights, unused_t):
     r"""A criterion that always resamples."""
     return True
+
+
+def never_resample_criterion(unused_log_weights, unused_t):
+    r"""A criterion that never resamples."""
+    return False
 
 
 def multinomial_resampling(key, log_weights, particles):

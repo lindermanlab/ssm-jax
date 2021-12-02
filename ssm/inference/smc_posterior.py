@@ -190,8 +190,8 @@ class SMCPosterior(tfd.Distribution):
         return self._log_marginal_likelihood
 
     def _gen_dist(self):
-        smc_mixture_dist = tfd.Categorical(logits=self.final_particle_weights)   # Construct the weighting distribution.
-        particle_dist = tfd.Deterministic(self.particles)  # Convert the particles into a set of deterministic dists.
+        smc_mixture_dist = tfd.Categorical(logits=self.final_particle_weights_unnormalized)   # Weighting distribution.
+        particle_dist = tfd.Deterministic(self._smoothing_particles)  # Convert into a set of deterministic dists.
         smc_components_dist = tfd.Independent(particle_dist, reinterpreted_batch_ndims=2)  # Construct the components.
         return tfd.MixtureSameFamily(smc_mixture_dist, smc_components_dist)
 
@@ -222,12 +222,34 @@ class SMCPosterior(tfd.Distribution):
         """
         return self._gen_dist()._sample_n(n, seed=seed)
 
-    @property
-    def particles(self):
-        return self._smoothing_particles
+    def sample_unweighted_particles(self, _seed=None, _n_particles=num_particles):
+        """
+
+        Args:
+            _seed:
+            _n_particles:
+
+        Returns:
+
+        """
+        if _seed is None:
+            # print('Warning: using default seed.')
+            _seed = jax.random.PRNGKey(0)
+        return self.sample(_n_particles, seed=_seed)
 
     @property
-    def final_particle_weights(self):
+    def weighted_particles(self):
+        return self._smoothing_particles, self.final_particle_weights_unnormalized
+
+    @property
+    def final_particle_weights_unnormalized(self):
+        """
+        TODO - this is also gnarly.  We need to explain that the weight stored is the unnormalized log probability
+        of the entire particle lineage.  I.e. the raw weight only makes sense in the context of this particular dist.
+         
+        Returns:
+
+        """
         return self._log_accumulated_weights[..., :, -1]
 
     @property
