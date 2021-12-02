@@ -754,9 +754,9 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
     gen_label = lambda _k, _s: _s if _k == 0 else None
 
     if not preprocessed:
-        single_sweep_median = np.median(particles, axis=1)
-        single_sweep_lsd = np.quantile(particles, 0.17, axis=1)
-        single_sweep_usd = np.quantile(particles, 0.83, axis=1)
+        single_sweep_median = np.median(particles, axis=0)
+        single_sweep_lsd = np.quantile(particles, 0.17, axis=0)
+        single_sweep_usd = np.quantile(particles, 0.83, axis=0)
     else:
         single_sweep_median = particles[0]
         single_sweep_lsd = particles[1]

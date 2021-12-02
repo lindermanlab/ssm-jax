@@ -58,10 +58,14 @@ def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_swee
     key, subkey = jr.split(key)
     smc_posterior = smc(subkey, true_model, dataset, num_particles=_num_particles)
     true_lml = - utils.lexp(smc_posterior.log_normalizer)
-    _plot_single_sweep(smc_posterior.filtering_particles[_dset_to_plot], true_states[_dset_to_plot],
-                       tag='True BPF Filtering.', _obs=dataset[_dset_to_plot])
-    _plot_single_sweep(smc_posterior.particles[_dset_to_plot], true_states[_dset_to_plot],
-                       tag='True BPF Smoothing.', _obs=dataset[_dset_to_plot])
+    _plot_single_sweep(smc_posterior[_dset_to_plot].filtering_particles,
+                       true_states[_dset_to_plot],
+                       tag='True BPF Filtering.',
+                       _obs=dataset[_dset_to_plot])
+    _plot_single_sweep(smc_posterior[_dset_to_plot].sample_unweighted_particles(),
+                       true_states[_dset_to_plot],
+                       tag='True BPF Smoothing.',
+                       _obs=dataset[_dset_to_plot])
 
     # Test SMC in the initial model.
     initial_params = dc(fivo.get_params_from_opt(opt))
@@ -70,10 +74,14 @@ def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_swee
                                                           _num_particles=_num_particles,
                                                           _num_datasets=len(dataset),
                                                           _datasets=dataset)
-    filt_fig = _plot_single_sweep(sweep_posteriors.particles[_dset_to_plot], true_states[_dset_to_plot],
-                                  tag='Initial Filtering.', _obs=dataset[_dset_to_plot])
-    sweep_fig = _plot_single_sweep(sweep_posteriors.particles[_dset_to_plot], true_states[_dset_to_plot],
-                                   tag='Initial Smoothing.', _obs=dataset[_dset_to_plot])
+    filt_fig = _plot_single_sweep(sweep_posteriors[_dset_to_plot].filtering_particles,
+                                  true_states[_dset_to_plot],
+                                  tag='Initial Filtering.',
+                                  _obs=dataset[_dset_to_plot])
+    sweep_fig = _plot_single_sweep(sweep_posteriors[_dset_to_plot].sample_unweighted_particles(),
+                                   true_states[_dset_to_plot],
+                                   tag='Initial Smoothing.',
+                                   _obs=dataset[_dset_to_plot])
 
     # Do some print.
     do_print(0, initial_lml, true_model, true_lml, opt, em_log_marginal_likelihood)
@@ -93,10 +101,7 @@ def log_params(_param_hist, _cur_params):
         for _ko in _p.keys():
             for _ki in _p[_ko].keys():
                 _k = _ko + '_' + _ki
-                if ('var' in _k) and ('bias' in _k):
-                    _p_flat[_k + '_EXP'] = np.exp(_p[_ko][_ki])
-                else:
-                    _p_flat[_k] = _p[_ko][_ki]
+                _p_flat[_k] = _p[_ko][_ki]
         _param_hist[1].append(_p_flat)
     else:
         _param_hist[1].append(None)
@@ -160,7 +165,7 @@ def main():
         # Test the initial models.
         true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig = \
             initial_validation(key, true_model, dataset[:num_val_datasets], true_states, opt, do_fivo_sweep_jitted,
-                               _num_particles=5000, _dset_to_plot=dset_to_plot)
+                               _num_particles=50, _dset_to_plot=dset_to_plot)
 
         # Define some storage.
         param_hist = [[], []]  # Model, proposal.
@@ -202,10 +207,16 @@ def main():
                                                                          _num_particles=5000,
                                                                          _num_datasets=len(dataset[:num_val_datasets]),
                                                                          _datasets=dataset[:num_val_datasets])
-                    filt_fig = _plot_single_sweep(pred_sweep.filtering_particles[dset_to_plot], true_states[dset_to_plot],
-                                                  tag='{} Filtering.'.format(_step), fig=filt_fig, _obs=dataset[dset_to_plot])
-                    sweep_fig = _plot_single_sweep(pred_sweep.particles[dset_to_plot], true_states[dset_to_plot],
-                                                   tag='{} Smoothing.'.format(_step), fig=sweep_fig, _obs=dataset[dset_to_plot])
+                    filt_fig = _plot_single_sweep(pred_sweep[dset_to_plot].filtering_particles,
+                                                  true_states[dset_to_plot],
+                                                  tag='{} Filtering.'.format(_step),
+                                                  fig=filt_fig,
+                                                  _obs=dataset[dset_to_plot])
+                    sweep_fig = _plot_single_sweep(pred_sweep[dset_to_plot].sample_unweighted_particles,
+                                                   true_states[dset_to_plot],
+                                                   tag='{} Smoothing.'.format(_step),
+                                                   fig=sweep_fig,
+                                                   _obs=dataset[dset_to_plot])
 
                 do_print(_step, pred_lml_to_print, true_model, true_lml, opt, em_log_marginal_likelihood)
 

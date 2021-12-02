@@ -222,21 +222,6 @@ class SMCPosterior(tfd.Distribution):
         """
         return self._gen_dist()._sample_n(n, seed=seed)
 
-    def sample_unweighted_particles(self, _seed=None, _n_particles=num_particles):
-        """
-
-        Args:
-            _seed:
-            _n_particles:
-
-        Returns:
-
-        """
-        if _seed is None:
-            # print('Warning: using default seed.')
-            _seed = jax.random.PRNGKey(0)
-        return self.sample(_n_particles, seed=_seed)
-
     @property
     def weighted_particles(self):
         return self._smoothing_particles, self.final_particle_weights_unnormalized
@@ -246,7 +231,7 @@ class SMCPosterior(tfd.Distribution):
         """
         TODO - this is also gnarly.  We need to explain that the weight stored is the unnormalized log probability
         of the entire particle lineage.  I.e. the raw weight only makes sense in the context of this particular dist.
-         
+
         Returns:
 
         """
