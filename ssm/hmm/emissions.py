@@ -64,7 +64,7 @@ class Emissions:
             _objective,
             flat_self,
             method="bfgs",
-            options=dict(maxiter=10))
+            options=dict(maxiter=100))
 
         # Update class parameters
         return unravel(results.x)

@@ -17,7 +17,7 @@ from ssm.factorial_hmm.initial import FactorialInitialCondition
 from ssm.factorial_hmm.transitions import FactorialTransitions
 from ssm.hmm.transitions import StationaryTransitions, SimpleStickyTransitions
 from ssm.twarhmm.emissions import TimeWarpedAutoregressiveEmissions
-from ssm.utils import format_dataset
+from ssm.utils import ensure_has_batch_dim
 
 
 @register_pytree_node_class
@@ -119,8 +119,13 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
     def emission_scale_trils(self):
         return self._emissions._scale_trils
 
-    @format_dataset
-    def initialize(self, dataset: np.ndarray, key: jr.PRNGKey, method: str="kmeans") -> None:
+    @ensure_has_batch_dim()
+    def initialize(self,
+                   data: np.ndarray,
+                   covariates=None,
+                   metadata=None,
+                   key: jr.PRNGKey=None,
+                   method: str="kmeans") -> None:
         r"""Initialize the model parameters by performing an M-step with state assignments
         determined by the specified method (random or kmeans).
 
@@ -134,7 +139,7 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
         Raises:
             ValueError: when initialize method is not recognized
         """
-        num_batches, num_timesteps = dataset.shape[:2]
+        num_batches, num_timesteps = data.shape[:2]
 
         # initialize assignments and perform one M-step
         if method.lower() == "kmeans":
@@ -142,7 +147,7 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
             # print("initializing with kmeans")
             from sklearn.cluster import KMeans
             km = KMeans(self.num_discrete_states)
-            flat_dataset = dataset.reshape(num_batches * num_timesteps, -1)
+            flat_dataset = data.reshape(num_batches * num_timesteps, -1)
             assignments = km.fit_predict(flat_dataset).reshape(num_batches, num_timesteps)
 
         else:
@@ -159,7 +164,7 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
         dummy_posteriors = DummyPosterior(expected_states)
 
         # Do one m-step with the dummy posteriors
-        self._emissions = self._emissions.m_step(dataset, dummy_posteriors)
+        self._emissions = self._emissions.m_step(data, dummy_posteriors)
 
     def tree_flatten(self):
         children = (self._initial_condition,
