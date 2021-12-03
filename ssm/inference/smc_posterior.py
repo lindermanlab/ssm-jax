@@ -59,7 +59,7 @@ class SMCPosterior(tfd.Distribution):
                     ancestry,
                     filtering_particles,
                     log_marginal_likelihood,
-                    resampled,):
+                    resampled):
         """
 
         Preprocess and instantiate a SMCPosterior object.
@@ -68,6 +68,9 @@ class SMCPosterior(tfd.Distribution):
         objects need items to be of shape (particles x time x state).  This re-ordering causes chaos in the __init__
         when jitting, so always instantiate through this function.  Also provides a place for some validation of
         arguments etc.
+
+        This can also be constructed as a PyTree, and hence can have arbitrary leading batch dimensions if multiple
+        repeat sweeps / trials / batches have been run.
 
         # TODO - this currently required that smoothing_particles is a tensor.  Needs to be converted to allow PyTrees.
 
@@ -197,7 +200,12 @@ class SMCPosterior(tfd.Distribution):
 
     def _log_prob(self, data, **kwargs):
         """
-        IMPORTANT: This is a wild function.  TODO - we need to write a really clear docstring for this.
+        IMPORTANT: This is a wild function.  When there is just a single SMC sweep (and particles are the batch
+        dimension), this function will return the log prob of a particle as a number under that single sweep.
+
+        If there are multiple sweeps (the batch dimension is repeats or trials) then this function will return a
+        tensor of logprobs, equivilant to vmapping over any of the leading dimensions.  This is the most general of
+        operation modes, but it does mean that there may need to be some post-hoc shape checking and validation.
 
         Args:
             data:
@@ -229,8 +237,10 @@ class SMCPosterior(tfd.Distribution):
     @property
     def final_particle_weights_unnormalized(self):
         """
-        TODO - this is also gnarly.  We need to explain that the weight stored is the unnormalized log probability
-        of the entire particle lineage.  I.e. the raw weight only makes sense in the context of this particular dist.
+        Return the final unnormalized accumulated importance weights of the particles.  These are the logits that should
+        be used for resampling smoothing particles.
+
+        Note that since these weights are unnormalized, they only make sense as logits when normalized across a batch.
 
         Returns:
 
@@ -252,7 +262,7 @@ class SMCPosterior(tfd.Distribution):
     @property
     def incremental_importance_weights(self):
         """
-        TODO - we need to implement this such that we can get the raw \alpha values out.  This requires parsing the
+        We need to implement this such that we can get the raw \alpha values out.  This requires parsing the
         resampled vector to see if they have been forcibly zeroed.
         Returns:
 
