@@ -100,7 +100,7 @@ class IndependentGaussianProposal:
         """
         # Pull out the time and the appropriate proposal.
         if self.n_proposals == 1:
-            t_params = params[0]
+            t_params = jax.tree_map(lambda args: args[0], params)
         else:
             t = inputs[3]
             t_params = jax.tree_map(lambda args: args[t], params)
