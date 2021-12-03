@@ -1,8 +1,10 @@
 # Stolen from Andy's smc branch
 
 import jax
+from jax import vmap
 import jax.numpy as np
 import flax.linen as nn
+from jax.tree_util import register_pytree_node_class
 
 from typing import (NamedTuple, Any, Callable, Sequence, Iterable, List, Optional, Tuple,
                     Set, Type, Union, TypeVar, Generic, Dict)

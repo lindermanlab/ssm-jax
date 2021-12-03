@@ -14,6 +14,10 @@ from ssm.lds.initial import StandardInitialCondition
 from ssm.lds.dynamics import StationaryDynamics
 from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, random_rotation
 
+from ssm.inference.svae_fit import svae_fit
+from ssm.lds_svae.posterior import LDSSVAEPosterior
+from ssm.nn_util import build_gaussian_network
+
 # To keep it really really simple, we don't even to write ANYTHING
 # Except for the fit function
 @register_pytree_node_class

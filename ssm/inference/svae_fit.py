@@ -1,8 +1,9 @@
+import jax
 import jax.numpy as np
 import jax.random as jr
-from jax import jit
+from jax import jit, vmap
 from ssm.utils import Verbosity, debug_rejit, ensure_has_batch_dim, ssm_pbar
-from ssm.lds_svae.base 
+# from ssm.lds_svae.base import 
 
 import flax.optim as opt
 
