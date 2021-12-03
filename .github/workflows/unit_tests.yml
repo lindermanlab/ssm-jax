@@ -3,6 +3,9 @@ name: Unit Tests
 # sets workflow to be manual-run only
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build-linux:
@@ -38,7 +41,7 @@ jobs:
     - name: Test with pytest
       run: |
         conda install pytest
-        pytest tests/timing_comparisons -v -rw --ignore ssm_v0_benchmark_tests --junit-xml pytest.xml -k "num_timesteps[10]"
+        pytest -v -rw --junit-xml pytest.xml
     - name: Publish Unit Test Results
       uses: EnricoMi/publish-unit-test-result-action@v1
       if: always()

@@ -10,10 +10,12 @@ The base ``SSM`` object provides template functionality for a state space model.
 import jax.numpy as np
 import jax.random as jr
 from jax import lax, vmap
+from functools import partial
+from jax.tree_util import tree_map
 
 import tensorflow_probability.substrates.jax as tfp
 
-from ssm.utils import tree_get, auto_batch
+from ssm.utils import tree_get, auto_batch, tree_concatenate
 
 
 class SSM(object):
@@ -49,7 +51,7 @@ class SSM(object):
         The dynamics (or state-transition) distribution conditioned on the current state.
 
         .. math::
-            p(x_{t+1} | x_t)
+            p(x_{t+1} | x_t, u_{t+1})
 
         Args:
             state: The current state on which to condition the dynamics.
@@ -68,7 +70,7 @@ class SSM(object):
         The emissions (or observation) distribution conditioned on the current state.
 
         .. math::
-            p(y_t | x_t)
+            p(y_t | x_t, u_t)
 
         Args:
             state: The current state on which to condition the emissions.
@@ -115,6 +117,7 @@ class SSM(object):
             lp: log joint probability :math:`\log p(x, y)`
                 of shape :math:`(\text{batch]},)`
         """
+
 
         lp = 0
 
@@ -219,20 +222,34 @@ class SSM(object):
                 initial_covariates = tree_get(covariates, 0)
                 initial_state = self.initial_distribution(covariates=initial_covariates,
                                                           metadata=metadata).sample(seed=key1)
+            
+            key1, key = jr.split(key, 2)
+            initial_emission = self.emissions_distribution(initial_state,
+                                                           covariates=initial_covariates,
+                                                           metadata=metadata).sample(seed=key1)
 
-            def _step(state, key_and_covariates):
+            def _step(prev_state, key_and_covariates):
                 key, covariates = key_and_covariates
                 key1, key2 = jr.split(key, 2)
+                state = self.dynamics_distribution(prev_state,
+                                                   covariates=covariates,
+                                                   metadata=metadata).sample(seed=key2)
                 emission = self.emissions_distribution(state,
                                                        covariates=covariates,
                                                        metadata=metadata).sample(seed=key1)
-                next_state = self.dynamics_distribution(state,
-                                                        covariates=covariates,
-                                                        metadata=metadata).sample(seed=key2)
-                return next_state, (state, emission)
+                return state, (state, emission)
 
-            keys = jr.split(key, num_steps)
-            _, (states, emissions) = lax.scan(_step, initial_state, (keys, covariates))
+            keys = jr.split(key, num_steps-1)
+            _, (states, emissions) = lax.scan(_step, 
+                                              initial_state, 
+                                              (keys, tree_get(covariates, slice(1, None))))
+            
+            # concatentate the initial samples to the scanned samples
+            # TODO: should we make a tree_vstack?
+            expand_dims_fn = partial(np.expand_dims, axis=0)
+            states = tree_concatenate(tree_map(expand_dims_fn, initial_state), states)
+            emissions = tree_concatenate(tree_map(expand_dims_fn, initial_emission), emissions)
+            
             return states, emissions
 
         if num_samples > 1:

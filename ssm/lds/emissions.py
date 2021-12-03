@@ -230,7 +230,7 @@ class PoissonEmissions(Emissions):
     @property
     def bias(self):
         return self._distribution.bias
-
+    
     def distribution(self, state, covariates=None, metadata=None):
         if covariates is not None:
             return self._distribution.predict(np.concatenate([state, covariates]))
