@@ -584,13 +584,14 @@ def make_named_tuple(dict_in, keys=None, name='tup'):
     Returns:
         - Named tuple with fields defined by keys, or if keys is not specified, the keys of dict_in.
     """
-    # Get all the keys if we haven't explicitly provided them.
-    if keys is None:
-        keys = dict_in.keys()
 
     # Convert to a dict for easier indexing.
     if (type(dict_in) != dict) and (type(dict_in) != FrozenDict):
         dict_in = dict_in._asdict()
+
+    # Get all the keys if we haven't explicitly provided them.
+    if keys is None:
+        keys = dict_in.keys()
 
     # Pick the elements off according to the keys.
     list_in = [dict_in[_k] for _k in keys]
@@ -621,6 +622,14 @@ def mutate_named_tuple_by_key(tup, new_vals):
     Returns:
         - `tup`, with values updated to those specified by `new_vals`.
     """
+
+    # If there are no values to mutate then leave.
+    if new_vals is None:
+        return tup
+
+    # If its zero-length then leave.
+    if len(new_vals) is None:
+        return tup
 
     # Convert the type.
     if type(new_vals) != dict:

@@ -107,8 +107,15 @@ def rebuild_model_fn(_params_in, _default_model):
 
     """
 
-    # We cannot pass a new seed into this function or we may get different internal mechanics.
-    assert 'seed' not in _params_in._fields, "[Error]: Cannot pass in a new seed."
+    if _params_in is None:
+        return _default_model
+    elif len(_params_in) == 0:
+        return _default_model
+
+    # NOTE - I think we may want to disable passing in a seed, but I don't think we need
+    # to do so.
+    # # We cannot pass a new seed into this function or we may get different internal mechanics.
+    # assert 'seed' not in _params_in._fields, "[Error]: Cannot pass in a new seed."
 
     # Get the tuple of parameters used to set up the previous model.
     _default_params = _default_model._parameters
@@ -134,6 +141,9 @@ def get_model_params_fn(_model, _keys=None):
         - (NamedTuple):                     Named tuple of the parameters specified by `_keys` or the full set of
                                             calling arguments when `_model` was defined.
     """
+    if _keys is not None:
+        if len(_keys) == 0:
+            return None
     return utils.make_named_tuple(_model._parameters,
                                   keys=_keys,
                                   name=_model._parameters.__class__.__name__ + 'Tmp')
@@ -156,7 +166,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, p_lr=0.0001, q_lr=0.001):
+def define_optimizer(p_params=None, q_params=None, p_lr=0.0001, q_lr=0.01):
     """
     Build out the appropriate optimizer.
 

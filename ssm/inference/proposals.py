@@ -8,6 +8,7 @@ from jax import vmap
 from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
 from copy import deepcopy as dc
+import flax.linen as nn
 
 # Import some ssm stuff.
 from ssm.inference.conditional_generators import build_independent_gaussian_generator
@@ -57,11 +58,11 @@ class IndependentGaussianProposal:
 
         # # Define a more conservative initialization.
         # w_init_mean = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
-
-        # # Define some different link functions.
-        # trunk_fn = None  # MLP(features=(3, 4, 5), kernel_init=w_init)
-        # head_mean_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)
-        # head_log_var_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)
+        #
+        # # # Define some different link functions.
+        # # trunk_fn = None  # MLP(features=(3, 4, 5), kernel_init=w_init)
+        # head_mean_fn = nn.Dense(output_dim, kernel_init=w_init_mean)
+        # head_log_var_fn = nn.Dense(output_dim, kernel_init=w_init_mean)
 
         # Build out the function approximator.
         self.proposal = build_independent_gaussian_generator(self._dummy_processed_input,
