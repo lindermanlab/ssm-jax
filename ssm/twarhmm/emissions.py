@@ -74,7 +74,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
     def time_constants(self):
         return self._time_constants
 
-    def distribution(self, state: int, covariates: np.ndarray=None) -> GaussianLinearRegression:
+    def distribution(self, state: int, covariates: np.ndarray=None, metadata=None, history: np.ndarray=None) -> GaussianLinearRegression:
         """Returns the emissions distribution conditioned on a given state.
 
         Args:
@@ -85,9 +85,9 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         Returns:
             emissions_distribution (GaussianLinearRegression): the emissions distribution
         """
-        return self._distribution[state]
+        return self._distribution[state].predict(history.ravel())
 
-    def log_probs(self, data):
+    def log_likelihoods(self, data, covariates=None, metadata=None):
 
         # Warp the covariances
         # warped_scale_trils = np.einsum('kij,c->kcij', self._scale_trils, 1/self.time_constants)
@@ -106,7 +106,10 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         log_probs = np.concatenate([np.zeros((1,) + self.num_states), log_probs], axis=0)
         return log_probs
 
-    def m_step(self, dataset: np.ndarray, posteriors: FactorialHMMPosterior) -> None:
+    def m_step(self, dataset: np.ndarray,
+               posteriors: FactorialHMMPosterior,
+               covariates=None,
+               metadata=None) -> None:
         r"""Update the distribution (in-place) with an M step.
 
         The parameters are (A_k, b_k, Q_k) for each of the discrete states. The key idea

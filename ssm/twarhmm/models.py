@@ -121,12 +121,12 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
 
     @ensure_has_batch_dim()
     def initialize(self,
+                   key: jr.PRNGKey,
                    data: np.ndarray,
                    covariates=None,
                    metadata=None,
-                   key: jr.PRNGKey=None,
                    method: str="kmeans") -> None:
-        r"""Initialize the model parameters by performing an M-step with state assignments
+        """Initialize the model parameters by performing an M-step with state assignments
         determined by the specified method (random or kmeans).
 
         Args:
