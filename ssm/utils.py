@@ -7,6 +7,7 @@ import jax.random as jr
 import jax
 from jax import vmap, lax, tree_multimap
 from jax.tree_util import tree_map, tree_structure, tree_leaves, tree_reduce, tree_multimap
+from timeit import default_timer as dt
 
 import inspect
 from enum import IntEnum
@@ -648,11 +649,30 @@ def mutate_named_tuple_by_key(tup, new_vals):
 def mutate_named_tuple_by_idx(tup, new_vals, idxes):
     """
     Mutate a named tuple by inscribing new values at certain indices.
-    :param tup:
-    :param new_vals:
-    :param idxes:
-    :return:
+
+    Args:
+        tup:
+        new_vals:
+        idxes:
+
+    Returns:
+
     """
     assert len(new_vals) == len(idxes), "Must supply index-value pairs."
     raise NotImplementedError
 
+
+def clock(_st, _str='', _verbose=True):
+    """
+    Helper function for clocking the application time of functions.
+
+    Args:
+        _st:            start time (evaluated elsewhere using dt()).
+        _str:           tag the printout.
+        _verbose:        disable printing with flag.
+
+    Returns:
+
+    """
+    if _verbose: print('CLOCK:', _str, '{:5.3f}'.format(dt() - _st))
+    return dt()
