@@ -439,37 +439,14 @@ def _smc_forward_pass(key,
 
     # Compute the log marginal likelihood.
     # Note that this needs to force the last accumulated incremental weight to be used.
-    z_hat = np.sum(p_hats[:-1] * resampled[:-1]) + p_hats[-1]
+    l_tilde = np.sum(p_hats[:-1] * resampled[:-1]) + p_hats[-1]
 
     # If we are using the resampling gradients, modify the marginal likelihood to contain that gradient information.
     if use_resampling_gradients:
-
         raise NotImplementedError("This code isn't ready yet.  There are still too many issues with indexing etc.")
+        # z_hat = z_hat + _compute_resampling_grad()
         
-        # # TO-DO - check if Scibior paper can use adaptive resampling.
-        # # Check that we were always resampling.
-        # assert np.all(resampling_function == always_resample_criterion), \
-        #     "Error: Currently enforcing that always resampling if using Resampling gradients.  We need to derive " \
-        #     "whether the resampling gradient estimator is correct with variable resampling schedule. "
-        #
-        # # Set whether we are raoblackwellizing the estimator.  This is an internal check and should always be set to
-        # # true once we have verified that it is correct.
-        # raoblackwellize_estimator = True
-        #
-        # if raoblackwellize_estimator:
-        #     assert np.all(resampling_function == always_resample_criterion), \
-        #         "Error: Currently enforcing that always resampling if R-B-ing.  We need to derive " \
-        #         "precisely how to R-B with variable resampling schedule. "
-        #
-        # # Compute the resampling loss term.
-        # resampling_loss = _compute_resampling_grad(log_weights, z_hat,
-        #                                            ancestors, raoblackwellize_estimator)
-        #
-        # # Add a numerical zero to the marginal likelihood, but stop the gradient through one of the terms so that the
-        # # gradient of the resampling loss is added to the gradient of the vanilla log marginal term.
-        # z_hat = z_hat + resampling_loss - jax.lax.stop_gradient(resampling_loss)
-        
-    return filtering_particles, z_hat, ancestors, resampled, log_weights
+    return filtering_particles, l_tilde, ancestors, resampled, log_weights
 
 
 def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosity):
@@ -516,57 +493,6 @@ def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosi
     smoothing_particles = np.concatenate((smoothing_particles, filtering_particles[-1][np.newaxis]))
 
     return smoothing_particles
-
-
-def _compute_resampling_grad(log_weights, z_hat, ancestors, raoblackwellize_estimator=True):
-    """
-
-    :param log_weights:
-    :param z_hat:
-    :param ancestors:
-    :param raoblackwellize_estimator:
-    :return:
-    """
-
-    # Pull out dimensions.
-    t, n, _ = log_weights.shape
-
-    # Average log_weight at each timestep.
-    p_hats = spsp.logsumexp(log_weights, axis=1) - np.log(n)
-
-    # (T, num_particles)
-    log_weights_normalized = log_weights - spsp.logsumexp(log_weights, axis=1, keepdims=True)
-
-    # If we are R-B-ing, then we need to modify the p-hat terms in the score function.
-    # See (8) in VSMC.
-    if raoblackwellize_estimator:
-        # ``p_hat_diffs[t] = log [p-hat(y_{1:T}) / p-hat(y_{1:t})]`` with length T - 1 (cf. (8) in VSMC)
-        # TO-DO - this cumsum only runs until the penultimate step.
-        p_hat_diffs = jax.lax.stop_gradient(z_hat - np.cumsum(p_hats)[:-1])  # last entry not used
-    else:
-        p_hat_diffs = jax.lax.stop_gradient(z_hat)
-
-    resampling_loss = np.sum()
-
-    # # TO-DO - NOTE - AW - I THINK THIS SHOULD BE TO TIME T.
-    # # TO-DO - decide if having initial ancestors changes everything.
-    # # The anscestor indices may be one out or they may not be.
-    # # If not rao-blackwellized then this should def got to T, if it is R-B, then maybe the last term should be zero
-    # # or maybe the last term can be ignored as it is zero.  Write a little debug for this.
-    # resampling_loss = 0.0
-    # for _t in range(t - 1):
-    #     # Again cf. (8) in VSMC paper
-    #     # (TO-DO: should steps where resampling doesn't happen be zeroed out? For now just doing `always_resample`)
-    #     # resampling_loss += p_hat_diffs[t] * log_weights_normalized[t, ancestors[t]].sum()
-    #
-    #     # resampling_loss += jax.lax.stop_gradient(resampled[t]) * \
-    #                          p_hat_diffs[t] * log_weights_normalized[t, ancestors[t]].sum()
-    #
-    #     # Non-Rao Blackwellized gradient
-    #     resampling_loss += jax.lax.stop_gradient(z_hat) * \
-    #                        log_weights_normalized[t, ancestors[t]].sum()
-
-    return resampling_loss
 
 
 def always_resample_criterion(unused_log_weights, unused_t):
@@ -646,9 +572,8 @@ def systematic_resampling(key, log_weights, particles):
     uvec = u + np.linspace(0, (num_particles - 1) / num_particles, num_particles)
 
     # Use digitize to grab bin occupancies.
-    # NOTE!  Finally found the problem, digitize treats everything to the left of
-    # the zeroth bin index as the zeroth bin (which is kind of wild) so we have
-    # to subtract one to make sure the indexing is correct as we never show it
+    # NOTE!  Finally found the problem, digitize treats everything to the left of the zeroth bin index as the zeroth
+    # bin (which is kind of wild) so we have to subtract one to make sure the indexing is correct as we never show it
     # values < 0.0.
     parents = np.digitize(uvec, bins_weights) - 1
 
@@ -732,7 +657,7 @@ def do_resample(key,
 
     if use_stop_gradient_resampling:
         resamp_log_ws = jax.lax.cond(should_resample,
-                                     lambda _: log_weights[ancestors] - jax.lax.stop_gradient(log_weights[ancestors]),  # TODO - i think this should have a `- log(N)` here.
+                                     lambda _: log_weights[ancestors] - jax.lax.stop_gradient(log_weights[ancestors]),
                                      lambda _: log_weights,
                                      None)
     else:
@@ -785,7 +710,7 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
 
         plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
 
-    # TODO - enable obs here.
+    # Enable plotting obs here.
     # if _obs is not None:
     #     for _i, _c in zip(range(_obs.shape[1]), color_names):
     #         plt.scatter(ts, _obs[:, _i], c=_c, marker='.', label=gen_label(_i, 'Observed'))
@@ -798,3 +723,72 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
     plt.pause(0.1)
 
     return fig
+
+
+# def _compute_resampling_grad(log_weights, z_hat, ancestors, raoblackwellize_estimator=True):
+#     """
+#
+#     :param log_weights:
+#     :param z_hat:
+#     :param ancestors:
+#     :param raoblackwellize_estimator:
+#     :return:
+#     """
+#
+#
+#     # TO-DO - check if Scibior paper can use adaptive resampling.
+#     # Check that we were always resampling.
+#     assert np.all(resampling_function == always_resample_criterion), \
+#         "Error: Currently enforcing that always resampling if using Resampling gradients.  We need to derive " \
+#         "whether the resampling gradient estimator is correct with variable resampling schedule. "
+#
+#     # Set whether we are raoblackwellizing the estimator.  This is an internal check and should always be set to
+#     # true once we have verified that it is correct.
+#     raoblackwellize_estimator = True
+#
+#     if raoblackwellize_estimator:
+#         assert np.all(resampling_function == always_resample_criterion), \
+#             "Error: Currently enforcing that always resampling if R-B-ing.  We need to derive " \
+#             "precisely how to R-B with variable resampling schedule. "
+#
+#     # Pull out dimensions.
+#     t, n, _ = log_weights.shape
+#
+#     # Average log_weight at each timestep.
+#     p_hats = spsp.logsumexp(log_weights, axis=1) - np.log(n)
+#
+#     # (T, num_particles)
+#     log_weights_normalized = log_weights - spsp.logsumexp(log_weights, axis=1, keepdims=True)
+#
+#     # If we are R-B-ing, then we need to modify the p-hat terms in the score function.
+#     # See (8) in VSMC.
+#     if raoblackwellize_estimator:
+#         # ``p_hat_diffs[t] = log [p-hat(y_{1:T}) / p-hat(y_{1:t})]`` with length T - 1 (cf. (8) in VSMC)
+#         # TO-DO - this cumsum only runs until the penultimate step.
+#         p_hat_diffs = jax.lax.stop_gradient(z_hat - np.cumsum(p_hats)[:-1])  # last entry not used
+#     else:
+#         p_hat_diffs = jax.lax.stop_gradient(z_hat)
+#
+#     resampling_loss = np.sum()
+#
+#     # # TO-DO - NOTE - AW - I THINK THIS SHOULD BE TO TIME T.
+#     # # TO-DO - decide if having initial ancestors changes everything.
+#     # # The anscestor indices may be one out or they may not be.
+#     # # If not rao-blackwellized then this should def got to T, if it is R-B, then maybe the last term should be zero
+#     # # or maybe the last term can be ignored as it is zero.  Write a little debug for this.
+#     # resampling_loss = 0.0
+#     # for _t in range(t - 1):
+#     #     # Again cf. (8) in VSMC paper
+#     #     # (TO-DO: should steps where resampling doesn't happen be zeroed out? For now just doing `always_resample`)
+#     #     # resampling_loss += p_hat_diffs[t] * log_weights_normalized[t, ancestors[t]].sum()
+#     #
+#     #     # resampling_loss += jax.lax.stop_gradient(resampled[t]) * \
+#     #                          p_hat_diffs[t] * log_weights_normalized[t, ancestors[t]].sum()
+#     #
+#     #     # Non-Rao Blackwellized gradient
+#     #     resampling_loss += jax.lax.stop_gradient(z_hat) * \
+#     #                        log_weights_normalized[t, ancestors[t]].sum()
+#
+#     # Add a numerical zero to the marginal likelihood, but stop the gradient through one of the terms so that the
+#     # gradient of the resampling loss is added to the gradient of the vanilla log marginal term.
+#     return resampling_loss - jax.lax.stop_gradient(resampling_loss)
