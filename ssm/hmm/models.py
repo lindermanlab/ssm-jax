@@ -1,3 +1,4 @@
+import inspect
 import jax.numpy as np
 import jax.random as jr
 import tensorflow_probability.substrates.jax as tfp
@@ -10,6 +11,7 @@ from ssm.hmm.base import HMM
 from ssm.hmm.initial import StandardInitialCondition
 from ssm.hmm.transitions import Transitions, StationaryTransitions
 from ssm.hmm.emissions import BernoulliEmissions, GaussianEmissions, PoissonEmissions
+from ssm.utils import Verbosity, random_rotation, make_named_tuple, ensure_has_batch_dim, auto_batch
 
 import warnings
 
@@ -59,6 +61,11 @@ class BernoulliHMM(HMM):
 
             probs_prior = ssmd.Beta(1, 1)
             emission_probs = probs_prior.sample(seed=seed, sample_shape=(num_states, num_emission_dims))
+
+        # Grab the parameter values.  This allows us to explicitly re-build the object.
+        self._parameters = make_named_tuple(dict_in=locals(),
+                                            keys=list(inspect.signature(self.__init__)._parameters.keys()),
+                                            name=str(self.__class__.__name__) + 'Tuple')
 
         initial_condition = StandardInitialCondition(num_states, initial_probs=initial_state_probs)
         transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)

@@ -2,12 +2,14 @@
 Model classes for ARHMMs.
 """
 
+import inspect
 import jax.numpy as np
 import jax.random as jr
 import tensorflow_probability.substrates.jax as tfp
 tfd = tfp.distributions
 
 from jax.tree_util import register_pytree_node_class
+from ssm.utils import Verbosity, random_rotation, make_named_tuple, ensure_has_batch_dim, auto_batch
 
 from ssm.arhmm.base import AutoregressiveHMM
 from ssm.hmm.initial import StandardInitialCondition
@@ -89,6 +91,11 @@ class GaussianARHMM(AutoregressiveHMM):
                 "You must either specify the emission_covariances or give a dimension "\
                 "so that they can be initialized."
             emission_covariances = np.tile(np.eye(num_emission_dims), (num_states, 1, 1))
+
+        # Grab the parameter values.  This allows us to explicitly re-build the object.
+        self._parameters = make_named_tuple(dict_in=locals(),
+                                            keys=list(inspect.signature(self.__init__)._parameters.keys()),
+                                            name=str(self.__class__.__name__) + 'Tuple')
 
         initial_condition = StandardInitialCondition(num_states, initial_probs=initial_state_probs)
         transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
