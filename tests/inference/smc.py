@@ -15,6 +15,8 @@ from ssm.lds import GaussianLDS
 from ssm.inference.smc import smc
 import ssm.utils as utils
 import ssm.inference.proposals as proposals
+import ssm.nn_util as nn_util
+import flax.linen as nn
 
 
 SEED = jr.PRNGKey(0)
@@ -39,7 +41,7 @@ def _single_smc_test(key, model, proposal, data, num_rounds, num_particles, ):
     em_log_marginal_likelihood = model.marginal_likelihood(data, posterior=em_posterior)
 
     # Close over a single SMC sweep.
-    repeat_smc = lambda _k: smc(_k, model, data, proposal=proposal, num_particles=num_particles)
+    repeat_smc = lambda _k: smc(_k, model, len(data), data, proposal=proposal, num_particles=num_particles)
     vmapped = vmap(repeat_smc)
 
     # Run all the sweeps.
@@ -47,6 +49,55 @@ def _single_smc_test(key, model, proposal, data, num_rounds, num_particles, ):
     smc_posteriors = vmapped(jr.split(subkey, num=num_rounds))
 
     return em_log_marginal_likelihood, smc_posteriors
+
+
+def _lds_define_proposal(subkey, model, dataset):
+    """
+
+    :param subkey:
+    :param model:
+    :param dataset:
+    :return:
+    """
+
+    proposal_structure = 'RESQ'         # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
+    proposal_type = 'SHARED'            # {'SHARED', 'INDPENDENT'}
+
+    if (proposal_structure is None) or (proposal_structure == 'BOOTSTRAP'):
+        _empty_rebuild = lambda *args: None
+        return None, None, _empty_rebuild
+
+    # Define the proposal that we will use.
+    # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state).
+    dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
+    dummy_p_dist = model.dynamics_distribution(dummy_particles)
+    stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles[0], 0, dummy_p_dist)
+    dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
+    output_dim = nn_util.vectorize_pytree(dummy_proposal_output).shape[0]
+
+    w_init_mean = lambda *args: (0.1 * jax.nn.initializers.normal()(*args))
+    head_mean_fn = nn.Dense(output_dim, kernel_init=w_init_mean)
+
+    w_init_mean = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args)) - 3)
+    head_log_var_fn = nn_util.Static(output_dim, kernel_init=w_init_mean)
+
+    # Define the number of proposals to define depending on the proposal type.
+    if proposal_type == 'SHARED':
+        n_proposals = 1
+    else:
+        n_proposals = len(dataset)
+
+    # Define the proposal itself.
+    proposal = proposals.IndependentGaussianProposal(n_proposals=n_proposals,
+                                                     stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
+                                                     dummy_output=dummy_proposal_output,
+                                                     head_mean_fn=head_mean_fn,
+                                                     head_log_var_fn=head_log_var_fn, )
+    proposal_params = proposal.init(subkey)
+
+    # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
+    rebuild_prop_fn = proposals.rebuild_proposal(proposal, proposal_structure)
+    return proposal, proposal_params, rebuild_prop_fn
 
 
 def test_smc_gaussian_lds_runs():
@@ -63,7 +114,7 @@ def test_smc_gaussian_lds_runs():
 
     key, subkey = jr.split(SEED)
 
-    model_kwargs = {'dynamics_scale_tril': 0.001 * np.eye(latent_dim),
+    model_kwargs = {'dynamics_scale_tril': 0.1 * np.eye(latent_dim),
                     'dynamics_weights': np.eye(latent_dim),
                     'emission_scale_tril': 0.1 * np.eye(emissions_dim),}
 
@@ -76,18 +127,13 @@ def test_smc_gaussian_lds_runs():
     true_states, data = model.sample(key=subkey, num_steps=num_timesteps, num_samples=num_trials)
 
     # Define the proposal to use.
-    # TODO - find a better place to store this.
-    from tests.inference._test_fivo import lds_define_proposal
-    proposal_structure = 'RESQ'
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = lds_define_proposal(subkey, model, data, proposal_structure)
-    prop_fn = proposals.rebuild_proposal(proposal, proposal_structure)(proposal_params)
+    proposal, proposal_params, rebuild_prop_fn = _lds_define_proposal(subkey, model, data)
+    prop_fn = rebuild_prop_fn(proposal_params)
 
     # Run a single test.
     em_log_marginal_likelihood, smc_posteriors = _single_smc_test(key, model, prop_fn, data, num_rounds,
                                                                   num_particles, )
-
-    smc_posteriors.sample(seed=key)
 
     # Check the shapes.
     assert smc_posteriors.log_normalizer.shape == (num_rounds, num_trials), \
@@ -98,9 +144,9 @@ def test_smc_gaussian_lds_runs():
         "Failed: Batch shape: {} should be {}.".format(str(smc_posteriors.batch_shape),
                                                        str((num_rounds, )))
 
-    assert smc_posteriors.event_shape == (num_trials, num_timesteps, num_particles, latent_dim), \
+    assert smc_posteriors.event_shape == (num_trials, num_particles, num_timesteps, latent_dim), \
         "Failed: Event shape: {} should be {}.".format(str(smc_posteriors.event_shape),
-                                                       str((num_trials, num_timesteps, num_particles, latent_dim)))
+                                                       str((num_trials, num_particles, num_timesteps, latent_dim)))
 
     try:
         smc_posteriors.sample(seed=subkey)
@@ -112,7 +158,7 @@ def test_smc_gaussian_lds_runs():
                                                         str((num_rounds, num_trials, num_timesteps, latent_dim)))
 
     try:
-        assert smc_posteriors.log_prob(smc_posteriors.sample(seed=subkey))
+        assert np.sum(smc_posteriors.log_prob(smc_posteriors.sample(seed=subkey)))
     except Exception as err:
         print("Failed: Log prob evaluation: {}.".format(err))
 
@@ -129,27 +175,23 @@ def test_smc_gaussian_lds_runs():
     return None
 
 
-def test_smc_single_sweep_gaussian_lds():
-    pass
-
-
 @pytest.mark.slow
-def test_smc_single_model_gaussian_lds():
+def test_bpf_single_model_gaussian_lds():
     """
-    Test the bootstrap particle filter implementation.
+    Verify that BPF runs and produces results close to EM.
     """
-
-    num_rounds = 5
-    num_trials = 3
+    num_rounds = 20
+    num_trials = 10
     num_timesteps = 100
-    num_particles = 1000
-    latent_dim = 3
-    emissions_dim = 5
+    num_particles = 5000
+    latent_dim = 2
+    emissions_dim = 3
 
     key, subkey = jr.split(SEED)
 
     model_kwargs = {'dynamics_scale_tril': 0.1 * np.eye(latent_dim),
-                    'emission_scale_tril': 0.5 * np.eye(emissions_dim)}
+                    'dynamics_weights': np.eye(latent_dim),
+                    'emission_scale_tril': 0.1 * np.eye(emissions_dim), }
 
     # Define the model.
     key, subkey = jr.split(key)
@@ -159,16 +201,18 @@ def test_smc_single_model_gaussian_lds():
     key, subkey = jr.split(key)
     true_states, data = model.sample(key=subkey, num_steps=num_timesteps, num_samples=num_trials)
 
-    assert _single_smc_test(key, model, None, data, num_rounds, num_particles, )
+    # Run a single test.
+    em_log_marginal_likelihood, smc_posteriors = _single_smc_test(key, model, None, data, num_rounds,
+                                                                  num_particles, )
 
-
-@pytest.mark.slow
-def test_smc_multiple_models_gaussian_lds():
-    pass
+    assert np.all(np.isclose(utils.lexp(smc_posteriors.log_normalizer),
+                             em_log_marginal_likelihood,
+                             rtol=1e-03, atol=0.1)), \
+        ("Failed: SMC/BPF Log prob evalautions are not sufficiently close to that of EM: \n" +
+         "EM: " + str(em_log_marginal_likelihood) +
+         "SMC/BPF: " + str(utils.lexp(smc_posteriors.log_normalizer)))
 
 
 if __name__ == '__main__':
     test_smc_gaussian_lds_runs()
-    test_smc_single_sweep_gaussian_lds()
-    test_smc_single_model_gaussian_lds()
-    test_smc_multiple_models_gaussian_lds()
+    test_bpf_single_model_gaussian_lds()
