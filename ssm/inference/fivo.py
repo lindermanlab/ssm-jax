@@ -64,7 +64,7 @@ def do_fivo_sweep(_param_vals,
     _proposal = _rebuild_proposal(_param_vals[1])
 
     # Do the sweep.
-    _smc_posteriors = smc(_key, _model, _dataset,
+    _smc_posteriors = smc(_key, _model, len(_dataset), _dataset,
                           proposal=_proposal,
                           num_particles=_num_particles,
                           **_smc_kw_args)
@@ -166,7 +166,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, p_lr=0.0001, q_lr=0.01):
+def define_optimizer(p_params=None, q_params=None, p_lr=0.001, q_lr=0.001):
     """
     Build out the appropriate optimizer.
 

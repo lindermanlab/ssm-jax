@@ -19,6 +19,7 @@ default_verbosity = Verbosity.DEBUG
 
 def smc(key,
         model,
+        num_datasets,
         dataset,
         initialization_distribution=None,
         proposal=None,
@@ -49,6 +50,10 @@ def smc(key,
 
         model (SSM object, No size):
             Defines the model.
+
+        num_datasets (int):
+            Pass in the number of datasets (independent SMC sweeps).  MUST SATISFY `num_datasets == len(dataset)`.
+            Allows for more efficient JIT compilation.
 
         dataset (np.array, (batch x time x state_dim) --or-- (time x state_dim)):
             Data to condition on.  If the dataset has three dimensions then the leading dimension will be vmapped over.
@@ -97,7 +102,7 @@ def smc(key,
             Particles approximating the smoothing distribution.  May have a leading batch dimension if `dataset` also
             has a leading batch dimension.
 
-        log_marginal_likelihood (np.array -- or -- np.float, (batch, ) -- or -- No size):
+        z_hat (np.array -- or -- np.float, (batch, ) -- or -- No size):
             Log-normalizer estimated via SMC.  May have a leading batch dimension if `dataset` also
             has a leading batch dimension.
 
@@ -114,6 +119,10 @@ def smc(key,
     # Implement NAND using arithmetic.
     assert use_stop_gradient_resampling + use_resampling_gradients != 2, \
         "[Error]: Cannot use both resampling gradients and stop gradient resampling."
+
+    # Check we have the right number of datasets.
+    assert len(dataset) == num_datasets, \
+        "[Error]: Need to provide the correct number of datasets."
 
     # Assign defaults.
     if resampling_criterion is None:
@@ -214,7 +223,7 @@ def _single_smc(key,
         particles (np.array, (time x num_particles x state_dim)):
             Particles approximating the smoothing distribution.
 
-        log_marginal_likelihood (np.float, No size):
+        z_hat (np.float, No size):
             Log-normalizer estimated via SMC.
 
         ancestry (np.array, (time x num_particles x state_dim)):
@@ -243,7 +252,7 @@ def _single_smc(key,
         proposal = lambda *args: (model.dynamics_distribution(args[2]), None)
 
     # Do the forward pass.
-    filtering_particles, log_marginal_likelihood, ancestry, resampled, accumulated_log_incr_weights = \
+    filtering_particles, z_hat, ancestry, resampled, accumulated_log_incr_weights = \
         _smc_forward_pass(key,
                           model,
                           dataset,
@@ -264,7 +273,7 @@ def _single_smc(key,
                                              accumulated_log_incr_weights,
                                              ancestry,
                                              filtering_particles,
-                                             log_marginal_likelihood,
+                                             z_hat,
                                              resampled)
 
     return smc_posterior
@@ -335,7 +344,7 @@ def _smc_forward_pass(key,
         filtering_particles (np.array, (time x num_particles x state_dim)):
             Particles approximating the filtering distribution.
 
-        log_marginal_likelihood (np.float, No size):
+        z_hat (np.float, No size):
             Log-normalizer estimated via SMC.
 
         ancestors (np.array, (time x num_particles x state_dim)):
@@ -430,7 +439,7 @@ def _smc_forward_pass(key,
 
     # Compute the log marginal likelihood.
     # Note that this needs to force the last accumulated incremental weight to be used.
-    log_marginal_likelihood = np.sum(p_hats[:-1] * resampled[:-1]) + p_hats[-1]
+    z_hat = np.sum(p_hats[:-1] * resampled[:-1]) + p_hats[-1]
 
     # If we are using the resampling gradients, modify the marginal likelihood to contain that gradient information.
     if use_resampling_gradients:
@@ -453,14 +462,14 @@ def _smc_forward_pass(key,
         #         "precisely how to R-B with variable resampling schedule. "
         #
         # # Compute the resampling loss term.
-        # resampling_loss = _compute_resampling_grad(log_weights, log_marginal_likelihood,
+        # resampling_loss = _compute_resampling_grad(log_weights, z_hat,
         #                                            ancestors, raoblackwellize_estimator)
         #
         # # Add a numerical zero to the marginal likelihood, but stop the gradient through one of the terms so that the
         # # gradient of the resampling loss is added to the gradient of the vanilla log marginal term.
-        # log_marginal_likelihood = log_marginal_likelihood + resampling_loss - jax.lax.stop_gradient(resampling_loss)
+        # z_hat = z_hat + resampling_loss - jax.lax.stop_gradient(resampling_loss)
         
-    return filtering_particles, log_marginal_likelihood, ancestors, resampled, log_weights
+    return filtering_particles, z_hat, ancestors, resampled, log_weights
 
 
 def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosity):
@@ -509,11 +518,11 @@ def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosi
     return smoothing_particles
 
 
-def _compute_resampling_grad(log_weights, log_marginal_likelihood, ancestors, raoblackwellize_estimator=True):
+def _compute_resampling_grad(log_weights, z_hat, ancestors, raoblackwellize_estimator=True):
     """
 
     :param log_weights:
-    :param log_marginal_likelihood:
+    :param z_hat:
     :param ancestors:
     :param raoblackwellize_estimator:
     :return:
@@ -533,9 +542,9 @@ def _compute_resampling_grad(log_weights, log_marginal_likelihood, ancestors, ra
     if raoblackwellize_estimator:
         # ``p_hat_diffs[t] = log [p-hat(y_{1:T}) / p-hat(y_{1:t})]`` with length T - 1 (cf. (8) in VSMC)
         # TO-DO - this cumsum only runs until the penultimate step.
-        p_hat_diffs = jax.lax.stop_gradient(log_marginal_likelihood - np.cumsum(p_hats)[:-1])  # last entry not used
+        p_hat_diffs = jax.lax.stop_gradient(z_hat - np.cumsum(p_hats)[:-1])  # last entry not used
     else:
-        p_hat_diffs = jax.lax.stop_gradient(log_marginal_likelihood)
+        p_hat_diffs = jax.lax.stop_gradient(z_hat)
 
     resampling_loss = np.sum()
 
@@ -554,7 +563,7 @@ def _compute_resampling_grad(log_weights, log_marginal_likelihood, ancestors, ra
     #                          p_hat_diffs[t] * log_weights_normalized[t, ancestors[t]].sum()
     #
     #     # Non-Rao Blackwellized gradient
-    #     resampling_loss += jax.lax.stop_gradient(log_marginal_likelihood) * \
+    #     resampling_loss += jax.lax.stop_gradient(z_hat) * \
     #                        log_weights_normalized[t, ancestors[t]].sum()
 
     return resampling_loss
@@ -723,7 +732,7 @@ def do_resample(key,
 
     if use_stop_gradient_resampling:
         resamp_log_ws = jax.lax.cond(should_resample,
-                                     lambda _: log_weights[ancestors] - jax.lax.stop_gradient(log_weights[ancestors]),
+                                     lambda _: log_weights[ancestors] - jax.lax.stop_gradient(log_weights[ancestors]),  # TODO - i think this should have a `- log(N)` here.
                                      lambda _: log_weights,
                                      None)
     else:
