@@ -154,8 +154,8 @@ class GaussianCTLDS(CTLDS):
         def _energy_from_transition(covariate):
             A_t, b_t, Q_t = self._dynamics.transition_params(covariate)
             
-            J_diag_curr = np.dot(A_t.T, np.linalg.solve(Q_t, A_t))
-            J_diag_next = np.linalg.inv(Q_t)
+            J_diag_curr = np.dot(A_t.T, np.linalg.solve(Q_t, A_t)) 
+            J_diag_next = np.linalg.inv(Q_t) 
             J_lower_diag_curr = -np.linalg.solve(Q_t, A_t)
             
             h_curr = -np.dot(A_t.T, np.linalg.solve(Q_t, b_t))

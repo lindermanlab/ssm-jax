@@ -9,6 +9,7 @@ from jax.tree_util import tree_map, register_pytree_node_class
 from functools import partial
 
 import ssm.distributions as ssmd
+from ssm.distributions.linreg import GaussianLinearRegression
 from ssm.lds.dynamics import Dynamics
 
 def compute_transition_params(drift_matrix, drift_bias, diffusion_scale, covariates):
@@ -96,11 +97,10 @@ class StationaryCTDynamics(Dynamics):
             EyxT = posterior.expected_states_next_states
             EyyT = posterior.expected_states_squared[1:]
 
-            stats = (ExxT, Ex, EyxT, Ey, EyyT)
+            stats = (Ey, Ex, EyyT, EyxT, ExxT)
             return stats
 
         batched_stats = vmap(compute_stats)(batched_posteriors)
-        
         flattened_params, unravel = ravel_pytree((self.drift_matrix, self.drift_bias, self.diffusion_scale))
 
         def _objective(flattened_params):
@@ -110,16 +110,9 @@ class StationaryCTDynamics(Dynamics):
                 # TODO: we only ever use Q_inv. Is there a faster way of computing this using the matrix 
                 # fraction decomposition? Is there a solvable ODE that Q_inv satisfies?
                 A, b, Q = compute_transition_params(drift_matrix, drift_bias, diffusion_scale, covariate)
-                xxT, x, yxT, y, yyT = stats
-                
-                Qinv_A = np.linalg.solve(Q, A)
-                vol_term = -0.5 * np.linalg.slogdet(Q)[1]
-                quad_terms = (-0.5 * np.trace(np.linalg.solve(Q, yyT)) -
-                              0.5 * np.trace(A.T @ Qinv_A @ xxT) -
-                              np.trace(Qinv_A.T @ yxT))
-                linear_terms = -np.dot(np.dot(Qinv_A.T, b), x) + np.dot(np.linalg.solve(Q, b), y)
-                
-                return vol_term + quad_terms + linear_terms
+                # TODO: is there some way to initialize this object without taking a cholesky decomp?
+                one_step_model = GaussianLinearRegression(weights=A, bias=b, scale_tril=np.linalg.cholesky(Q))
+                return one_step_model.expected_log_prob(*stats)
             
             _single_element_objective = vmap(_one_step_objective)
             return -np.mean(vmap(_single_element_objective)(batched_stats, batched_covariates[:, 1:]))
@@ -134,5 +127,4 @@ class StationaryCTDynamics(Dynamics):
         self.drift_matrix = drift_matrix
         self.drift_bias = drift_bias
         self.diffusion_scale = diffusion_scale
-        
 

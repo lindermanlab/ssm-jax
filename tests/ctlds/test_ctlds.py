@@ -2,6 +2,7 @@ import pytest
 
 import ssm.ctlds.dynamics as dynamics
 from ssm.ctlds import GaussianCTLDS
+from ssm.lds import GaussianLDS
 import jax.random as jr
 import jax.numpy as np
 from jax import vmap
@@ -46,6 +47,38 @@ def test_compute_sequence_transition_params():
     assert sequence_transition_params[1].shape == (num_timesteps, latent_dim)
     assert sequence_transition_params[2].shape == (num_timesteps, latent_dim, latent_dim)
     
+def test_gaussian_ctlds_e_step():
+    num_samples = 3
+    num_steps = 100
+    latent_dim = 2
+    data_dim = 4
+    time_diff = 1.
+    
+    rng1, rng2, rng3, rng4 = jr.split(SEED, 4)
+    true_lds = GaussianCTLDS(latent_dim, data_dim, seed=rng1)
+    covariates = np.full(fill_value=time_diff, shape=(num_samples, num_steps))
+    states, data = true_lds.sample(rng3, covariates=covariates, num_steps=num_steps, num_samples=num_samples)
+    
+    test_ctlds = GaussianCTLDS(latent_dim, data_dim, seed=rng4)
+    dt_dynamics_params = test_ctlds._dynamics.transition_params(time_diff)
+    dt_dynamics_matrix, dt_dynamics_bias, dt_dynamics_covar = dt_dynamics_params
+    
+    test_dtlds = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=data_dim,
+                             initial_state_mean=test_ctlds.initial_mean,
+                             initial_state_scale_tril=np.linalg.cholesky(test_ctlds.initial_covariance),
+                             dynamics_weights=dt_dynamics_matrix,
+                             dynamics_bias=dt_dynamics_bias,
+                             dynamics_scale_tril=np.linalg.cholesky(dt_dynamics_covar),
+                             emission_weights=test_ctlds.emissions_matrix,
+                             emission_bias=test_ctlds.emissions_bias,
+                             emission_scale_tril=np.linalg.cholesky(test_ctlds.emissions_noise_covariance))
+    
+    ct_posterior = test_ctlds.e_step(data, covariates=covariates)
+    dt_posterior = test_dtlds.e_step(data)
+    # TODO: These posteriors don't match exactly, but that's b/c of the numerical error introduced by 
+    # taking the Cholesky of the dynamics covariance, using the factors to reconstruct the dynamics covariance,
+    # then taking the inverse. 
+    
 def test_gaussian_ctlds_em_fit():
     num_samples = 3
     num_steps = 100
@@ -59,8 +92,11 @@ def test_gaussian_ctlds_em_fit():
     test_lds = GaussianCTLDS(latent_dim, data_dim, seed=rng4)
     
     # fit with no early stopping 
-    lp, fitted_model, posteriors = test_lds.fit(data, covariates=covariates, num_iters=100, tol=-1)
+    lp, fitted_model, posteriors = test_lds.fit(data, covariates=covariates, num_iters=1, tol=-1)
     
     # some simple tests
     assert not np.any(np.isnan(lp))
     assert posteriors.expected_states.shape == (3, 100, 3)
+
+if __name__ == '__main__':
+    test_gaussian_ctlds_e_step()
