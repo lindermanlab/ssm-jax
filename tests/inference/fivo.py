@@ -251,7 +251,7 @@ def _fivo_run(_tag,
     # Do a final sweep.
     (pred_fivo_bound, smc_posteriors), grad = do_fivo_sweep_val_and_grad(subkey,
                                                                          fivo.get_params_from_opt(opt),
-                                                                         num_particles,
+                                                                         num_val_particles,
                                                                          len(data),
                                                                          data)
     pred_nlml = - utils.lexp(smc_posteriors.log_normalizer)
@@ -306,8 +306,8 @@ def test_fivo_converges(_tag, _model_constructor, _proposal_constructor, _verbos
 
     assert np.isclose(em_nlml, pred_nlml, rtol=0.1, atol=2.0), \
         ("{}: Failed: nlmls are not close enough: " +
-         "True nlml: {: >6.2f}".format(em_nlml) +
-         "Pred nlml: {: >6.2f}".format(pred_nlml))
+         "\nTrue nlml: {: >6.2f}".format(em_nlml) +
+         "\nPred nlml: {: >6.2f}".format(pred_nlml))
 
     if _verbose:
         print('True params: {}'.format(true_params[0].flatten()).replace('\n', '') + "\n" +
