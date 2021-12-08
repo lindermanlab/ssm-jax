@@ -69,6 +69,10 @@ class GaussianLinearRegression(ExponentialFamilyDistribution,
     @property
     def scale_tril(self):
         return self._scale_tril
+    
+    @property
+    def covariance(self):
+        return np.einsum('...ij,...ji->...ij', self.scale_tril, self.scale_tril)
 
     @property
     def scale(self):
@@ -97,6 +101,44 @@ class GaussianLinearRegression(ExponentialFamilyDistribution,
                 np.outer(data, covariates),
                 data,
                 np.outer(data, data))
+        
+    def expected_log_prob(self,
+                          expected_data,
+                          expected_covariates,
+                          expected_data_squared,
+                          expected_data_covariates,
+                          expected_covariates_squared):
+        """
+        Helper function to compute the expected log probability
+        under a Gaussian distribution (x, y) with given expectations.
+        We have
+        ..math:
+            E_q[\log p(y \mid x)] =
+                \langle -1/2 \Sigma^{-1}, E_q[yy^\top] \rangle +
+                \langle \Sigma^{-1}W, E_q[yx^\top] \rangle +  ### I think this should be W \Sigma^{-1}
+                \langle -1/2 W^\top \Sigma^{-1} W, E_q[xx^\top] \rangle +
+                \langle \Sigma^{-1}b, E_q[y] \rangle +
+                \langle -W^\top \Sigma^{-1}b, E_q[x] \rangle +
+                -1/2 \log |\Sigma| -1/2 b^\top \Sigma^{-1} b
+        """
+        transpose = lambda x: np.swapaxes(x, -1, -2)
+        Si = np.linalg.inv(self.covariance)
+        SiW = np.einsum('...ij,...jk->...ik', Si, self.weights)
+        Sib = np.einsum('...ij,...j->...i', Si, self.bias)
+        WTSiW = np.einsum('...ij,...jk->...ik', transpose(self.weights), SiW)
+        WTSib = np.einsum('...ij,...j->...i', transpose(self.weights), Sib)
+        bTSib = np.einsum('...i,...i->...', self.bias, Sib)
+
+
+        ell = np.sum(-0.5 * Si * expected_data_squared, axis=(-1, -2))
+        ell += np.sum(SiW * expected_data_covariates, axis=(-1, -2))
+        ell += np.sum(-0.5 * WTSiW * expected_covariates_squared, axis=(-1, -2))
+        ell += np.sum(Sib * expected_data, axis=-1)
+        ell += np.sum(-WTSib * expected_covariates, axis=-1)
+        ell += -0.5 * np.linalg.slogdet(self.covariance)[1]
+        ell += -0.5 * bTSib
+        ell += -0.5 * self.data_dimension * np.log(2 * np.pi)
+        return ell
 
 
 class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):

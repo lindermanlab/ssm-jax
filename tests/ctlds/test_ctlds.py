@@ -92,11 +92,12 @@ def test_gaussian_ctlds_em_fit():
     test_lds = GaussianCTLDS(latent_dim, data_dim, seed=rng4)
     
     # fit with no early stopping 
-    lp, fitted_model, posteriors = test_lds.fit(data, covariates=covariates, num_iters=1, tol=-1)
+    lp, fitted_model, posteriors = test_lds.fit(data, covariates=covariates, num_iters=100, tol=-1)
     
     # some simple tests
+    import ipdb; ipdb.set_trace()
     assert not np.any(np.isnan(lp))
-    assert posteriors.expected_states.shape == (3, 100, 3)
+    assert posteriors.expected_states.shape == (num_samples, num_steps, latent_dim)
 
 if __name__ == '__main__':
-    test_gaussian_ctlds_e_step()
+    test_gaussian_ctlds_em_fit()

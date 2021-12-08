@@ -5,6 +5,7 @@ import jax.scipy.optimize as jspop
 from jax import vmap, lax
 from jax.flatten_util import ravel_pytree
 from jax.tree_util import tree_map, register_pytree_node_class
+from jax.experimental import optimizers
 
 from functools import partial
 
@@ -114,7 +115,7 @@ class StationaryCTDynamics(Dynamics):
                 one_step_model = GaussianLinearRegression(weights=A, bias=b, scale_tril=np.linalg.cholesky(Q))
                 return one_step_model.expected_log_prob(*stats)
             
-            _single_element_objective = vmap(_one_step_objective)
+            _single_element_objective = vmap(_one_step_objective) # vmaps over time for a single batch element
             return -np.mean(vmap(_single_element_objective)(batched_stats, batched_covariates[:, 1:]))
            
         optimize_results = jax.scipy.optimize.minimize(
