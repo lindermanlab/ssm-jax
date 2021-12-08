@@ -6,6 +6,7 @@ import jax.numpy as np
 import matplotlib.pyplot as plt
 import flax.linen as nn
 import ssm.nn_util as nn_util
+from jax import flatten_util
 
 # Specific imports for here.
 from jax.scipy import special as spsp
@@ -43,35 +44,37 @@ def build_independent_gaussian_generator(dummy_input, dummy_output,
 
     """
 
-    input_dim = dummy_input.shape
-    output_dim = dummy_output.shape
+    input_flat, _ = flatten_util.ravel_pytree(dummy_input)
+    input_flat_shape = input_flat.shape
+    input_flat_dim = input_flat_shape[0]
 
-    input_dim_flat = nn_util.vectorize_pytree(dummy_input).shape[0]
-    output_dim_flat = output_dim[0]
+    output_flat, unravel_output = flatten_util.ravel_pytree(dummy_output)
+    output_flat_shape = output_flat.shape
+    output_flat_dim = output_flat_shape[0]
 
     # If no trunk if defined, then use the identity.
     if trunk_fn is None:
-        trunk_fn = nn_util.Identity(input_dim_flat)
+        trunk_fn = nn_util.Identity(input_flat_dim)
 
     # If no head mean function is specified, default to an affine transformation.
     if head_mean_fn is None:
-        head_mean_fn = nn.Dense(output_dim_flat)
+        head_mean_fn = nn.Dense(output_flat_dim)
 
     # If no head mean function is specified, default to an affine transformation.
     if head_log_var_fn is None:
-        head_log_var_fn = nn.Dense(output_dim_flat)
+        head_log_var_fn = nn.Dense(output_flat_dim)
 
-    # This MVN can only handle vector events, so we need to type check for that.
-    assert len(output_dim) == 1, "Output dimensions must be one."
+    # # This MVN can only handle vector events, so we need to type check for that.
+    # assert len(output_dim) == 1, "Output dimensions must be one."
 
     # Type check to make sure that the mean function produces the right size.
     _dim = head_mean_fn.features[-1] if hasattr(head_mean_fn.features, '__iter__') else head_mean_fn.features
-    assert output_dim_flat == _dim, \
+    assert output_flat_dim == _dim, \
         'Error: head mean output dimensions not equal to the target output dimensions.'
 
     # Type check to make sure that the variance function produces the right size.
     _dim = head_log_var_fn.features[-1] if hasattr(head_log_var_fn.features, '__iter__') else head_log_var_fn.features
-    assert output_dim_flat == _dim, \
+    assert output_flat_dim == _dim, \
         'Error: head variance output dimensions not equal to the target output dimensions.'
 
     class IndependentGaussianGenerator(nn.Module):
@@ -89,6 +92,7 @@ def build_independent_gaussian_generator(dummy_input, dummy_output,
             self.trunk_fn = trunk_fn
             self.head_mean_fn = head_mean_fn
             self.head_log_var_fn = head_log_var_fn
+            self.unravel_output = unravel_output
 
         def __call__(self, inputs):
             """
@@ -102,7 +106,8 @@ def build_independent_gaussian_generator(dummy_input, dummy_output,
 
             """
             mean, var = self._generate_distribution_parameters(inputs)
-            dist = tfd.MultivariateNormalDiag(loc=mean, scale_diag=np.sqrt(var))
+            dist = jax.tree_map(lambda _mu, _var: tfd.MultivariateNormalDiag(loc=_mu, scale_diag=np.sqrt(_var)),
+                                mean, var)
             return dist
 
         def _generate_distribution_parameters(self, inputs):
@@ -124,7 +129,7 @@ def build_independent_gaussian_generator(dummy_input, dummy_output,
             # If the shape is equal to the input dimensions then there is no batch dimension
             # and we can call the forward function as is.  Otherwise we need to do a vmap
             # over the batch dimension.
-            is_batched = (nn_util.vectorize_pytree(inputs[0]).shape[0] == input_dim_flat)
+            is_batched = (flatten_util.ravel_pytree(inputs[0])[0].shape[0] == input_flat_dim)
 
             if is_batched:
                 return vmap(self._call_single)(inputs)
@@ -156,7 +161,11 @@ def build_independent_gaussian_generator(dummy_input, dummy_output,
             var_output_flat = self.head_log_var_fn(trunk_output)
             var_output = np.exp(var_output_flat)
 
-            return mean_output, var_output
+            # Unravel the output to the original shape.
+            mean_output_shaped = unravel_output(mean_output)
+            var_output_shaped = unravel_output(var_output)
+
+            return mean_output_shaped, var_output_shaped
 
     return IndependentGaussianGenerator()
 

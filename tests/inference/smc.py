@@ -8,9 +8,7 @@ import jax.random as jr
 import jax.numpy as np
 import pytest
 
-from ssm.hmm import GaussianHMM
-from ssm.arhmm import GaussianARHMM
-from ssm.distributions.glm import GaussianLinearRegression
+from ssm.hmm import BernoulliHMM
 from ssm.lds import GaussianLDS
 from ssm.inference.smc import smc
 import ssm.utils as utils
@@ -35,6 +33,19 @@ def cleanup():
 
 
 def _single_smc_test(key, model, proposal, data, num_rounds, num_particles, ):
+    """
+
+    Args:
+        key:
+        model:
+        proposal:
+        data:
+        num_rounds:
+        num_particles:
+
+    Returns:
+
+    """
 
     # Test against EM (which for the LDS is exact.
     em_posterior = vmap(model.e_step)(data)
@@ -51,15 +62,81 @@ def _single_smc_test(key, model, proposal, data, num_rounds, num_particles, ):
     return em_log_marginal_likelihood, smc_posteriors
 
 
-def _lds_define_proposal(subkey, model, dataset):
+def _construct_bhmm(subkey):
     """
 
-    :param subkey:
-    :param model:
-    :param dataset:
-    :return:
+    Args:
+        subkey:
+
+    Returns:
+
+    """
+    latent_dim = 2
+    emissions_dim = 3
+    key, subkey = jr.split(subkey)
+    model = BernoulliHMM(num_states=latent_dim, num_emission_dims=emissions_dim, seed=subkey)
+    return model
+
+
+def _construct_lds(subkey):
     """
 
+    Args:
+        subkey:
+
+    Returns:
+
+    """
+    latent_dim = 2
+    emissions_dim = 3
+    model_kwargs = {'dynamics_scale_tril': 0.1 * np.eye(latent_dim),
+                    'emission_scale_tril': 0.1 * np.eye(emissions_dim), }
+    model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey, **model_kwargs)
+    return model
+
+
+def _construct_big_lds(subkey):
+    """
+
+    Args:
+        subkey:
+
+    Returns:
+
+    """
+    latent_dim = 5
+    emissions_dim = 10
+    model_kwargs = {'dynamics_scale_tril': 0.05 * np.eye(latent_dim),
+                    'emission_scale_tril': 0.2 * np.eye(emissions_dim), }
+    model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey, **model_kwargs)
+    return model
+
+
+def _construct_default_proposal(subkey, model, data):
+    """
+    We don't have proposals implemented for discrete models yet.
+    Args:
+        subkey:
+        model:
+        data:
+
+    Returns:
+
+    """
+    return None, None, (lambda *args: None)
+
+
+def _construct_lds_proposal(subkey, model, dataset):
+    """
+
+    Args:
+        subkey:
+        model:
+        dataset:
+
+    Returns:
+
+    """
     proposal_structure = 'RESQ'         # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
     proposal_type = 'SHARED'            # {'SHARED', 'INDPENDENT'}
 
@@ -100,35 +177,31 @@ def _lds_define_proposal(subkey, model, dataset):
     return proposal, proposal_params, rebuild_prop_fn
 
 
-def test_smc_gaussian_lds_runs():
+def test_smc_runs(_tag, _model_constructor, _proposal_constructor=_construct_default_proposal):
     """
     Verify that SMC still runs.
+    Args:
+        _model_constructor:
+
+    Returns:
+
     """
-    prop_fn = None
-    num_rounds = 2
-    num_trials = 3
+    
+    # Define the model.
+    key, subkey = jr.split(SEED)
+    model = _model_constructor(subkey)
+    
+    # Sample the data.
+    num_rounds = 5
+    num_trials = 4
     num_timesteps = 10
     num_particles = 15
-    latent_dim = 4
-    emissions_dim = 5
-
-    key, subkey = jr.split(SEED)
-
-    model_kwargs = {'dynamics_scale_tril': 0.1 * np.eye(latent_dim),
-                    'dynamics_weights': np.eye(latent_dim),
-                    'emission_scale_tril': 0.1 * np.eye(emissions_dim),}
-
-    # Define the model.
-    key, subkey = jr.split(key)
-    model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey, **model_kwargs)
-
-    # Sample the data.
     key, subkey = jr.split(key)
     true_states, data = model.sample(key=subkey, num_steps=num_timesteps, num_samples=num_trials)
 
     # Define the proposal to use.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = _lds_define_proposal(subkey, model, data)
+    proposal, proposal_params, rebuild_prop_fn = _proposal_constructor(subkey, model, data)
     prop_fn = rebuild_prop_fn(proposal_params)
 
     # Run a single test.
@@ -137,67 +210,75 @@ def test_smc_gaussian_lds_runs():
 
     # Check the shapes.
     assert smc_posteriors.log_normalizer.shape == (num_rounds, num_trials), \
-        "Failed: Log normalizer shape: {} should be {}.".format(str(smc_posteriors.log_normalizer.shape),
+        "{}:  Failed: Log normalizer shape: {} should be {}.".format(_tag, str(smc_posteriors.log_normalizer.shape),
                                                                 str((num_rounds, num_trials)))
 
     assert smc_posteriors.batch_shape == (num_rounds, ), \
-        "Failed: Batch shape: {} should be {}.".format(str(smc_posteriors.batch_shape),
+        "{}:  Failed: Batch shape: {} should be {}.".format(_tag, str(smc_posteriors.batch_shape),
                                                        str((num_rounds, )))
 
-    assert smc_posteriors.event_shape == (num_trials, num_particles, num_timesteps, latent_dim), \
-        "Failed: Event shape: {} should be {}.".format(str(smc_posteriors.event_shape),
-                                                       str((num_trials, num_particles, num_timesteps, latent_dim)))
+    if smc_posteriors._has_state_dim:
+        assert smc_posteriors.event_shape == (num_trials, num_particles, num_timesteps, model.latent_dim), \
+            "{}:  Failed:(1) Event shape: {} should be {}.".format(_tag, str(smc_posteriors.event_shape),
+                                                           str((num_trials, num_particles, num_timesteps, model.latent_dim)))
+    else:
+        assert smc_posteriors.event_shape == (num_trials, num_particles, num_timesteps), \
+            "{}:  Failed:(2) Event shape: {} should be {}.".format(_tag, str(smc_posteriors.event_shape),
+                                                              str((num_trials, num_particles, num_timesteps)))
 
     try:
         smc_posteriors.sample(seed=subkey)
     except Exception as err:
-        "Failed: Sampling from distribution: {}".format(err)
+        print("{}:  Failed: Sampling from distribution: {}".format(_tag, err))
+        assert False
 
-    assert smc_posteriors.sample(seed=subkey).shape == (num_rounds, num_trials, num_timesteps, latent_dim), \
-        "Failed: Sample shape: {} should be {}.".format(str(smc_posteriors.event_shape),
-                                                        str((num_rounds, num_trials, num_timesteps, latent_dim)))
+    if smc_posteriors._has_state_dim:
+        assert smc_posteriors.sample(seed=subkey).shape == (num_rounds, num_trials, num_timesteps, model.latent_dim), \
+            "{}:  Failed:(1) Sample shape: {} should be {}.".format(_tag, str(smc_posteriors.event_shape),
+                                                               str((num_rounds, num_trials, num_timesteps, model.latent_dim)))
+    else:
+        assert smc_posteriors.sample(seed=subkey).shape == (num_rounds, num_trials, num_timesteps), \
+            "{}:  Failed:(2) Sample shape: {} should be {}.".format(_tag, str(smc_posteriors.event_shape),
+                                                               str((num_rounds, num_trials, num_timesteps)))
 
     try:
-        assert np.sum(smc_posteriors.log_prob(smc_posteriors.sample(seed=subkey)))
+        np.sum(smc_posteriors.log_prob(smc_posteriors.sample(seed=subkey)))
     except Exception as err:
-        print("Failed: Log prob evaluation: {}.".format(err))
+        print("{}:  Failed: Log prob evaluation: {}.".format(_tag, err))
+        assert False
 
-    assert np.all(smc_posteriors.log_prob(smc_posteriors.sample(seed=subkey)) != 0.0), \
-        "Failed: Log prob of particles was zero."
+    log_probs = 'N/A'
+    try:
+        log_probs = smc_posteriors.log_prob(smc_posteriors.sample(seed=subkey))
+        assert np.all(log_probs != 0.0)
+    except:
+        print("{}:  Soft warning:  log prob of some particles were equal to one.  Generally imples gross degeneracy"
+              " or some kind of failure...  \nLog probs: {}".format(_tag, log_probs))
+        assert False
 
     assert np.all(np.isfinite(smc_posteriors.log_prob(smc_posteriors.sample(seed=subkey)))), \
-        "Failed: Log prob of particles was infinite."
+        "{}:  Failed: Log prob of particles was infinite."
 
     assert smc_posteriors.log_prob(smc_posteriors.sample(seed=subkey)).shape == (num_rounds, num_trials), \
-        "Failed: Log probability shape: {} should be {}.".format(str(smc_posteriors.log_normalizer.shape),
+        "{}:  Failed: Log probability shape: {} should be {}.".format(_tag, str(smc_posteriors.log_normalizer.shape),
                                                                  str((num_rounds, num_trials)))
-
-    return None
 
 
 @pytest.mark.slow
-def test_bpf_single_model_gaussian_lds():
+def test_bpf_single_model(_tag, _model_constructor):
     """
     Verify that BPF runs and produces results close to EM.
     """
+    
+    # Define the model.
+    key, subkey = jr.split(SEED)
+    model = _model_constructor(subkey)
+    
+    # Sample the data.
     num_rounds = 20
     num_trials = 10
     num_timesteps = 100
     num_particles = 5000
-    latent_dim = 2
-    emissions_dim = 3
-
-    key, subkey = jr.split(SEED)
-
-    model_kwargs = {'dynamics_scale_tril': 0.1 * np.eye(latent_dim),
-                    'dynamics_weights': np.eye(latent_dim),
-                    'emission_scale_tril': 0.1 * np.eye(emissions_dim), }
-
-    # Define the model.
-    key, subkey = jr.split(key)
-    model = GaussianLDS(num_latent_dims=latent_dim, num_emission_dims=emissions_dim, seed=subkey, **model_kwargs)
-
-    # Sample the data.
     key, subkey = jr.split(key)
     true_states, data = model.sample(key=subkey, num_steps=num_timesteps, num_samples=num_trials)
 
@@ -207,12 +288,22 @@ def test_bpf_single_model_gaussian_lds():
 
     assert np.all(np.isclose(utils.lexp(smc_posteriors.log_normalizer),
                              em_log_marginal_likelihood,
-                             rtol=1e-03, atol=0.1)), \
-        ("Failed: SMC/BPF Log prob evalautions are not sufficiently close to that of EM: \n" +
-         "EM: " + str(em_log_marginal_likelihood) +
-         "SMC/BPF: " + str(utils.lexp(smc_posteriors.log_normalizer)))
+                             rtol=1e-03, atol=0.5)), \
+        ("{}:  Failed: SMC/BPF Log prob evaluations are not sufficiently close to that of EM: \n".format(_tag) +
+         "EM:      " + str(['{:5.3f}'.format(_f) for _f in em_log_marginal_likelihood]).replace('\n', '') + "\n" +
+         "SMC/BPF: " + str(['{:5.3f}'.format(_f) for _f in utils.lexp(smc_posteriors.log_normalizer)]).replace('\n', ''))
 
 
 if __name__ == '__main__':
-    test_smc_gaussian_lds_runs()
-    test_bpf_single_model_gaussian_lds()
+    print('Beginning SMC tests.')
+
+    test_smc_runs('LDS', _construct_lds, _construct_lds_proposal)
+    test_bpf_single_model('LDS', _construct_lds)
+
+    test_smc_runs('Big LDS', _construct_big_lds, _construct_lds_proposal)
+    # test_bpf_single_model('Big LDS', _construct_big_lds)  # NOTE - the SMC approximations for big models will be poor.
+
+    test_smc_runs('BHMM', _construct_bhmm)
+    test_bpf_single_model('BHMM', _construct_bhmm)
+
+    print('Tests complete.')

@@ -192,7 +192,7 @@ def _single_smc(key,
         proposal (function, No size, default=model.dynamics_distribution):
             Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
             the prior is used as the proposal.
-            Function takes arguments of (dataset, parameters, particles, time, p_dist, q_state, ...), but doesn't
+            Function takes arguments of (dataset, model, particles, time, p_dist, q_state, ...), but doesn't
             have to make
             use of them.
             Allows more expressive proposals to be constructed.  The proposal must be a function that can be called

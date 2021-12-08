@@ -21,6 +21,7 @@ class SMCPosterior(tfd.Distribution):
                  filtering_particles,
                  log_marginal_likelihood,
                  resampled,
+                 has_state_dim=True,
                  validate_args=False,
                  allow_nan_stats=True,
                  name="SMCPosterior", ):
@@ -34,6 +35,7 @@ class SMCPosterior(tfd.Distribution):
         self._filtering_particles = filtering_particles
         self._log_marginal_likelihood = log_marginal_likelihood
         self._resampled = resampled
+        self._has_state_dim = has_state_dim
 
         # We would detect the dtype dynamically but that would break vmap
         # see https://github.com/tensorflow/probability/issues/1271
@@ -48,7 +50,8 @@ class SMCPosterior(tfd.Distribution):
                             ancestry=self._ancestry,
                             filtering_particles=self._filtering_particles,
                             log_marginal_likelihood=self._log_marginal_likelihood,
-                            resampled=self._resampled,),
+                            resampled=self._resampled,
+                            has_state_dim=has_state_dim),
             name=name,
         )
 
@@ -59,7 +62,7 @@ class SMCPosterior(tfd.Distribution):
                     ancestry,
                     filtering_particles,
                     log_marginal_likelihood,
-                    resampled):
+                    resampled, ):
         """
 
         Preprocess and instantiate a SMCPosterior object.
@@ -111,17 +114,25 @@ class SMCPosterior(tfd.Distribution):
         # assert filtering_particles.shape == smoothing_particles.shape, \
         #     "[Error]: Filtering particles and smoothing particles must have same shape."
 
-        smoothing_particles = np.moveaxis(smoothing_particles, -3, -2)
+        # If the weights and the particles are the same shape, then there is no state dimension.
+        has_state_dim = log_weights.shape != smoothing_particles.shape
+        if has_state_dim:
+            smoothing_particles = np.moveaxis(smoothing_particles, -3, -2)
+            filtering_particles = np.moveaxis(filtering_particles, -3, -2)
+        else:
+            smoothing_particles = np.moveaxis(smoothing_particles, -2, -1)
+            filtering_particles = np.moveaxis(filtering_particles, -2, -1)
+
         log_weights = np.moveaxis(log_weights, -2, -1)
         ancestry = np.moveaxis(ancestry, -2, -1)
-        filtering_particles = np.moveaxis(filtering_particles, -3, -2)
 
         return cls(smoothing_particles,
                    log_weights,
                    ancestry,
                    filtering_particles,
                    log_marginal_likelihood,
-                   resampled,)
+                   resampled,
+                   has_state_dim)
 
     def __len__(self):
         raise NotImplementedError("Len on this object is so ambiguous we disable it.")
@@ -193,9 +204,23 @@ class SMCPosterior(tfd.Distribution):
         return self._log_marginal_likelihood
 
     def _gen_dist(self):
+        """
+        TODO - This function generates the smoothing distribution as a TFP object.  This is kind clunky though.
+        It is because when you call __init__, if you generate this distribution statically ahead of time, when
+        `vmap`ing you just get `object` errors... need to use the `.new` method to try and get around this.
+
+        Returns:
+
+        """
         smc_mixture_dist = tfd.Categorical(logits=self.final_particle_weights_unnormalized)   # Weighting distribution.
         particle_dist = tfd.Deterministic(self._smoothing_particles)  # Convert into a set of deterministic dists.
-        smc_components_dist = tfd.Independent(particle_dist, reinterpreted_batch_ndims=2)  # Construct the components.
+
+        # Construct the components.  If there are no state dims then there are only one dim.
+        if self._has_state_dim:
+            smc_components_dist = tfd.Independent(particle_dist, reinterpreted_batch_ndims=2)
+        else:
+            smc_components_dist = tfd.Independent(particle_dist, reinterpreted_batch_ndims=1)
+
         return tfd.MixtureSameFamily(smc_mixture_dist, smc_components_dist)
 
     def _log_prob(self, data, **kwargs):
