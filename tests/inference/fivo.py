@@ -291,7 +291,7 @@ def test_fivo_converges(_tag, _model_constructor, _proposal_constructor, _verbos
     """
     try:
         true_params, em_nlml, pred_nlml, cur_params = \
-            _fivo_run(_tag, _model_constructor, _proposal_constructor, _n_opt_steps=20000, _verbose=_verbose)
+            _fivo_run(_tag, _model_constructor, _proposal_constructor, _n_opt_steps=10000, _verbose=_verbose)
     except Exception as err:
         print("{}:  Failed:  {}".format(_tag, err))
         assert False
