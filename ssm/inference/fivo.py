@@ -21,10 +21,16 @@ import ssm.utils as utils
 default_verbosity = Verbosity.DEBUG
 
 
+# TODO --------
+# 9ab82ef is a commit where GDM was kind of working.
+# TODO --------
+
+
 def do_fivo_sweep(_param_vals,
                   _key,
                   _rebuild_model,
                   _rebuild_proposal,
+                  _rebuild_tilt,
                   _dataset,
                   _num_particles,
                   **_smc_kw_args):
@@ -47,6 +53,8 @@ def do_fivo_sweep(_param_vals,
                                     p_dist, q_state, ...)`, and returns a distribution over the latent state (z) and
                                     an updated `q_state` (if there is some recurrent state in the proposal).
 
+        - _rebuild_tilt:            Callable that accepts... TODO.
+
         - _dataset:                 Dataset(s) to condition on.
 
         - _num_particles:           Integer number of particles to use in the sweep.
@@ -63,9 +71,13 @@ def do_fivo_sweep(_param_vals,
     # Reconstruct the proposal.
     _proposal = _rebuild_proposal(_param_vals[1])
 
+    # Reconstruct the tilt.
+    _tilt = _rebuild_tilt(_param_vals[2])
+
     # Do the sweep.
     _smc_posteriors = smc(_key, _model, len(_dataset), _dataset,
                           proposal=_proposal,
+                          tilt=_tilt,
                           num_particles=_num_particles,
                           **_smc_kw_args)
 
@@ -166,7 +178,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, p_lr=0.001, q_lr=0.001):
+def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.001, q_lr=0.001, r_lr=0.001):
     """
     Build out the appropriate optimizer.
 
@@ -175,8 +187,10 @@ def define_optimizer(p_params=None, q_params=None, p_lr=0.001, q_lr=0.001):
     Args:
         - p_params (NamedTuple):    Named tuple of the parameters of the SSM.
         - q_params (NamedTuple):    Named tuple of the parameters of the proposal.
+        - q_params (NamedTuple):    Named tuple of the parameters of the tilt.
         - p_lr (float):             Float learning rate for p.
         - q_lr (float):             Float learning rate for q.
+        - r_lr (float):             Float learning rate for r.
 
     Returns:
         - (Tuple[opt]):             Tuple of updated optimizers.
@@ -194,6 +208,12 @@ def define_optimizer(p_params=None, q_params=None, p_lr=0.001, q_lr=0.001):
     else:
         q_opt = None
 
-    opt = [p_opt, q_opt]
+    if r_params is not None:
+        r_opt_def = optim.Adam(learning_rate=r_lr)
+        r_opt = r_opt_def.create(r_params)
+    else:
+        r_opt = None
+
+    opt = [p_opt, q_opt, r_opt]
     return opt
 

@@ -23,6 +23,7 @@ def smc(key,
         dataset,
         initialization_distribution=None,
         proposal=None,
+        tilt=None,
         num_particles=50,
         resampling_criterion=None,
         resampling_function=None,
@@ -75,6 +76,9 @@ def smc(key,
             Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
             as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be
             defined by closing over a proposal class as appropriate.
+
+        tilt ():
+            TODO
 
         num_particles (int, No size, default=50):
             Number of particles to use.
@@ -132,7 +136,7 @@ def smc(key,
 
     # Close over the static arguments.
     single_smc_closed = lambda _k, _d: \
-        _single_smc(_k, model, _d, initialization_distribution, proposal, num_particles,
+        _single_smc(_k, model, _d, initialization_distribution, proposal, tilt, num_particles,
                     resampling_criterion, resampling_function, use_stop_gradient_resampling,
                     use_resampling_gradients, verbosity=verbosity)
 
@@ -151,6 +155,7 @@ def _single_smc(key,
                 dataset,
                 initialization_distribution,
                 proposal,
+                tilt,
                 num_particles,
                 resampling_criterion,
                 resampling_function,
@@ -198,6 +203,9 @@ def _single_smc(key,
             Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
             as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be
             defined by closing over a proposal class as appropriate.
+
+        tilt ():
+            TODO
 
         num_particles (int, No size, default=50):
             Number of particles to use.
@@ -251,6 +259,10 @@ def _single_smc(key,
     if proposal is None:
         proposal = lambda *args: (model.dynamics_distribution(args[2]), None)
 
+    # If no explicit proposal is provided, default to a log-value of zero.
+    if tilt is None:
+        tilt = lambda *_: np.zeros(num_particles)
+
     # Do the forward pass.
     filtering_particles, z_hat, ancestry, resampled, accumulated_log_incr_weights = \
         _smc_forward_pass(key,
@@ -258,6 +270,7 @@ def _single_smc(key,
                           dataset,
                           initialization_distribution,
                           proposal,
+                          tilt,
                           num_particles,
                           resampling_criterion,
                           resampling_function,
@@ -284,12 +297,13 @@ def _smc_forward_pass(key,
                       dataset,
                       initialization_distribution,
                       proposal,
+                      tilt,
                       num_particles,
                       resampling_criterion,
                       resampling_function,
                       use_stop_gradient_resampling=False,
                       use_resampling_gradients=False,
-                      verbosity=default_verbosity,):
+                      verbosity=default_verbosity, ):
     r"""Do the forward pass of an SMC sampler.
 
 
@@ -318,6 +332,9 @@ def _smc_forward_pass(key,
             make use of them.  Allows more expressive proposals to be constructed.  The proposal must be a function that
             can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may
             need to be defined by closing over a proposal class as appropriate.
+
+        tilt ():
+            TODO
 
         num_particles (int, No size):
             Number of particles to use.
@@ -362,7 +379,10 @@ def _smc_forward_pass(key,
     p_log_probability = model.initial_distribution().log_prob(initial_particles)
     q_log_probability = initial_distribution.log_prob(initial_particles)
     y_log_probability = model.emissions_distribution(initial_particles).log_prob(dataset[0])
-    initial_incremental_log_weights = y_log_probability + p_log_probability - q_log_probability
+    r_log_probability = tilt(dataset, model, initial_particles, 0)
+
+    # Sum up all the terms.
+    initial_incremental_log_weights = y_log_probability + p_log_probability - q_log_probability + r_log_probability
 
     # Do an initial resampling step.
     initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
@@ -395,12 +415,29 @@ def _smc_forward_pass(key,
         p_log_probability = p_dist.log_prob(new_particles)
         q_log_probability = q_dist.log_prob(new_particles)
 
+        # TODO - this needs to be reverted once using initial resampling again.
+        r_previous = jax.lax.cond(t == 0,  # Was t=1 when we were using range(1,T).
+                                  lambda *args: np.zeros(num_particles, ),
+                                  lambda *args: tilt(dataset, model, particles, t-1),  # TODO Was t-2 when we were using
+                                  # range(1,T).
+                                  None)
+
+        # There is no tilt at the final timestep.
+        r_current = jax.lax.cond(t == (len(dataset)-1),
+                                 lambda *_args: np.zeros(len(new_particles)),
+                                 lambda *_args: tilt(dataset, model, new_particles, t),  # TODO Was t-1
+                                 None)
+
         # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
         y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
                                          lambda _: np.zeros((num_particles, )),
                                          lambda _: model.emissions_distribution(new_particles).log_prob(dataset[t]),
                                          None)
-        incremental_log_weights = p_log_probability - q_log_probability + y_log_probability
+
+        # Sum up the different terms,
+        incremental_log_weights = p_log_probability - q_log_probability + \
+                                  r_current - r_previous + \
+                                  y_log_probability
 
         # Update the log weights.
         accumulated_log_weights += incremental_log_weights
@@ -425,7 +462,7 @@ def _smc_forward_pass(key,
     _, (filtering_particles, log_weights, resampled, ancestors, q_states) = jax.lax.scan(
         smc_step,
         (key, initial_resampled_particles, accumulated_log_weights, initial_q_state),
-        np.arange(1, len(dataset)))
+        np.arange(1, len(dataset)))  # TODO - this may need to be arange(0, len)
 
     # Need to prepend the initial timestep.
     filtering_particles = np.concatenate((initial_resampled_particles[None, :], filtering_particles))

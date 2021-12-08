@@ -5,6 +5,7 @@ from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.substrates.jax import distributions as tfd
 from tensorflow_probability.python.internal import reparameterization
 from tensorflow_probability.python.internal.backend.jax.compat import v2 as tf
+from typing import Iterable
 
 
 class SMCPosterior(tfd.Distribution):
@@ -137,9 +138,9 @@ class SMCPosterior(tfd.Distribution):
     def __len__(self):
         raise NotImplementedError("Len on this object is so ambiguous we disable it.")
 
-    def __getitem__(self, item):
+    def __getitem__(self, item):  # TODO - had to change this here, not sure why i didnt have to change it elsewhere.
         assert len(self.log_normalizer.shape) > 0, "Cannot directly index inside single posterior."
-        return SMCPosterior(**jax.tree_map(lambda args: args[item], self._parameters))
+        return SMCPosterior(**jax.tree_map(lambda args: args[item] if isinstance(args, Iterable) else args, self._parameters))
 
     def tree_flatten(self):
         children = (self._smoothing_particles,
