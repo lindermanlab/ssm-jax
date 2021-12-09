@@ -75,7 +75,6 @@ def _test_smc_runs(key,
     except Exception as err:
         assert False, ("{}:  Failed: Sampling from distribution: {}".format(_tag, err))
 
-
     if smc_posteriors._has_state_dim:
         assert smc_posteriors.sample(seed=subkey).shape == (num_rounds, num_trials, num_timesteps, model.latent_dim), \
             "{}:  Failed:(1) Sample shape: {} should be {}.".format(_tag, str(smc_posteriors.event_shape),
@@ -85,6 +84,7 @@ def _test_smc_runs(key,
             "{}:  Failed:(2) Sample shape: {} should be {}.".format(_tag, str(smc_posteriors.event_shape),
                                                                str((num_rounds, num_trials, num_timesteps)))
 
+    # Check the log prob evaluation.
     try:
         np.sum(smc_posteriors.log_prob(smc_posteriors.sample(seed=subkey)))
     except Exception as err:
@@ -105,6 +105,16 @@ def _test_smc_runs(key,
     assert smc_posteriors.log_prob(smc_posteriors.sample(seed=subkey)).shape == (num_rounds, num_trials), \
         "{}:  Failed: Log probability shape: {} should be {}.".format(_tag, str(smc_posteriors.log_normalizer.shape),
                                                                  str((num_rounds, num_trials)))
+
+    # Check indexing inside the posterior.
+    if smc_posteriors._has_state_dim:
+        assert smc_posteriors[0].sample(seed=subkey).shape == (num_trials, num_timesteps, model.latent_dim), \
+            "{}:  Failed:(1) Single sample shape: {} should be {}.".format(_tag, str(smc_posteriors.event_shape),
+                                                                           str((num_trials, num_timesteps, model.latent_dim)))
+    else:
+        assert smc_posteriors[0].sample(seed=subkey).shape == (num_trials, num_timesteps), \
+            "{}:  Failed:(2) Single sample shape: {} should be {}.".format(_tag, str(smc_posteriors.event_shape),
+                                                                           str((num_trials, num_timesteps)))
 
 
 def _test_bpf_single_model(key, _model_constructor, _tag='NoneSet'):

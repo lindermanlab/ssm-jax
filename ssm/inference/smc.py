@@ -10,6 +10,8 @@ from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
 from tensorflow_probability.python.internal.backend.jax.compat import v2 as tf
 from tensorflow_probability.substrates import jax as tfp
+from tensorflow_probability.python.internal import reparameterization
+from typing import Iterable
 
 # SSM imports.
 from ssm.utils import Verbosity
