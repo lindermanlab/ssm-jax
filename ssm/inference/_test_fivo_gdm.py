@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from jax import random as jr
 import flax.linen as nn
 from typing import NamedTuple
+from copy import deepcopy as dc
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
@@ -15,17 +16,17 @@ import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 
 
-def gdm_define_test(subkey):
+def gdm_define_test(key):
 
     proposal_structure = 'DIRECT'   # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
-    tilt_structure = 'DIRECT'     # {'DIRECT', 'NONE'/None}
+    tilt_structure = 'NONE'     # {'DIRECT', 'NONE'/None/'BOOTSTRAP'}
 
     # Define the parameter names that we are going to learn.
     # This has to be a tuple of strings that index which args we will pull out.
     free_parameters = ('dynamics_bias', )
 
     # Define the true model.
-    key, subkey = jr.split(subkey)
+    key, subkey = jr.split(key)
     true_model, true_states, dataset = gdm_define_true_model_and_data(subkey)
 
     # Now define a model to test.
@@ -55,32 +56,87 @@ def gdm_define_test_model(key, true_model, free_parameters):
     :param true_model:
     :return:
     """
-
-    # # Generate a model to use.
     key, subkey = jr.split(key)
-    default_model = GaussianLDS(num_latent_dims=true_model.latent_dim,
-                                num_emission_dims=true_model.emissions_shape[0],
-                                seed=key)
+
+    # # Define the parameter names that we are going to learn.
+    # # This has to be a tuple of strings that index which args we will pull out.
+    # free_parameters = ()  # 'dynamics_weights', )
 
     # Close over the free parameters we have elected to learn.
     get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, free_parameters)
 
+    if len(free_parameters) > 0:
+
+        # Get the default parameters from the true model.
+        true_params = fivo.get_model_params_fn(true_model)
+
+        # Generate a model to use.  NOTE - this will generate a new model, and we will
+        # overwrite any of the free parameters of interest into the true model.
+        tmp_model = true_model.__class__(num_latent_dims=true_model.latent_dim,
+                                         num_emission_dims=true_model.emissions_shape[0],
+                                         seed=subkey)
+
+        # Dig out the free parameters.
+        init_free_params = get_free_model_params_fn(tmp_model)
+
+        # Overwrite all the params with the new values.
+        default_params = utils.mutate_named_tuple_by_key(true_params, init_free_params)
+
+        # TODO - force mutate some of the parameters.
+        # Mutate the free parameters.
+        for _k in free_parameters:
+            _base = getattr(default_params, _k)
+            key, subkey = jr.split(key)
+            new_val = {_k: _base + (2.0 * jr.normal(key=subkey, shape=_base.shape))}
+            default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
+
+        # Build out a new model using these values.
+        default_model = fivo.rebuild_model_fn(default_params, tmp_model)
+
+    else:
+
+        # If there are no free parameters then just use the true model.
+        default_model = dc(true_model)
+
     # Close over rebuilding the model.
-    rebuild_model_fn = lambda _params: fivo.rebuild_model_fn(_params, true_model)
+    rebuild_model_fn = lambda _params: fivo.rebuild_model_fn(_params, default_model)
 
-    # set up the base parameters.
-    default_param = get_free_model_params_fn(default_model)
+    return default_model, get_free_model_params_fn, rebuild_model_fn
 
-    # Mutate the free parameters.
-    for _k in default_param._fields:
-        _base = getattr(default_param, free_parameters[0])
-        key, subkey = jr.split(key)
-        new_val = {_k: _base + jr.normal(key=subkey, shape=_base.shape)}
-        default_param = utils.mutate_named_tuple_by_key(default_param, new_val)
 
-    model = rebuild_model_fn(default_param)
-
-    return model, get_free_model_params_fn, rebuild_model_fn
+# def gdm_define_test_model(key, true_model, free_parameters):
+#     """
+#
+#     :param subkey:
+#     :param true_model:
+#     :return:
+#     """
+#
+#     # # Generate a model to use.
+#     key, subkey = jr.split(key)
+#     default_model = GaussianLDS(num_latent_dims=true_model.latent_dim,
+#                                 num_emission_dims=true_model.emissions_shape[0],
+#                                 seed=key)
+#
+#     # Close over the free parameters we have elected to learn.
+#     get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, free_parameters)
+#
+#     # Close over rebuilding the model.
+#     rebuild_model_fn = lambda _params: fivo.rebuild_model_fn(_params, true_model)
+#
+#     # set up the base parameters.
+#     default_param = get_free_model_params_fn(default_model)
+#
+#     # Mutate the free parameters.
+#     for _k in default_param._fields:
+#         _base = getattr(default_param, free_parameters[0])
+#         key, subkey = jr.split(key)
+#         new_val = {_k: _base + jr.normal(key=subkey, shape=_base.shape)}
+#         default_param = utils.mutate_named_tuple_by_key(default_param, new_val)
+#
+#     model = rebuild_model_fn(default_param)
+#
+#     return model, get_free_model_params_fn, rebuild_model_fn
 
 
 def gdm_define_tilt(subkey, model, dataset, tilt_structure):
@@ -145,9 +201,10 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # Define a more conservative initialization.
-    w_init_mean = lambda *args: (jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init_mean, bias_init=nn.initializers.normal(), use_bias=False) # TODO - ADD BIAS, use_bias=False
-    head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init_mean, bias_init=nn.initializers.normal())
+    w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
+    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init) # TODO - ADD BIAS, use_bias=False
+    head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
 
     # Check whether we have a valid number of proposals.
     n_props = len(dataset[0])
@@ -211,29 +268,30 @@ def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_pa
 
     for _p, _hist in enumerate(_param_hist):
 
-        if len(_hist[0]) > 0:
+        if _hist[0] is not None:
+            if len(_hist[0]) > 0:
 
-            n_param = len(_hist[0].keys())
+                n_param = len(_hist[0].keys())
 
-            if param_figs[_p] is None:
-                param_figs[_p] = plt.subplots(n_param, 1, figsize=fsize, sharex=True, squeeze=True)
+                if param_figs[_p] is None:
+                    param_figs[_p] = plt.subplots(n_param, 1, figsize=fsize, sharex=True, squeeze=True)
 
-            for _i, _k in enumerate(_hist[0].keys()):
-                to_plot = []
-                for _pt in _param_hist[_p]:
-                    to_plot.append(_pt[_k].flatten())
-                to_plot = np.array(to_plot)
+                for _i, _k in enumerate(_hist[0].keys()):
+                    to_plot = []
+                    for _pt in _param_hist[_p]:
+                        to_plot.append(_pt[_k].flatten())
+                    to_plot = np.array(to_plot)
 
-                if hasattr(param_figs[_p][1], '__len__'):
-                    plt.sca(param_figs[_p][1][_i])
-                else:
-                    plt.sca(param_figs[_p][1])
-                plt.cla()
-                plt.plot(to_plot)
-                plt.title(idx_to_str(_p) + str(_k))
-                plt.grid(True)
-                plt.tight_layout()
-                plt.pause(0.00001)
+                    if hasattr(param_figs[_p][1], '__len__'):
+                        plt.sca(param_figs[_p][1][_i])
+                    else:
+                        plt.sca(param_figs[_p][1])
+                    plt.cla()
+                    plt.plot(to_plot)
+                    plt.title(idx_to_str(_p) + str(_k))
+                    plt.grid(True)
+                    plt.tight_layout()
+                    plt.pause(0.00001)
 
     return param_figs
 
@@ -250,7 +308,8 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
     :return:
     """
 
-    _str = 'Step: {: >5d},  True Neg-LML: {: >8.3f},  Pred Neg-LML: {: >8.3f}'.format(_step, true_lml, pred_lml)
+    _str = 'Step: {: >5d},  True Neg-LML: {: >8.3f},  Pred Neg-LML: {: >8.3f},  Pred FIVO bound {: >8.3f}'.\
+        format(_step, true_lml, pred_lml, pred_fivo_bound)
     if em_log_marginal_likelihood is not None:
         _str += '  EM Neg-LML: {: >8.3f}'.format(em_log_marginal_likelihood)
 

@@ -126,7 +126,10 @@ class IndependentGaussianProposal:
 
         dataset, _, particles, t, _, _ = _inputs  # NOTE - this part of q can't actually use model or p_dist.
 
-        proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=t, axis=0, keepdims=False), _inputs[2])
+        # TODO - this has been pulled apart for GDM.
+
+        proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=len(dataset)-1, axis=0, keepdims=False),
+                           _inputs[2])
 
         is_batched = (_inputs[1].latent_dim != particles.shape[0])
         if not is_batched:
@@ -163,7 +166,7 @@ def rebuild_proposal(proposal, proposal_structure):
 
     def _rebuild_proposal(_param_vals):
         # If there is no proposal, then there is no structure to define.
-        if (proposal is None) or (proposal_structure == 'BOOTSTRAP'):
+        if (proposal is None) or (proposal_structure == 'BOOTSTRAP') or (proposal_structure == 'NONE'):
             return None
 
         # We fork depending on the proposal type.
