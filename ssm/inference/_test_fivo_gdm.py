@@ -128,7 +128,7 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
     # Define a more conservative initialization.
     w_init = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
     b_init = lambda *args: (0.1 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - ADD BIAS, use_bias=False
+    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init, use_bias=False)  # TODO - not using bias.
 
     # head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)
     b_init = lambda *args: (1.0 + (0.1 * jax.nn.initializers.normal()(*args)))
@@ -172,7 +172,7 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     # Define a more conservative initialization.
     w_init = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
     b_init = lambda *args: (0.1 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init, use_bias=False)  # TODO - not using bias.
 
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
     b_init = lambda *args: (1.0 + (0.1 * jax.nn.initializers.normal()(*args)))
