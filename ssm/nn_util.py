@@ -57,11 +57,11 @@ class Static(nn.Module):
     A layer which just returns some static parameters.
     """
     features: int
-    kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.lecun_normal()
+    bias_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.normal()
 
     @nn.compact
     def __call__(self, inputs):
-        kernel = self.param('kernel',
-                            self.kernel_init,
+        kernel = self.param('bias',
+                            self.bias_init,
                             (self.features, ))
         return kernel

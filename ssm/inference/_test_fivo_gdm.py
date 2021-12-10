@@ -19,7 +19,7 @@ import ssm.inference.tilts as tilts
 def gdm_define_test(key):
 
     proposal_structure = 'DIRECT'   # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
-    tilt_structure = 'NONE'     # {'DIRECT', 'NONE'/None/'BOOTSTRAP'}
+    tilt_structure = 'DIRECT'     # {'DIRECT', 'NONE'/None/'BOOTSTRAP'}
 
     # Define the parameter names that we are going to learn.
     # This has to be a tuple of strings that index which args we will pull out.
@@ -104,41 +104,6 @@ def gdm_define_test_model(key, true_model, free_parameters):
     return default_model, get_free_model_params_fn, rebuild_model_fn
 
 
-# def gdm_define_test_model(key, true_model, free_parameters):
-#     """
-#
-#     :param subkey:
-#     :param true_model:
-#     :return:
-#     """
-#
-#     # # Generate a model to use.
-#     key, subkey = jr.split(key)
-#     default_model = GaussianLDS(num_latent_dims=true_model.latent_dim,
-#                                 num_emission_dims=true_model.emissions_shape[0],
-#                                 seed=key)
-#
-#     # Close over the free parameters we have elected to learn.
-#     get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, free_parameters)
-#
-#     # Close over rebuilding the model.
-#     rebuild_model_fn = lambda _params: fivo.rebuild_model_fn(_params, true_model)
-#
-#     # set up the base parameters.
-#     default_param = get_free_model_params_fn(default_model)
-#
-#     # Mutate the free parameters.
-#     for _k in default_param._fields:
-#         _base = getattr(default_param, free_parameters[0])
-#         key, subkey = jr.split(key)
-#         new_val = {_k: _base + jr.normal(key=subkey, shape=_base.shape)}
-#         default_param = utils.mutate_named_tuple_by_key(default_param, new_val)
-#
-#     model = rebuild_model_fn(default_param)
-#
-#     return model, get_free_model_params_fn, rebuild_model_fn
-
-
 def gdm_define_tilt(subkey, model, dataset, tilt_structure):
     """
 
@@ -161,9 +126,13 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
     dummy_tilt_output = nn_util.vectorize_pytree(dataset[0][-1], )
 
     # Define a more conservative initialization.
-    w_init_mean = lambda *args: (jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init_mean, bias_init=nn.initializers.normal(), use_bias=False)  # TODO - ADD BIAS, use_bias=False
-    head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init_mean, bias_init=nn.initializers.normal())
+    w_init = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
+    b_init = lambda *args: (0.1 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
+    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - ADD BIAS, use_bias=False
+
+    # head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)
+    b_init = lambda *args: (1.0 + (0.1 * jax.nn.initializers.normal()(*args)))
+    head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0], bias_init=b_init)
 
     # Check whether we have a valid number of tilts.
     n_tilts = len(dataset[0]) - 1
@@ -201,10 +170,13 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # Define a more conservative initialization.
-    w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init) # TODO - ADD BIAS, use_bias=False
-    head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
+    w_init = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
+    b_init = lambda *args: (0.1 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
+
+    # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
+    b_init = lambda *args: (1.0 + (0.1 * jax.nn.initializers.normal()(*args)))
+    head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=b_init)
 
     # Check whether we have a valid number of proposals.
     n_props = len(dataset[0])
@@ -336,11 +308,14 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
         except:
             pass
 
-        r_lvar_w = r_param['head_log_var_fn']['kernel']
-        print('\t\tR var(log) weight (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_lvar_w.flatten()]))
+        try:
+            r_lvar_w = r_param['head_log_var_fn']['kernel']
+            print('\t\tR var(log) weight (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_lvar_w.flatten()]))
+        except:
+            pass
 
         r_lvar_b = r_param['head_log_var_fn']['bias']
-        print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(r_lvar_b.flatten())]))
+        print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_lvar_b.flatten()]))
 
     if opt[1] is not None:
         q_param = opt[1].target._dict['params']
@@ -355,11 +330,14 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
         except:
             pass
 
-        q_lvar_w = q_param['head_log_var_fn']['kernel']
-        print('\t\tQ var(log) weight (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_lvar_w.flatten()]))
+        try:
+            q_lvar_w = q_param['head_log_var_fn']['kernel']
+            print('\t\tQ var weight      (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_lvar_w.flatten()]))
+        except:
+            pass
 
         q_lvar_b = q_param['head_log_var_fn']['bias']
-        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(q_lvar_b.flatten())]))
+        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_lvar_b.flatten()]))
 
     print()
     print()

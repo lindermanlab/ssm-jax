@@ -83,9 +83,9 @@ class IndependentGaussianTilt:
         tilt_inputs = self._tilt_input_generator(*inputs)
         r_dist = self.tilt.apply(t_params, tilt_inputs)
 
-        # # TODO - forcing here.
-        # r_dist = tfd.MultivariateNormalDiag(loc=tilt_inputs, scale_diag=np.sqrt(r_dist.variance()))
-        # # TODO - forcing here.
+        # TODO - forcing here.
+        r_dist = tfd.MultivariateNormalDiag(loc=tilt_inputs, scale_diag=np.sqrt(r_dist.variance()))
+        # TODO - forcing here.
 
         # Now score under that distribution.
         tilt_outputs = self._tilt_output_generator(*inputs)

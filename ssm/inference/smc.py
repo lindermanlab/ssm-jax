@@ -407,7 +407,7 @@ def _smc_forward_pass(key,
 
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
-        key, particles, accumulated_log_weights, q_state, r_previous = carry
+        key, particles, accumulated_log_weights, q_state = carry
         key, subkey1, subkey2 = jr.split(key, num=3)
 
         # Compute the p and q distributions.
@@ -421,12 +421,16 @@ def _smc_forward_pass(key,
         p_log_probability = p_dist.log_prob(new_particles)
         q_log_probability = q_dist.log_prob(new_particles)
 
-        # # TODO - this needs to be reverted once using initial resampling again.
+        # # tTODO - this needs to be reverted once using initial resampling again.
+        # tTODO Was t-2 when we were using
         # r_previous = jax.lax.cond(t == 0,  # Was t=1 when we were using range(1,T).
         #                           lambda *args: np.zeros(num_particles, ),
-        #                           lambda *args: tilt(dataset, model, particles, t-1),  # TODO Was t-2 when we were using
+        #                           lambda *args: tilt(dataset, model, particles, t-1),
         #                           # range(1,T).
         #                           None)
+
+        # Compute the tilt value at the previous time step.
+        r_previous = tilt(dataset, model, particles, t-1)
 
         # There is no tilt at the final timestep.
         r_current = jax.lax.cond(t == (len(dataset)-1),
@@ -461,13 +465,13 @@ def _smc_forward_pass(key,
                          lambda *args: closed_do_resample(resampling_criterion),
                          None)
 
-        return ((key, resampled_particles, resampled_log_weights, q_state, r_current),
+        return ((key, resampled_particles, resampled_log_weights, q_state),
                 (resampled_particles, accumulated_log_weights, should_resample, ancestors, q_state))
 
     # Scan over the dataset.
     _, (filtering_particles, log_weights, resampled, ancestors, q_states) = jax.lax.scan(
         smc_step,
-        (key, initial_resampled_particles, accumulated_log_weights, initial_q_state, initial_r_log_probability),
+        (key, initial_resampled_particles, accumulated_log_weights, initial_q_state),
         np.arange(1, len(dataset)))  # TODO - this may need to be arange(0, len)
 
     # Need to prepend the initial timestep.
