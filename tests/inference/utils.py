@@ -39,7 +39,7 @@ def single_smc_test(key, model, proposal, data, num_rounds, num_particles, ):
     em_log_marginal_likelihood = model.marginal_likelihood(data, posterior=em_posterior)
 
     # Close over a single SMC sweep.
-    repeat_smc = lambda _k: smc(_k, model, len(data), data, proposal=proposal, num_particles=num_particles)
+    repeat_smc = lambda _k: smc(_k, model, data, proposal=proposal, num_particles=num_particles)
     vmapped = vmap(repeat_smc)
 
     # Run all the sweeps.
@@ -263,7 +263,7 @@ def run_fivo(key,
 
     # Build up the FIVO scripts.
     # Close over constant parameters.
-    do_fivo_sweep_closed = lambda _key, _params, _num_particles, _num_datasets, _datasets: \
+    do_fivo_sweep_closed = lambda _key, _params, _num_particles, _datasets: \
         fivo.do_fivo_sweep(_params,
                            _key,
                            rebuild_model_fn,
@@ -280,7 +280,7 @@ def run_fivo(key,
 
     # Jit this badboy.
     do_fivo_sweep_jitted = \
-        jax.jit(do_fivo_sweep_closed, static_argnums=(2, 3))
+        jax.jit(do_fivo_sweep_closed, static_argnums=(2, ))
 
     # Convert into value and grad.
     do_fivo_sweep_val_and_grad = \
@@ -294,8 +294,7 @@ def run_fivo(key,
         batched_dataset = data.at[idx].get()
 
         key, subkey = jr.split(key)
-        _, grad = do_fivo_sweep_val_and_grad(subkey, fivo.get_params_from_opt(opt), num_particles,
-                                             len(batched_dataset), batched_dataset)
+        _, grad = do_fivo_sweep_val_and_grad(subkey, fivo.get_params_from_opt(opt), num_particles, batched_dataset)
 
         # Apply the gradient update.
         opt = fivo.apply_gradient(grad, opt, )
@@ -306,7 +305,6 @@ def run_fivo(key,
             (pred_fivo_bound, smc_posteriors), grad = do_fivo_sweep_val_and_grad(subkey,
                                                                                  fivo.get_params_from_opt(opt),
                                                                                  num_val_particles,
-                                                                                 len(data),
                                                                                  data)
             pred_nlml = - utils.lexp(smc_posteriors.log_normalizer)
             if _verbose:
@@ -317,7 +315,6 @@ def run_fivo(key,
     (pred_fivo_bound, smc_posteriors), grad = do_fivo_sweep_val_and_grad(subkey,
                                                                          fivo.get_params_from_opt(opt),
                                                                          num_val_particles,
-                                                                         len(data),
                                                                          data)
     pred_nlml = - utils.lexp(smc_posteriors.log_normalizer)
 

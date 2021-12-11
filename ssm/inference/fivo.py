@@ -64,7 +64,7 @@ def do_fivo_sweep(_param_vals,
     _proposal = _rebuild_proposal(_param_vals[1])
 
     # Do the sweep.
-    _smc_posteriors = smc(_key, _model, len(_dataset), _dataset,
+    _smc_posteriors = smc(_key, _model, _dataset,
                           proposal=_proposal,
                           num_particles=_num_particles,
                           **_smc_kw_args)
