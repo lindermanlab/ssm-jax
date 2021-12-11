@@ -74,7 +74,7 @@ def tree_all_equal(tree1, tree2):
     Args:
         tree1 ([type]): [description]
         tree2 ([type]): [description]
-        
+
     Returns:
         isEqual (bool): whether array PyTrees are equal
     """
@@ -206,15 +206,15 @@ def random_rotation(seed, n, theta=None):
 def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metadata"),
                          model_arg="self"):
     """Decorator to automatically add a batch dim to args defined by batched_args.
-    
-    Checks the shape of the PyTree leaves inside the data argument and compares them to the 
+
+    Checks the shape of the PyTree leaves inside the data argument and compares them to the
     shape of emissions as defined by the model. A batch dimension is added if the shape
     only has 1 additional dimension (num_timesteps).
-    
+
     Naively assumes that if data needs a batch dim, then so do the rest of the batched_args.
 
     Args:
-        batched_args (tuple, optional): Names of the function arguments to batch. 
+        batched_args (tuple, optional): Names of the function arguments to batch.
             'data' must be an element. Defaults to ("data", "posterior", "covariates", "metadata").
         model_arg (str, optional): The name of the argument of the model class.
             Used to extract information about the emissions shape. Defaults to "self".
@@ -265,20 +265,20 @@ def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metad
 def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "states"),
                model_arg="self", map_function=vmap):
     r"""Decorator to automatically "map" the wrapped function along a a batch if a
-    batch dim is detected in the data. By default, "map" means vmap. 
-    
-    Checks the shape of the PyTree leaves inside the data argument and compares them to the 
-    shape of emissions as defined by the model. The data is considered batched if it has 
+    batch dim is detected in the data. By default, "map" means vmap.
+
+    Checks the shape of the PyTree leaves inside the data argument and compares them to the
+    shape of emissions as defined by the model. The data is considered batched if it has
     two additional dimensions compared to the emissions (batch_dim and num_timesteps).
-    
+
     Naively assumes that if data has a batch dim, then so do the rest of the batched_args.
 
     Args:
-        batched_args (tuple, optional): Names of the function arguments that may be batched. 
+        batched_args (tuple, optional): Names of the function arguments that may be batched.
             'data' must be an element. Defaults to ("data", "posterior", "covariates", "metadata").
         model_arg (str, optional): The name of the argument of the model class.
             Used to extract information about the emissions shape. Defaults to "self".
-        map_function (Callable, optional): Type of map operation applied to func. 
+        map_function (Callable, optional): Type of map operation applied to func.
             Defaults to `vmap`.
     """
     def auto_batch_decorator(f):

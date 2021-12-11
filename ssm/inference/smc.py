@@ -3,7 +3,6 @@ SMC filtering/smoothing for SSMs.
 """
 import jax
 import jax.numpy as np
-import matplotlib.pyplot as plt
 from jax.scipy import special as spsp
 from jax import vmap
 from jax import random as jr
@@ -369,8 +368,8 @@ def _smc_forward_pass(key,
 
     # Do an initial resampling step.
     initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
-        do_resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
-                    resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
+        resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
+                 resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
 
     # # Use this to no do an initial resampling step.
     # initial_distribution = model.initial_distribution()
@@ -409,16 +408,16 @@ def _smc_forward_pass(key,
         accumulated_log_weights += incremental_log_weights
 
         # Close over the resampling function.
-        closed_do_resample = lambda _crit: do_resample(subkey2, accumulated_log_weights, new_particles, _crit,
-                                                       resampling_function,
-                                                       use_stop_gradient_resampling=use_stop_gradient_resampling)
+        closed_resample = lambda _crit: resample(subkey2, accumulated_log_weights, new_particles, _crit,
+                                                 resampling_function,
+                                                 use_stop_gradient_resampling=use_stop_gradient_resampling)
 
         # Resample particles depending on the resampling function chosen.
         # We don't want to resample on the final timestep, so dont...
         resampled_particles, ancestors, resampled_log_weights, should_resample = \
             jax.lax.cond(t == (len(dataset) - 1),
-                         lambda *args: closed_do_resample(never_resample_criterion),
-                         lambda *args: closed_do_resample(resampling_criterion),
+                         lambda *args: closed_resample(never_resample_criterion),
+                         lambda *args: closed_resample(resampling_criterion),
                          None)
 
         return ((key, resampled_particles, resampled_log_weights, q_state),
@@ -448,7 +447,7 @@ def _smc_forward_pass(key,
     if use_resampling_gradients:
         raise NotImplementedError("This code isn't ready yet.  There are still too many issues with indexing etc.")
         # z_hat = z_hat + _compute_resampling_grad()
-        
+
     return filtering_particles, l_tilde, ancestors, resampled, log_weights
 
 
@@ -593,13 +592,13 @@ def systematic_resampling(key, log_weights, particles):
     return jax.tree_map(lambda item: item[parents], particles), parents
 
 
-def do_resample(key,
-                log_weights,
-                particles,
-                resampling_criterion=always_resample_criterion,
-                resampling_function=systematic_resampling,
-                num_particles=None,
-                use_stop_gradient_resampling=False):
+def resample(key,
+             log_weights,
+             particles,
+             resampling_criterion=always_resample_criterion,
+             resampling_function=systematic_resampling,
+             num_particles=None,
+             use_stop_gradient_resampling=False):
     r"""Do resampling.
 
     Allows a resampling condition to be passed in and evaluated to trigger adaptive resampling.
@@ -979,65 +978,6 @@ class SMCPosterior(tfd.Distribution):
         :return:
         """
         raise NotImplementedError()
-
-
-def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=None, _obs=None):
-    """
-    Some stock code for plotting the results of an SMC sweep.
-    :param particles:
-    :param true_states:
-    :param tag:
-    :param preprocessed:
-    :param fig:
-    :return:
-    """
-    # Define the standard plotting colours.
-    color_names = [
-        "tab:blue",
-        "tab:orange",
-        "tab:green",
-        "tab:red",
-        "tab:purple"
-    ]
-
-    gen_label = lambda _k, _s: _s if _k == 0 else None
-
-    if not preprocessed:
-        single_sweep_median = np.median(particles, axis=0)
-        single_sweep_lsd = np.quantile(particles, 0.17, axis=0)
-        single_sweep_usd = np.quantile(particles, 0.83, axis=0)
-    else:
-        single_sweep_median = particles[0]
-        single_sweep_lsd = particles[1]
-        single_sweep_usd = particles[2]
-
-    ts = np.arange(len(true_states))
-
-    if fig is not None:
-        plt.figure(fig.number)
-        plt.clf()
-    else:
-        fig = plt.figure(figsize=(14, 6))
-
-    for _i, _c in zip(range(single_sweep_median.shape[1]), color_names):
-        plt.plot(ts, single_sweep_median[:, _i], c=_c, label=gen_label(_i, 'Predicted'))
-        plt.fill_between(ts, single_sweep_lsd[:, _i], single_sweep_usd[:, _i], color=_c, alpha=0.1)
-
-        plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
-
-    # Enable plotting obs here.
-    # if _obs is not None:
-    #     for _i, _c in zip(range(_obs.shape[1]), color_names):
-    #         plt.scatter(ts, _obs[:, _i], c=_c, marker='.', label=gen_label(_i, 'Observed'))
-
-    plt.title(tag)
-    plt.grid(True)
-    plt.tight_layout()
-    plt.legend()
-    # plt.xlim(-0.5, 3.5)
-    plt.pause(0.1)
-
-    return fig
 
 
 # def _compute_resampling_grad(log_weights, z_hat, ancestors, raoblackwellize_estimator=True):
