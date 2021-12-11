@@ -159,7 +159,7 @@ def build_independent_gaussian_generator(dummy_input, dummy_output,
 
             # Get the variance output and reshape it.
             var_output_flat = self.head_log_var_fn(trunk_output)
-            var_output = var_output_flat  # TODO - removed exp from output.
+            var_output = np.exp(var_output_flat)  # TODO - removed exp from output.
 
             # Unravel the output to the original shape.
             mean_output_shaped = unravel_output(mean_output)

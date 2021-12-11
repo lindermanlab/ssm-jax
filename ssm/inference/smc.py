@@ -378,7 +378,7 @@ def _smc_forward_pass(key,
     # Resample particles under the zeroth observation.
     initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
     initial_q_log_probability = initial_distribution.log_prob(initial_particles)
-    initial_r_log_probability = tilt(dataset, model, initial_particles, 0)
+    initial_r_log_probability = 0.0  # TODO: tilt(dataset, model, initial_particles, 0)
 
     # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
     initial_y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
@@ -405,6 +405,10 @@ def _smc_forward_pass(key,
     # accumulated_log_weights = initial_incremental_log_weights
     # initial_resampled = False
 
+    # # TODO - surpressing initialization.
+    # initial_resampled_particles *= 0.0
+    # accumulated_log_weights *= 0.0
+
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
         key, particles, accumulated_log_weights, q_state = carry
@@ -412,7 +416,7 @@ def _smc_forward_pass(key,
 
         # Compute the p and q distributions.
         p_dist = model.dynamics_distribution(particles)
-        q_dist, q_state = proposal(dataset, model, particles, t, p_dist, q_state)
+        q_dist, q_state = proposal(dataset, model, particles, t-1, p_dist, q_state)  # TODO - Shift q.
 
         # Sample the new particles.
         new_particles = q_dist.sample(seed=subkey1)
@@ -429,13 +433,21 @@ def _smc_forward_pass(key,
         #                           # range(1,T).
         #                           None)
 
-        # Compute the tilt value at the previous time step.
-        r_previous = tilt(dataset, model, particles, t-1)
+        # # Compute the tilt value at the previous time step.
+        # r_previous = tilt(dataset, model, particles, t-1)
+
+        # tTODO - this needs to be reverted once using initial resampling again.
+        # tTODO Was t-2 when we were using
+        r_previous = jax.lax.cond(t == 1,  # Was t=1 when we were using range(1,T).
+                                  lambda *args: np.zeros(num_particles, ),
+                                  lambda *args: tilt(dataset, model, particles, t-2),  # TODO Was t-1, or t-1?
+                                  # range(1,T).
+                                  None)
 
         # There is no tilt at the final timestep.
         r_current = jax.lax.cond(t == (len(dataset)-1),
                                  lambda *_args: np.zeros(len(new_particles)),
-                                 lambda *_args: tilt(dataset, model, new_particles, t),  # TODO Was t-1
+                                 lambda *_args: tilt(dataset, model, new_particles, t-1),  # TODO Was t-1, or t-1?
                                  None)
 
         # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.

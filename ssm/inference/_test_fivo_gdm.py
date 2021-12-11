@@ -126,12 +126,12 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
     dummy_tilt_output = nn_util.vectorize_pytree(dataset[0][-1], )
 
     # Define a more conservative initialization.
-    w_init = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    b_init = lambda *args: (0.1 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init, use_bias=False)  # TODO - not using bias.
+    w_init = lambda *args: (jax.nn.initializers.normal()(*args))
+    b_init = lambda *args: (jax.nn.initializers.normal()(*args))
+    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - not using bias.
 
     # head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)
-    b_init = lambda *args: (1.0 + (0.1 * jax.nn.initializers.normal()(*args)))
+    b_init = lambda *args: (jax.nn.initializers.normal()(*args))
     head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0], bias_init=b_init)
 
     # Check whether we have a valid number of tilts.
@@ -170,12 +170,13 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # Define a more conservative initialization.
-    w_init = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    b_init = lambda *args: (0.1 * jax.nn.initializers.normal()(*args))  # TODO - 0.1 *
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init, use_bias=False)  # TODO - not using bias.
+    w_init = lambda *args: (jax.nn.initializers.normal()(*args))
+    b_init = lambda *args: (jax.nn.initializers.normal()(*args))
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - not using bias.
 
+    # w_init = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
+    b_init = lambda *args: (jax.nn.initializers.normal()(*args))
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
-    b_init = lambda *args: (1.0 + (0.1 * jax.nn.initializers.normal()(*args)))
     head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=b_init)
 
     # Check whether we have a valid number of proposals.
@@ -202,7 +203,7 @@ def gdm_define_true_model_and_data(key):
     """
     latent_dim = 1
     emissions_dim = 1
-    num_trials = 10000
+    num_trials = 100000
     num_timesteps = 10
 
     # Create a more reasonable emission scale.
@@ -304,18 +305,18 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
 
         try:
             r_mean_b = r_param['head_mean_fn']['bias']  # ADD THIS BACK IF WE ARE USING THE BIAS
-            print('\t\tR mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_mean_b.flatten()]))
+            print('\t\tR mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(r_mean_b.flatten())]))
         except:
             pass
 
         try:
             r_lvar_w = r_param['head_log_var_fn']['kernel']
-            print('\t\tR var(log) weight (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_lvar_w.flatten()]))
+            print('\t\tR var(log) kernel (->0):', '  '.join(['{: >9.3f}'.format(_s) for _s in r_lvar_w.flatten()]))
         except:
             pass
 
         r_lvar_b = r_param['head_log_var_fn']['bias']
-        print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_lvar_b.flatten()]))
+        print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(r_lvar_b.flatten())]))
 
     if opt[1] is not None:
         q_param = opt[1].target._dict['params']
@@ -326,7 +327,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
 
         try:
             q_mean_b = q_param['head_mean_fn']['bias']  # ADD THIS BACK IF WE ARE USING THE BIAS
-            print('\t\tQ mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_mean_b.flatten()]))
+            print('\t\tQ mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(q_mean_b.flatten())]))
         except:
             pass
 
@@ -337,7 +338,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
             pass
 
         q_lvar_b = q_param['head_log_var_fn']['bias']
-        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_lvar_b.flatten()]))
+        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(q_lvar_b.flatten())]))
 
     print()
     print()
