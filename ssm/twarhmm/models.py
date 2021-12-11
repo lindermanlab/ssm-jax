@@ -35,7 +35,6 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
                  emission_prior: GaussianLinearRegressionPrior=None,
                  seed: jr.PRNGKey=None):
 
-
         assert time_constants.ndim == 1
         assert time_constants.min() > 0
         self.time_constants = time_constants

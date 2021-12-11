@@ -41,7 +41,6 @@ def em(model,
         posterior: the posterior over the inferred latent states
     """
 
-    # @debug_rejit
     @jit
     def update(model):
         posterior = model.e_step(data, covariates=covariates, metadata=metadata)
