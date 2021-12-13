@@ -149,7 +149,6 @@ class FactorialHMMPosterior:
         return cls(*children)
 
     def __getitem__(self, index):
-        print("called __getitem__ on FactorialHMMPosterior")
         return FactorialHMMPosterior(
             self._log_initial_state_probs[index],
             self._log_transition_matrices[index],

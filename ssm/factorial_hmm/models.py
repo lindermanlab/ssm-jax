@@ -31,7 +31,7 @@ class NormalFactorialHMM(FactorialHMM):
         values :math:`(0, ..., K_g-1)`.
 
         The emission mean is a sum of means associated with each group,
-        ..math:
+        .. math:
             \mathbb{E}[x_t \mid z_t ] = \sum_g \mu_{g,z_{tg}}
 
         For example, the emissions may be measurements from a home's power
