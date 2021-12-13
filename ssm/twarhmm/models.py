@@ -74,8 +74,10 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
             seed (jr.PRNGKey, optional): random seed. Defaults to None.
         """
 
-        assert time_constants.ndim == 1
-        assert time_constants.min() > 0
+        assert time_constants.ndim == 1, \
+            "You must specify an array of time constant values."
+        assert time_constants.min() > 0, \
+            "Time constants must be positive."
         self.time_constants = time_constants
 
         num_time_constants = len(time_constants)

@@ -123,7 +123,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         Gaussian linear regression where
 
         .. math:
-            dx_t \sim \mathcal{N}(\frac{1}{\tau_t}(A_{z_t} x_t + b_{z_t}), \frac{1}{\tau_t} Q_{z_t})
+            dx_t \sim \mathcal{N}(\frac{1}{\tau_t}(A_{z_t} x_{t-1} + b_{z_t}), \frac{1}{\tau_t} Q_{z_t})
 
         and :math:`dx_t = x_{t+1} - x_t`.
 
@@ -134,10 +134,10 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
 
         .. math:
             (1,
-             E[x_t x_t^\top / \tau_t],
-             E[x_t / \tau_t],
+             E[x_{t-1} x_{t-1}^\top / \tau_t],
+             E[x_{t-1} / \tau_t],
              E[1 / \tau_t],
-             E[dx_t x_t^\top],
+             E[dx_t x_{t-1}^\top],
              E[dx_t],
              E[\tau_t dx_t dx_t^\top])
 
