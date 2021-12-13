@@ -26,7 +26,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
 
         Optionally takes in a prior distribution.
 
-        ..math:
+        .. math:
             x_t \sim N((I + \frac{1}{\tau_t} A_{z_t}) x_{t-1} + \frac{1}{\tau_t} b_{z_t}, \frac{1}{\tau_t} Q_{z_t})
 
         Args:
@@ -116,7 +116,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         is that once we fix the time-warping constant \tau, the likelihood is just a
         Gaussian linear regression where
 
-        ..math:
+        .. math:
             dx_t \sim \mathcal{N}(\frac{1}{\tau_t}(A_{z_t} x_t + b_{z_t}), \frac{1}{\tau_t} Q_{z_t})
 
         and :math:`dx_t = x_{t+1} - x_t`.
@@ -126,7 +126,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         products between parameters (A, b, Q) and sufficient statistics, which are functions of \tau,
         x, and dx.
 
-        ..math:
+        .. math:
             (1,
              E[x_t x_t^\top / \tau_t],
              E[x_t / \tau_t],

@@ -41,7 +41,7 @@ class ExponentialFamilyDistribution:
     r"""An interface for exponential family distributions
     with the necessary functionality for MAP estimation.
 
-    ..math:
+    .. math:
         p(x) = h(x) \exp\{t(x)^\top \eta - A(\eta)}
 
     where

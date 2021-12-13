@@ -23,20 +23,25 @@ class FactorialEmissions(Emissions):
 @register_pytree_node_class
 class NormalFactorialEmissions(FactorialEmissions):
     """
-    x_t | \{z_{tj} \}_{j=1}^J ~ N(\sum_j m_{z_{tj}}, \sigma^2)
+    
     """
     def __init__(self, num_states: tuple,
                  means: (tuple or list)=None,
                  log_scale: float=0.0,
                  emissions_distribution: tfd.Normal=None,
                  emissions_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
-        """Normal Emissions for HMM.
+        r"""Normal Emissions for a Factorial HMM.
+        
+        The emission mean is a sum of means associated with each group.
+        
+        .. math:
+            x_t | \{z_{tj} \}_{j=1}^J ~ N(\sum_j m_{z_{tj}}, \sigma^2)
 
         Can be initialized by specifying parameters or by passing in a pre-initialized
         ``emissions_distribution`` object.
 
         Args:
-            num_states (int): number of discrete states
+            num_states (tuple): number of discrete latent states per group
             means (tuple or list, optional): state-dependent and group-dependent emission means. Defaults to None.
             variance (np.ndarray, optional): emission variance shared by all states
             emissions_distribution (ssmd.MultivariateNormalTriL, optional): initialized emissions distribution.
