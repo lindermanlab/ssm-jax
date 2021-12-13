@@ -204,7 +204,7 @@ def gdm_define_true_model_and_data(key):
     latent_dim = 1
     emissions_dim = 1
     num_trials = 100000
-    num_timesteps = 10
+    num_timesteps = 11
 
     # Create a more reasonable emission scale.
     dynamics_scale_tril = 1.0 * np.eye(latent_dim)
@@ -221,7 +221,9 @@ def gdm_define_true_model_and_data(key):
                              dynamics_scale_tril=dynamics_scale_tril,
                              dynamics_weights=true_dynamics_weights,
                              emission_weights=true_emission_weights,
-                             emission_scale_tril=emission_scale_tril)
+                             emission_scale_tril=emission_scale_tril,
+                             initial_state_scale_tril=np.ones((latent_dim, latent_dim)) * 0.000001,  # TODO - surpressing initialization.
+                             )
 
     # Sample some data.
     key, subkey = jr.split(key)
