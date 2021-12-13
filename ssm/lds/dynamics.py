@@ -4,6 +4,8 @@ from jax.tree_util import tree_map, register_pytree_node_class
 
 import ssm.distributions as ssmd
 
+from __future__ import annotations
+
 
 class Dynamics:
     """
@@ -33,11 +35,9 @@ class Dynamics:
         """
         raise NotImplementedError
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, dataset, posteriors) -> Dynamics:
         """Update the transition parameters in an M step given posteriors
         over the latent states.
-
-        Update is performed in place.
 
         Args:
             dataset (np.ndarray): the observed dataset with shape (B, T, D)
@@ -46,6 +46,9 @@ class Dynamics:
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
+                
+        Returns:
+            dynamics (Dynamics): updated dynamics object
         """
         # TODO: implement generic m-step
         raise NotImplementedError
@@ -116,7 +119,7 @@ class StationaryDynamics(Dynamics):
                batched_data,
                batched_posteriors,
                batched_covariates=None,
-               batched_metadata=None):
+               batched_metadata=None) -> StationaryDynamics:
 
         # Manually extract the expected sufficient statistics from posterior
         def compute_stats_and_counts(data, posterior, covariates, metadata):

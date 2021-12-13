@@ -6,6 +6,8 @@ tfd = tfp.distributions
 
 from ssm.hmm.initial import InitialCondition, StandardInitialCondition
 
+from __future__ import annotations
+
 @register_pytree_node_class
 class FactorialInitialCondition(InitialCondition):
     """
@@ -47,7 +49,7 @@ class FactorialInitialCondition(InitialCondition):
                 yield Root(ic.distribution())
         return tfd.JointDistributionCoroutine(model)
 
-    def m_step(self, data, posterior, covariates=None, metadata=None):
+    def m_step(self, data, posterior, covariates=None, metadata=None) -> FactorialInitialCondition:
 
         class DummyPosterior:
             def __init__(self, expected_initial_states) -> None:

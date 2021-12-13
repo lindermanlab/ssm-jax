@@ -13,6 +13,9 @@ from ssm.utils import Verbosity, auto_batch, ensure_has_batch_dim
 from ssm.distributions import MultivariateNormalBlockTridiag
 LDSPosterior = MultivariateNormalBlockTridiag
 
+from __future__ import annotations
+
+
 @register_pytree_node_class
 class LDS(SSM):
     def __init__(self,
@@ -114,10 +117,8 @@ class LDS(SSM):
                posterior: LDSPosterior,
                covariates=None,
                metadata=None,
-               key: jr.PRNGKey=None):
+               key: jr.PRNGKey=None) -> LDS:
         """Update the model in a (potentially approximate) M step.
-
-        Updates the model in place.
 
         Args:
             data (np.ndarray): observed data with shape (B, T, D)
@@ -127,6 +128,9 @@ class LDS(SSM):
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
             key (jr.PRNGKey, optional): random seed. Defaults to None.
+            
+        Returns:
+            lds (LDS): updated lds object
         """
         # self._initial_condition.m_step(dataset, posteriors)  # TODO initial dist needs prior
         self._dynamics = self._dynamics.m_step(data, posterior)

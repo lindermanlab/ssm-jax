@@ -7,6 +7,7 @@ tfd = tfp.distributions
 
 from ssm.hmm.transitions import Transitions
 
+from __future__ import annotations
 
 @register_pytree_node_class
 class FactorialTransitions(Transitions):
@@ -47,7 +48,7 @@ class FactorialTransitions(Transitions):
         return tuple(t.log_transition_matrices(data, covariates=covariates, metadata=metadata)
                      for t in self._transitions)
 
-    def m_step(self, data, posterior, covariates=None, metadata=None):
+    def m_step(self, data, posterior, covariates=None, metadata=None) -> FactorialTransitions:
 
         class DummyPosterior:
             def __init__(self, expected_transitions) -> None:

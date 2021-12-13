@@ -5,6 +5,9 @@ from jax.tree_util import register_pytree_node_class
 
 import ssm.distributions as ssmd
 
+from __future__ import annotations
+
+
 class InitialCondition:
     """
     Base class for initial state distributions of an LDS.
@@ -32,7 +35,7 @@ class InitialCondition:
         """
         raise NotImplementedError
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> InitialCondition:
         # TODO: implement generic m-step
         raise NotImplementedError
 
@@ -92,7 +95,7 @@ class StandardInitialCondition(InitialCondition):
         """
         return self._distribution
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> StandardInitialCondition:
         """Update the initial distribution in an M step given posteriors over the latent states.
 
         Update is performed in place.
@@ -104,6 +107,9 @@ class StandardInitialCondition(InitialCondition):
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
+                
+        Returns:
+            initial_condition (StandardInitialCondition): updated initial condition object
         """
         def compute_stats_and_counts(data, posterior):
             Ex = posterior.expected_states[0]

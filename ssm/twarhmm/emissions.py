@@ -10,6 +10,8 @@ from ssm.distributions.linreg import GaussianLinearRegression, GaussianLinearReg
 from ssm.factorial_hmm.emissions import FactorialEmissions
 from ssm.factorial_hmm.posterior import FactorialHMMPosterior
 
+from __future__ import annotations
+
 
 @register_pytree_node_class
 class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
@@ -74,7 +76,11 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
     def time_constants(self):
         return self._time_constants
 
-    def distribution(self, state: int, covariates: np.ndarray=None, metadata=None, history: np.ndarray=None) -> GaussianLinearRegression:
+    def distribution(self, 
+                     state: int, 
+                     covariates: np.ndarray=None,
+                     metadata=None, 
+                     history: np.ndarray=None) -> GaussianLinearRegression:
         """Returns the emissions distribution conditioned on a given state.
 
         Args:
@@ -109,8 +115,8 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
     def m_step(self, dataset: np.ndarray,
                posteriors: FactorialHMMPosterior,
                covariates=None,
-               metadata=None) -> None:
-        r"""Update the distribution (in-place) with an M step.
+               metadata=None) -> TimeWarpedAutoregressiveEmissions:
+        r"""Update the distribution with an M step.
 
         The parameters are (A_k, b_k, Q_k) for each of the discrete states. The key idea
         is that once we fix the time-warping constant \tau, the likelihood is just a
@@ -143,6 +149,9 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
                 of shape :math:`(\text{batch\_dim}, \text{num\_timesteps}, \text{emissions\_dim})`.
             posteriors (StationaryHMMPosterior): HMM posterior object
                 with batch_dim to match dataset.
+                
+        Returns:
+            emissions (TimeWarpedAutoregressiveEmissions): updated emissions object
         """
         # Collect statistics for a single time step
         def _suff_stats_single(expected_states, dx, x):

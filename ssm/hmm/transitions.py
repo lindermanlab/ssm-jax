@@ -8,6 +8,8 @@ tfd = tfp.distributions
 
 import ssm.distributions as ssmd
 
+from __future__ import annotations
+
 
 class Transitions:
     """
@@ -65,11 +67,9 @@ class Transitions:
         # return vmap(lambda i: self.distribution(i, covariates=covariates, metadata=metadata).log_prob(inds))(inds)
         raise NotImplementedError
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> None:
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> Transitions:
         """Update the transition parameters in an M step given posteriors
         over the latent states. 
-        
-        Update is performed in place.
 
         Args:
             dataset (np.ndarray): the observed dataset with shape (B, T, D)
@@ -78,6 +78,9 @@ class Transitions:
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
+                
+        Returns:
+            transitions (Transitions): updated transitions object
         """
         # TODO: implement generic m-step
         raise NotImplementedError
@@ -132,7 +135,7 @@ class StationaryTransitions(Transitions):
         log_P -= spsp.logsumexp(log_P, axis=1, keepdims=True)
         return log_P
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> StationaryTransitions:
         stats = np.sum(posteriors.expected_transitions, axis=0)
         stats += self._prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
@@ -211,7 +214,7 @@ class SimpleStickyTransitions(Transitions):
     def distribution(self, state, covariates=None, metadata=None):
         return self._distribution[state]
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> SimpleStickyTransitions:
 
         # Sum over trials to compute num_states x num_states matrix
         # where i, j holds the expected number of transitions from
