@@ -15,21 +15,17 @@ def _factorial_hmm_log_normalizer(log_initial_state_probs,
     groups of latent state variables with ``n_1, n_2, ..., n_m`` discrete
     states.
 
-    Parameters
-    ----------
-    log_initial_state_probs : (n_1, n_2, ..., n_m)-array
-        Log unnormalized state probalitities at the initial timestep.
-
-    log_transition_matrices : ((n_1, n_1)-array, (n_2, n_2)-array, ...)
-        Log transition matrices for ``m`` groups of variables.
-
-    log_likelihoods : (T, n_1, n_2, ..., n_m)-array
-        Log likelihoods of all states over ``T`` timesteps.
-
-    Returns
-    -------
-    log_normalizer : float
-        Log normalization constant.
+    Args:
+        log_initial_state_probs ((n_1, n_2, ..., n_m)-array): 
+            Log unnormalized state probalitities at the initial timestep.
+        log_transition_matrices ((n_1, n_1)-array, (n_2, n_2)-array, ...):
+            Log transition matrices for ``m`` groups of variables.
+        log_likelihoods ((T, n_1, n_2, ..., n_m)-array):
+            Log likelihoods of all states over ``T`` timesteps.
+            
+    Returns:
+        log_normalizer (float):
+            Log normalization constant.
     """
     # Compute the initial message for all combinations of states
     alpha_0 = log_initial_state_probs[0]
@@ -61,19 +57,31 @@ def _factorial_hmm_log_normalizer(log_initial_state_probs,
 
 @register_pytree_node_class
 class FactorialHMMPosterior:
-    """
-    TODO
-    """
     def __init__(self,
-                 log_initial_state_probs,
-                 log_likelihoods,
-                 log_transition_matrices,
-                 log_normalizer,
-                 filtered_potentials,
-                 expected_initial_states,
-                 expected_states,
-                 expected_transitions
+                 log_initial_state_probs: np.ndarray,
+                 log_likelihoods: np.ndarray,
+                 log_transition_matrices: np.ndarray,
+                 log_normalizer: np.ndarray,
+                 filtered_potentials: np.ndarray,
+                 expected_initial_states: np.ndarray,
+                 expected_states: np.ndarray,
+                 expected_transitions: np.ndarray
              ) -> None:
+        """Posterior over latent states in a factorial HMM.
+        
+        Generally, this object is initialized using the `infer` method.
+        See `infer` method for more detail on how these arguments are specified.
+
+        Args:
+            log_initial_state_probs (np.ndarray): initial state log prob
+            log_likelihoods (np.ndarray): log likelihoods
+            log_transition_matrices (np.ndarray): log transitions matrices
+            log_normalizer (np.ndarray): log normalizer
+            filtered_potentials (np.ndarray): filtered potentials
+            expected_initial_states (np.ndarray): expected initial states
+            expected_states (np.ndarray): expected states
+            expected_transitions (np.ndarray): expected transitions
+        """
         self._log_initial_state_probs = log_initial_state_probs
         self._log_transition_matrices = log_transition_matrices
         self._log_likelihoods = log_likelihoods
