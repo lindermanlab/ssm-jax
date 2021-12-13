@@ -16,6 +16,19 @@ class FactorialHMM(HMM):
                  initial_condition: FactorialInitialCondition,
                  transitions: FactorialTransitions,
                  emissions: FactorialEmissions):
+        r"""
+        Factorial HMM base class.
+
+        The model consists of :math:`G` discrete latent states
+        :math:`z_t = (z_{t1}, \ldots, z_{tG})`. The :math:`g`-th state takes
+        values :math:`(0, ..., K_g-1)`.
+
+        Args:
+            num_states (tuple or list): number of discrete latent states per group
+            initial_condition (FactorialInitialCondition): factorial initial state object
+            transitions (FactorialTransitions): factorial transitions object
+            emissions (FactorialEmissions): factorial emissions object
+        """
         super().__init__(num_states, initial_condition, transitions, emissions)
 
     @ensure_has_batch_dim()
