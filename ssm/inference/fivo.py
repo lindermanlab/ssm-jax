@@ -21,11 +21,6 @@ import ssm.utils as utils
 default_verbosity = Verbosity.DEBUG
 
 
-# TODO --------
-# 9ab82ef is a commit where GDM was kind of working.
-# TODO --------
-
-
 def do_fivo_sweep(_param_vals,
                   _key,
                   _rebuild_model,
@@ -71,12 +66,21 @@ def do_fivo_sweep(_param_vals,
     # Reconstruct the proposal.
     _proposal = _rebuild_proposal(_param_vals[1])
 
+    # Build the initial distribution from the zeroth proposal.
+    initial_distribution = lambda _dset, _model: _proposal(_dset,
+                                                           _model,
+                                                           np.zeros(_dataset.shape[-1], ),
+                                                           0,
+                                                           None,
+                                                           None)
+
     # Reconstruct the tilt.
     _tilt = _rebuild_tilt(_param_vals[2])
 
     # Do the sweep.
     _smc_posteriors = smc(_key, _model, _dataset,
                           proposal=_proposal,
+                          initialization_distribution=initial_distribution,
                           tilt=_tilt,
                           num_particles=_num_particles,
                           **_smc_kw_args)
@@ -178,7 +182,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.001, q_lr=0.001, r_lr=0.001):
+def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.003, q_lr=0.003, r_lr=0.003):
     """
     Build out the appropriate optimizer.
 

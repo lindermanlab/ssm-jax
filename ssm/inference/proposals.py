@@ -46,8 +46,8 @@ class IndependentGaussianProposal:
                  trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
 
         # Work out the number of proposals.
-        assert (n_proposals == 1) or (n_proposals == len(stock_proposal_input_without_q_state[0]) - 1), \
-            'Can only use a single proposal or as many proposals as there are transitions.'
+        assert (n_proposals == 1) or (n_proposals == len(stock_proposal_input_without_q_state[0])), \
+            'Can only use a single proposal or as many proposals as there are states.'
         self.n_proposals = n_proposals
 
         # Re-build the full input that will be provided.

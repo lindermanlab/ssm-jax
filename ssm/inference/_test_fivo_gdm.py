@@ -82,7 +82,6 @@ def gdm_define_test_model(key, true_model, free_parameters):
         # Overwrite all the params with the new values.
         default_params = utils.mutate_named_tuple_by_key(true_params, init_free_params)
 
-        # TODO - force mutate some of the parameters.
         # Mutate the free parameters.
         for _k in free_parameters:
             _base = getattr(default_params, _k)
@@ -180,7 +179,7 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=b_init)
 
     # Check whether we have a valid number of proposals.
-    n_props = len(dataset[0]) - 1  # TODO - one less.
+    n_props = len(dataset[0])
 
     # Define the proposal itself.
     proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
@@ -204,7 +203,7 @@ def gdm_define_true_model_and_data(key):
     latent_dim = 1
     emissions_dim = 1
     num_trials = 100000
-    num_timesteps = 11
+    num_timesteps = 10
 
     # Create a more reasonable emission scale.
     dynamics_scale_tril = 1.0 * np.eye(latent_dim)
@@ -222,7 +221,7 @@ def gdm_define_true_model_and_data(key):
                              dynamics_weights=true_dynamics_weights,
                              emission_weights=true_emission_weights,
                              emission_scale_tril=emission_scale_tril,
-                             initial_state_scale_tril=np.ones((latent_dim, latent_dim)) * 0.000001,  # TODO - surpressing initialization.
+                             # initial_state_scale_tril=np.ones((latent_dim, latent_dim)) * 0.000001,  # TODO - surpressing initialization.
                              )
 
     # Sample some data.

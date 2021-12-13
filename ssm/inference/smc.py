@@ -366,31 +366,25 @@ def _smc_forward_pass(key,
     key, subkey1, subkey2 = jr.split(key, num=3)
     initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
 
-    # Defaults:
-    initial_incremental_log_weights = np.zeros(num_particles)
-    initial_resampled_particles = initial_particles
-    accumulated_log_weights = np.zeros(num_particles)
-    initial_resampled = False
+    # Resample particles under the zeroth observation.
+    initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
+    initial_q_log_probability = initial_distribution.log_prob(initial_particles)
+    initial_r_log_probability = tilt(dataset, model, initial_particles, 0)
 
-    # # Resample particles under the zeroth observation.
-    # initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
-    # # initial_q_log_probability = initial_distribution.log_prob(initial_particles)
-    # # initial_r_log_probability = tilt(dataset, model, initial_particles, 0)
-    #
-    # # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
-    # initial_y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
-    #                                          lambda _: np.zeros((num_particles,)),
-    #                                          lambda _: model.emissions_distribution(initial_particles).log_prob(dataset[0]),
-    #                                          None)
-    #
-    # # Sum up all the terms.
-    # initial_incremental_log_weights = initial_p_log_probability - initial_q_log_probability + \
-    #                                   initial_r_log_probability + initial_y_log_probability
-    #
-    # # Do an initial resampling step.
-    # initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
-    #     do_resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
-    #                 resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
+    # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
+    initial_y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
+                                             lambda _: np.zeros((num_particles,)),
+                                             lambda _: model.emissions_distribution(initial_particles).log_prob(dataset[0]),
+                                             None)
+
+    # Sum up all the terms.
+    initial_incremental_log_weights = initial_p_log_probability - initial_q_log_probability + \
+                                      initial_r_log_probability + initial_y_log_probability
+
+    # Do an initial resampling step.
+    initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
+        do_resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
+                    resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
 
     # # Use this to no do an initial resampling step.
     # initial_distribution = model.initial_distribution()
@@ -402,6 +396,12 @@ def _smc_forward_pass(key,
     # accumulated_log_weights = initial_incremental_log_weights
     # initial_resampled = False
 
+    # # Defaults:
+    # initial_incremental_log_weights = np.zeros(num_particles)
+    # initial_resampled_particles = initial_particles
+    # accumulated_log_weights = np.zeros(num_particles)
+    # initial_resampled = False
+
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
         key, particles, accumulated_log_weights, q_state = carry
@@ -409,7 +409,7 @@ def _smc_forward_pass(key,
 
         # Compute the p and q distributions.
         p_dist = model.dynamics_distribution(particles)
-        q_dist, q_state = proposal(dataset, model, particles, t-1, p_dist, q_state)
+        q_dist, q_state = proposal(dataset, model, particles, t, p_dist, q_state)
 
         # Sample the new particles.
         new_particles = q_dist.sample(seed=subkey1)
@@ -418,29 +418,13 @@ def _smc_forward_pass(key,
         p_log_probability = p_dist.log_prob(new_particles)
         q_log_probability = q_dist.log_prob(new_particles)
 
-        # # tTODO - this needs to be reverted once using initial resampling again.
-        # tTODO Was t-2 when we were using
-        # r_previous = jax.lax.cond(t == 0,  # Was t=1 when we were using range(1,T).
-        #                           lambda *args: np.zeros(num_particles, ),
-        #                           lambda *args: tilt(dataset, model, particles, t-1),
-        #                           # range(1,T).
-        #                           None)
-
-        # # Compute the tilt value at the previous time step.
-        # r_previous = tilt(dataset, model, particles, t-1)
-
-        # tTODO - this needs to be reverted once using initial resampling again.
-        # tTODO Was t-2 when we were using
-        r_previous = jax.lax.cond(t == 1,  # Was t=1 when we were using range(1,T).
-                                  lambda *args: np.zeros(num_particles, ),
-                                  lambda *args: tilt(dataset, model, particles, t-2),  # TODO Was t-1, or t-1?
-                                  # range(1,T).
-                                  None)
+        # Assume there is a previous tilt.
+        r_previous = tilt(dataset, model, particles, t-1)
 
         # There is no tilt at the final timestep.
         r_current = jax.lax.cond(t == (len(dataset)-1),
                                  lambda *_args: np.zeros(len(new_particles)),
-                                 lambda *_args: tilt(dataset, model, new_particles, t-1),  # TODO Was t-1, or t-1?
+                                 lambda *_args: tilt(dataset, model, new_particles, t),
                                  None)
 
         # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
@@ -477,7 +461,7 @@ def _smc_forward_pass(key,
     _, (filtering_particles, log_weights, resampled, ancestors, q_states) = jax.lax.scan(
         smc_step,
         (key, initial_resampled_particles, accumulated_log_weights, initial_q_state),
-        np.arange(1, len(dataset)))  # TODO - this may need to be arange(0, len)
+        np.arange(1, len(dataset)))
 
     # Need to prepend the initial timestep.
     filtering_particles = np.concatenate((initial_resampled_particles[None, :], filtering_particles))
