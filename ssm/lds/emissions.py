@@ -1,3 +1,4 @@
+from __future__ import annotations
 import jax
 from jax._src.tree_util import tree_map
 import jax.numpy as np
@@ -9,8 +10,6 @@ tfd = tfp.distributions
 
 import ssm.distributions as ssmd
 from ssm.distributions import GaussianLinearRegression, glm
-
-from __future__ import annotations
 
 
 class Emissions:

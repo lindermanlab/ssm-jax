@@ -1,10 +1,9 @@
+from __future__ import annotations
 import jax.numpy as np
 from jax import vmap
 from jax.tree_util import tree_map, register_pytree_node_class
 
 import ssm.distributions as ssmd
-
-from __future__ import annotations
 
 
 class Dynamics:

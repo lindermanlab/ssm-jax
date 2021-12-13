@@ -1,3 +1,4 @@
+from __future__ import annotations
 import jax.numpy as np
 from jax.tree_util import register_pytree_node_class
 
@@ -6,7 +7,6 @@ tfd = tfp.distributions
 
 from ssm.hmm.initial import InitialCondition, StandardInitialCondition
 
-from __future__ import annotations
 
 @register_pytree_node_class
 class FactorialInitialCondition(InitialCondition):

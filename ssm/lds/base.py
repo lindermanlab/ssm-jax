@@ -1,3 +1,4 @@
+from __future__ import annotations
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
@@ -12,8 +13,6 @@ from ssm.utils import Verbosity, auto_batch, ensure_has_batch_dim
 
 from ssm.distributions import MultivariateNormalBlockTridiag
 LDSPosterior = MultivariateNormalBlockTridiag
-
-from __future__ import annotations
 
 
 @register_pytree_node_class

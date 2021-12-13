@@ -1,3 +1,4 @@
+from __future__ import annotations
 import jax.numpy as np
 import jax.scipy.special as spsp
 from jax import vmap
@@ -8,7 +9,6 @@ tfd = tfp.distributions
 
 import ssm.distributions as ssmd
 
-from __future__ import annotations
 
 
 class Transitions:

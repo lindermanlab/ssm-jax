@@ -1,3 +1,4 @@
+from __future__ import annotations
 from functools import partial
 import jax.numpy as np
 from jax import vmap, lax
@@ -8,8 +9,6 @@ from ssm.hmm.emissions import Emissions
 from ssm.hmm.posterior import StationaryHMMPosterior
 import ssm.distributions as ssmd
 tfd = tfp.distributions
-
-from __future__ import annotations
 
 
 @register_pytree_node_class

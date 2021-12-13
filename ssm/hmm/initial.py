@@ -1,10 +1,10 @@
+from __future__ import annotations
 import jax.numpy as np
 import jax.scipy.special as spsp
 from jax.tree_util import register_pytree_node_class
 
 import ssm.distributions as ssmd
 
-from __future__ import annotations
 
 class InitialCondition:
     """

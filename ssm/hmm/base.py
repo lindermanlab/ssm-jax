@@ -1,5 +1,6 @@
 """Module defining base model behavior for Hidden Markov Models (HMMs).
 """
+from __future__ import annotations
 from dataclasses import dataclass
 
 import jax.numpy as np
@@ -15,7 +16,6 @@ import ssm.hmm.transitions as transitions
 import ssm.hmm.emissions as emissions
 from ssm.hmm.posterior import StationaryHMMPosterior
 
-from __future__ import annotations
 
 
 @register_pytree_node_class

@@ -1,11 +1,10 @@
+from __future__ import annotations
 from jax._src.tree_util import tree_map
 import jax.numpy as np
 from jax import tree_util, vmap
 from jax.tree_util import register_pytree_node_class
 
 import ssm.distributions as ssmd
-
-from __future__ import annotations
 
 
 class InitialCondition:

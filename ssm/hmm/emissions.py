@@ -1,3 +1,4 @@
+from __future__ import annotations
 import jax.numpy as np
 from jax import vmap
 from jax.tree_util import register_pytree_node_class, tree_flatten, tree_unflatten
@@ -8,7 +9,6 @@ from tensorflow_probability.substrates import jax as tfp
 import ssm.distributions as ssmd
 tfd = tfp.distributions
 
-from __future__ import annotations
 
 
 class Emissions:

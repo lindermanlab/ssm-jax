@@ -1,3 +1,4 @@
+from __future__ import annotations
 from functools import partial
 import jax.numpy as np
 from jax.tree_util import tree_map, register_pytree_node_class
@@ -9,8 +10,6 @@ tfd = tfp.distributions
 from ssm.distributions.linreg import GaussianLinearRegression, GaussianLinearRegressionPrior
 from ssm.factorial_hmm.emissions import FactorialEmissions
 from ssm.factorial_hmm.posterior import FactorialHMMPosterior
-
-from __future__ import annotations
 
 
 @register_pytree_node_class
