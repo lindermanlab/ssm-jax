@@ -19,7 +19,6 @@ default_verbosity = Verbosity.DEBUG
 
 def smc(key,
         model,
-        num_datasets,
         dataset,
         initialization_distribution=None,
         proposal=None,
@@ -51,10 +50,6 @@ def smc(key,
 
         model (SSM object, No size):
             Defines the model.
-
-        num_datasets (int):
-            Pass in the number of datasets (independent SMC sweeps).  MUST SATISFY `num_datasets == len(dataset)`.
-            Allows for more efficient JIT compilation.
 
         dataset (np.array, (batch x time x state_dim) --or-- (time x state_dim)):
             Data to condition on.  If the dataset has three dimensions then the leading dimension will be vmapped over.
@@ -123,10 +118,6 @@ def smc(key,
     # Implement NAND using arithmetic.
     assert use_stop_gradient_resampling + use_resampling_gradients != 2, \
         "[Error]: Cannot use both resampling gradients and stop gradient resampling."
-
-    # Check we have the right number of datasets.
-    assert len(dataset) == num_datasets, \
-        "[Error]: Need to provide the correct number of datasets."
 
     # Assign defaults.
     if resampling_criterion is None:
@@ -418,7 +409,7 @@ def _smc_forward_pass(key,
 
         # Compute the p and q distributions.
         p_dist = model.dynamics_distribution(particles)
-        q_dist, q_state = proposal(dataset, model, particles, t, p_dist, q_state)  # TODO - Shift q.
+        q_dist, q_state = proposal(dataset, model, particles, t-1, p_dist, q_state)
 
         # Sample the new particles.
         new_particles = q_dist.sample(seed=subkey1)

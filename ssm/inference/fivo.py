@@ -75,7 +75,7 @@ def do_fivo_sweep(_param_vals,
     _tilt = _rebuild_tilt(_param_vals[2])
 
     # Do the sweep.
-    _smc_posteriors = smc(_key, _model, len(_dataset), _dataset,
+    _smc_posteriors = smc(_key, _model, _dataset,
                           proposal=_proposal,
                           tilt=_tilt,
                           num_particles=_num_particles,

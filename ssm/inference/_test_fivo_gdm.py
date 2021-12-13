@@ -126,12 +126,12 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
     dummy_tilt_output = nn_util.vectorize_pytree(dataset[0][-1], )
 
     # Define a more conservative initialization.
-    w_init = lambda *args: (jax.nn.initializers.normal()(*args))
-    b_init = lambda *args: (jax.nn.initializers.normal()(*args))
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - not using bias.
+    w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
+    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
+    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)
 
     # head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)
-    b_init = lambda *args: (jax.nn.initializers.normal()(*args))
+    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0], bias_init=b_init)
 
     # Check whether we have a valid number of tilts.
@@ -170,17 +170,17 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # Define a more conservative initialization.
-    w_init = lambda *args: (jax.nn.initializers.normal()(*args))
-    b_init = lambda *args: (jax.nn.initializers.normal()(*args))
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - not using bias.
+    w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
+    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
 
     # w_init = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
-    b_init = lambda *args: (jax.nn.initializers.normal()(*args))
+    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
     head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=b_init)
 
     # Check whether we have a valid number of proposals.
-    n_props = len(dataset[0])
+    n_props = len(dataset[0]) - 1  # TODO - one less.
 
     # Define the proposal itself.
     proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
