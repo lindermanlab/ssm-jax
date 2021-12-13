@@ -34,7 +34,7 @@ class NormalFactorialEmissions(FactorialEmissions):
         
         The emission mean is a sum of means associated with each group.
         
-        .. math:
+        .. math::
             x_t | \{z_{tj} \}_{j=1}^J ~ N(\sum_j m_{z_{tj}}, \sigma^2)
 
         Can be initialized by specifying parameters or by passing in a pre-initialized

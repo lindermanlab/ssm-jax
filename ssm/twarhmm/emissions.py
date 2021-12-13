@@ -27,7 +27,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
 
         Optionally takes in a prior distribution.
 
-        .. math:
+        .. math::
             x_t - x_{t-1} \mid x_{t-1}, z_t \sim \mathcal{N}\left(\tau_t^{-1} (A_{z_t} x_{t-1} + b_{z_t}), \tau_t^{-1} Q_{z_t} \right).
 
         Args:
@@ -35,15 +35,15 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
             time_constants (np.ndarray): discrete non-negative values for the possible time constants
             weights (np.ndarray, optional): state-based weight matrix for Gaussian linear regression
                 of shape :math:`(\text{num\_discrete\_states}, \text{emissions\_dim}, \text{emissions\_dim})`.
-                Note: dynamics are I + 1/\tau A where A are the weights.
+                Note: dynamics are :math:`I + \frac{1}{\tau} A` where :math:`A` are the weights.
                 Defaults to None.
             biases (np.ndarray, optional): state-based bias vector for Gaussian linear regression
                 of shape :math:`(\text{num\_discrete\_states}, \text{emissions\_dim})`.
-                Note: dynamics are 1/\tau b where b are the biases.
+                Note: dynamics are :math:`\frac{1}{\tau} b` where :math:`b` are the biases.
                 Defaults to None.
             scale_trils (np.ndarray, optional): state-based scale_trils for Gaussian linear regression
                 of shape :math:`(\text{num\_discrete\_states}, \text{emissions\_dim}, \text{emissions\_dim})`.
-                Note: scale_trils are 1/\tau chol(Q) where Q are the covariance matrices.
+                Note: scale_trils are :math:`\frac{1}{\tau} \texttt{chol}(Q)` where :math:`Q` are the covariance matrices.
                 Defaults to None.
             emissions_distribution_prior (ssmd.MatrixNormalInverseWishart, optional):
                 emissions prior distribution. Defaults to None.
@@ -121,7 +121,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         is that once we fix the time-warping constant \tau, the likelihood is just a
         Gaussian linear regression where
 
-        .. math:
+        .. math::
             dx_t \sim \mathcal{N}(\frac{1}{\tau_t}(A_{z_t} x_{t-1} + b_{z_t}), \frac{1}{\tau_t} Q_{z_t})
 
         and :math:`dx_t = x_{t+1} - x_t`.
@@ -131,7 +131,7 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         products between parameters (A, b, Q) and sufficient statistics, which are functions of \tau,
         x, and dx.
 
-        .. math:
+        .. math::
             (1,
              E[x_{t-1} x_{t-1}^\top / \tau_t],
              E[x_{t-1} / \tau_t],

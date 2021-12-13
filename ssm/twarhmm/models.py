@@ -34,20 +34,20 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
                  emission_covariances: np.ndarray=None,
                  emission_prior: GaussianLinearRegressionPrior=None,
                  seed: jr.PRNGKey=None):
-        """Gaussian time-warped autoregressive HMM.
+        r"""Gaussian time-warped autoregressive HMM.
         
         This model has the following likelihood,
 
-        .. math:
+        .. math::
             x_t - x_{t-1} \mid x_{t-1}, z_t \sim \mathcal{N}\left(\tau_t^{-1} (A_{z_t} x_{t-1} + b_{z_t}), \tau_t^{-1} Q_{z_t} \right).
 
         When the time constant is small, dynamics are faster. When the time constant is large, dynamics are slower.
 
-        Technically, the time-warped ARHMM is a special case of a _factorial_ HMM, 
+        Technically, the time-warped ARHMM is a special case of a `factorial` HMM, 
         since we model the time-constants as taking values in a discrete set and following
         a Markov transition model,
 
-        .. math:
+        .. math::
             p(z_t, \tau_t \mid z_{t-1}, \tau_{t-1}) = p(z_t \mid z_{t-1}) \times p(\tau_t \mid \tau_{t-1})
 
         Args:
@@ -62,12 +62,12 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
             time_constant_stay_probability (float, optional): defines transition matrix for time constants.
                 Probability of using the same time constant as in the previous time step. Other transition
                 probabilities are calculated uniformly. Defaults to 0.98.
-            emission_weights (np.ndarray, optional): emission weights ..math`A_{z_t}` with shape
+            emission_weights (np.ndarray, optional): emission weights :math:`A_{z_t}` with shape
                 :math:`(\text{num\_discrete\_states}, \text{emissions\_dim}, \text{emissions\_dim} * \text{num\_lags})`.
                 Defaults to None.
-            emission_biases (np.ndarray, optional): emission biases ..math`b_{z_t}`
+            emission_biases (np.ndarray, optional): emission biases :math:`b_{z_t}`
                 with shape :math:`(\text{num\_discrete\_states}, \text{emissions\_dim})`. Defaults to None.
-            emission_covariances (np.ndarray, optional): emission covariance ..math`Q_{z_t}`
+            emission_covariances (np.ndarray, optional): emission covariance :math:`Q_{z_t}`
                 with shape :math:`(\text{num\_discrete\_states}, \text{emissions\_dim}, \text{emissions\_dim})`.
                 Defaults to None.
             emission_prior (GaussianLinearRegressionPrior, optional): prior on emissions. Defaults to None.

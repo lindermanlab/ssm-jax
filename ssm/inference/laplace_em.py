@@ -17,7 +17,7 @@ def _compute_laplace_mean(model, x0, data, method="L-BFGS", num_iters=50, learni
 
     Here, we seek to find
 
-    .. math:
+    .. math::
         \\argmax_{x_{1:T}} \log p(x_{1:T}, y_{1:T})
 
     where :math:`y_{1:T}` is fixed. It turns out this objective is a concave function.

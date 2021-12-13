@@ -31,8 +31,9 @@ class NormalFactorialHMM(FactorialHMM):
         values :math:`(0, ..., K_g-1)`.
 
         The emission mean is a sum of means associated with each group,
-        .. math:
-            \mathbb{E}[x_t \mid z_t ] = \sum_g \mu_{g,z_{tg}}
+
+        .. math::
+            \mathbb{E} \left[x_t \mid z_t \right] = \sum_g \mu_{g,z_{tg}}
 
         For example, the emissions may be measurements from a home's power
         meter and the groups may correspond to appliances, which may be either
@@ -43,16 +44,16 @@ class NormalFactorialHMM(FactorialHMM):
         Args:
             num_states (tuple or list): number of discrete latent states per group
             initial_state_probs (np.ndarray, optional): initial state probabilities
-                with shape :math:`(\text{num_states},)`. Defaults to None.
+                with shape :math:`(\text{num\_states},)`. Defaults to None.
             transitions (Transitions, optional): object specifying transitions
                 Defaults to None. If specified, then `transition_matrix` is ignored.
             transition_matrix (np.ndarray, optional): transition matrix
-                with shape :math:`(\text{num_states}, \text{num_states})`.
+                with shape :math:`(\text{num\_states}, \text{num\_states})`.
                 Defaults to None. Only used if `transitions` is None.
             emission_means (np.ndarray, optional): specifies emission means
-                with shape :math:`(\text{num_states}, \text{emission_dims})`. Defaults to None.
+                with shape :math:`(\text{num\_states}, \text{emission\_dims})`. Defaults to None.
             emission_covariances (np.ndarray, optional): specifies emissions covariances
-                with shape :math:`(\text{num_states}, \text{emission_dims}, \text{emission_dims})`.
+                with shape :math:`(\text{num\_states}, \text{emission\_dims}, \text{emission\_dims})`.
                 Defaults to None.
             seed (jr.PRNGKey, optional): random seed. Defaults to None.
         """

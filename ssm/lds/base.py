@@ -26,11 +26,11 @@ class LDS(SSM):
 
         Args:
             num_states (int): number of discrete states
-            initial_condition (initial.InitialCondition):
+            initial_condition (ssm.lds.initial.InitialCondition):
                 initial condition object defining :math:`p(z_1)`
-            transitions (transitions.Transitions):
+            transitions (ssm.lds.transitions.Transitions):
                 transitions object defining :math:`p(z_t|z_{t-1})`
-            emissions (emissions.Emissions):
+            emissions (ssm.lds.emissions.Emissions):
                 emissions ojbect defining :math:`p(x_t|z_t)`
         """
         self._initial_condition = initial_condition

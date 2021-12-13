@@ -155,7 +155,7 @@ class SSM(object):
              metadata=None,
              num_samples=1):
         """
-        Compute an _evidence lower bound_ (ELBO) using the joint probability and an
+        Compute an evidence lower bound (ELBO) using the joint probability and an
         approximate posterior :math:`q(x) \\approx p(x | y)`:
 
         .. math:
