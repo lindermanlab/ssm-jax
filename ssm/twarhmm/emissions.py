@@ -22,18 +22,18 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
                  biases: np.ndarray=None,
                  scale_trils: np.ndarray=None,
                  emissions_distribution_prior: GaussianLinearRegressionPrior=None) -> None:
-        r"""Emissions class for a Time-Warped Autoregressive HMM (TWAR-HMM).
+        r"""Emissions class for a Time-Warped Autoregressive HMM (TWARHMM).
 
-        Note: We (currently) only support lag-1 AR-HMMs.
+        Note: We (currently) only support lag-1 ARHMMs.
 
         Optionally takes in a prior distribution.
 
         .. math:
-            x_t \sim N((I + \frac{1}{\tau_t} A_{z_t}) x_{t-1} + \frac{1}{\tau_t} b_{z_t}, \frac{1}{\tau_t} Q_{z_t})
+            x_t - x_{t-1} \mid x_{t-1}, z_t \sim \mathcal{N}\left(\tau_t^{-1} (A_{z_t} x_{t-1} + b_{z_t}), \tau_t^{-1} Q_{z_t} \right).
 
         Args:
-            num_states (int): number of discrete states
-            time_constants (np.ndarray): array of non-negative time constants
+            num_discrete_states (int): number of discrete latent states
+            time_constants (np.ndarray): discrete non-negative values for the possible time constants
             weights (np.ndarray, optional): state-based weight matrix for Gaussian linear regression
                 of shape :math:`(\text{num\_discrete\_states}, \text{emissions\_dim}, \text{emissions\_dim})`.
                 Note: dynamics are I + 1/\tau A where A are the weights.

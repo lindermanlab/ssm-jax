@@ -52,7 +52,7 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
 
         Args:
             num_discrete_states (int): number of discrete latent states
-            time_constants (np.ndarray): discrete values for the possible time constants.
+            time_constants (np.ndarray): discrete non-negative values for the possible time constants.
             num_emission_dims (int, optional): emissions dimensionality. Defaults to None.
             initial_state_probs (np.ndarray, optional): initial discrete state probabilities
                 with shape :math:`(\text{num\_discrete\_states},)`. Defaults to None.
