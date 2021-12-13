@@ -193,7 +193,7 @@ class GaussianLDS(LDS):
             - lp (float): The marginal log likelihood of the data.
         """
         if posterior is None:
-            posterior = self.infer_posterior(data)
+            posterior = self.e_step(data)
         states = posterior.mean()
         lps = self.log_probability(states, data) - posterior.log_prob(states)
         return lps
