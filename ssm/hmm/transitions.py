@@ -1,9 +1,14 @@
+from __future__ import annotations
 import jax.numpy as np
 import jax.scipy.special as spsp
 from jax import vmap
 from jax.tree_util import register_pytree_node_class
 
+from tensorflow_probability.substrates import jax as tfp
+tfd = tfp.distributions
+
 import ssm.distributions as ssmd
+
 
 
 class Transitions:
@@ -62,11 +67,9 @@ class Transitions:
         # return vmap(lambda i: self.distribution(i, covariates=covariates, metadata=metadata).log_prob(inds))(inds)
         raise NotImplementedError
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> None:
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> Transitions:
         """Update the transition parameters in an M step given posteriors
         over the latent states. 
-        
-        Update is performed in place.
 
         Args:
             dataset (np.ndarray): the observed dataset with shape (B, T, D)
@@ -75,6 +78,9 @@ class Transitions:
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
+                
+        Returns:
+            transitions (Transitions): updated transitions object
         """
         # TODO: implement generic m-step
         raise NotImplementedError
@@ -129,11 +135,12 @@ class StationaryTransitions(Transitions):
         log_P -= spsp.logsumexp(log_P, axis=1, keepdims=True)
         return log_P
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> StationaryTransitions:
         stats = np.sum(posteriors.expected_transitions, axis=0)
         stats += self._prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
         self._distribution = ssmd.Categorical.from_params(conditional.mode())
+        return self
 
 
 @register_pytree_node_class
@@ -158,7 +165,7 @@ class SimpleStickyTransitions(Transitions):
         # If the transition matrix is given, recompute it given stay_probability.
         if transition_distribution is None:
             assert (stay_probability >= 0) and (stay_probability <= 1)
-            self.stay_probability = stay_probability
+            self.stay_probability = np.float32(stay_probability)  # prevent weak typing
             self._distribution = ssmd.Categorical(
                 logits=self._recompute_log_transition_matrix()
             )
@@ -174,14 +181,14 @@ class SimpleStickyTransitions(Transitions):
         self._prior = transition_distribution_prior
 
     def tree_flatten(self):
-        children = (self._distribution, self._prior)
-        aux_data = (self.num_states, self.stay_probability)
+        children = (self.stay_probability, self._distribution, self._prior)
+        aux_data = self.num_states
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        num_states, stay_probability = aux_data
-        distribution, prior = children
+        num_states = aux_data
+        stay_probability, distribution, prior = children
         return cls(num_states, stay_probability,
                    transition_distribution=distribution,
                    transition_distribution_prior=prior)
@@ -207,7 +214,7 @@ class SimpleStickyTransitions(Transitions):
     def distribution(self, state, covariates=None, metadata=None):
         return self._distribution[state]
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> SimpleStickyTransitions:
 
         # Sum over trials to compute num_states x num_states matrix
         # where i, j holds the expected number of transitions from
@@ -234,3 +241,4 @@ class SimpleStickyTransitions(Transitions):
             logits=self._recompute_log_transition_matrix()
         )
 
+        return self
