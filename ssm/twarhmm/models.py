@@ -51,22 +51,24 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
             p(z_t, \tau_t \mid z_{t-1}, \tau_{t-1}) = p(z_t \mid z_{t-1}) \times p(\tau_t \mid \tau_{t-1})
 
         Args:
-            num_discrete_states (int): number of discrete states
+            num_discrete_states (int): number of discrete latent states
             time_constants (np.ndarray): discrete values for the possible time constants.
             num_emission_dims (int, optional): emissions dimensionality. Defaults to None.
-            initial_state_probs (np.ndarray, optional): initial state probabilities
-                with shape :math:`(\text{num\_states},)`. Defaults to None.
-            discrete_state_transition_matrix (np.ndarray, optional): transition matrix
-                with shape :math:`(\text{num\_states}, \text{num\_states})`.
+            initial_state_probs (np.ndarray, optional): initial discrete state probabilities
+                with shape :math:`(\text{num\_discrete\_states},)`. Defaults to None.
+            discrete_state_transition_matrix (np.ndarray, optional): transition matrix for discrete states
+                with shape :math:`(\text{num\_discrete\_states}, \text{num\_discrete\_states})`.
                 Defaults to None.
-            time_constant_stay_probability (float, optional): [description]. Defaults to 0.98.
+            time_constant_stay_probability (float, optional): defines transition matrix for time constants.
+                Probability of using the same time constant as in the previous time step. Other transition
+                probabilities are calculated uniformly. Defaults to 0.98.
             emission_weights (np.ndarray, optional): emission weights ..math`A_{z_t}` with shape
-                :math:`(\text{num\_states}, \text{emissions\_dim}, \text{emissions\_dim} * \text{num\_lags})`.
+                :math:`(\text{num\_discrete\_states}, \text{emissions\_dim}, \text{emissions\_dim} * \text{num\_lags})`.
                 Defaults to None.
             emission_biases (np.ndarray, optional): emission biases ..math`b_{z_t}`
-                with shape :math:`(\text{num\_states}, \text{emissions\_dim})`. Defaults to None.
+                with shape :math:`(\text{num\_discrete\_states}, \text{emissions\_dim})`. Defaults to None.
             emission_covariances (np.ndarray, optional): emission covariance ..math`Q_{z_t}`
-                with shape :math:`(\text{num\_states}, \text{emissions\_dim}, \text{emissions\_dim})`.
+                with shape :math:`(\text{num\_discrete\_states}, \text{emissions\_dim}, \text{emissions\_dim})`.
                 Defaults to None.
             emission_prior (GaussianLinearRegressionPrior, optional): prior on emissions. Defaults to None.
             seed (jr.PRNGKey, optional): random seed. Defaults to None.
