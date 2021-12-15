@@ -11,6 +11,8 @@ import jax.numpy as np
 import matplotlib.pyplot as plt
 from jax import random as jr
 from flax import optim
+from copy import deepcopy as dc
+import numpy as onp
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity
@@ -67,12 +69,15 @@ def do_fivo_sweep(_param_vals,
     _proposal = _rebuild_proposal(_param_vals[1])
 
     # Build the initial distribution from the zeroth proposal.
-    initial_distribution = lambda _dset, _model: _proposal(_dset,
-                                                           _model,
-                                                           np.zeros(_dataset.shape[-1], ),
-                                                           0,
-                                                           None,
-                                                           None)
+    if _proposal is not None:
+        initial_distribution = lambda _dset, _model: _proposal(_dset,
+                                                               _model,
+                                                               np.zeros(_dataset.shape[-1], ),
+                                                               0,
+                                                               None,
+                                                               None)
+    else:
+        initial_distribution = _proposal
 
     # Reconstruct the tilt.
     _tilt = _rebuild_tilt(_param_vals[2])
@@ -105,7 +110,7 @@ def get_params_from_opt(_opt):
         - Tuple:            Tuple of parameter values defined by the objects in obs (model, proposal).
 
     """
-    return tuple((_o.target if _o is not None else None) for _o in _opt)
+    return list((_o.target if _o is not None else None) for _o in _opt)
 
 
 def rebuild_model_fn(_params_in, _default_model):
@@ -220,4 +225,77 @@ def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.003, q_
 
     opt = [p_opt, q_opt, r_opt]
     return opt
+
+
+def log_params(_param_hist, _cur_params, _cur_lml, _cur_fivo, _cur_em, _step):
+    """
+    Parse the parameters and store them for printing.
+
+    Args:
+        _param_hist:
+        _cur_params:
+
+    Returns:
+
+    """
+
+    # MODEL.
+    if _cur_params[0] is not None:
+        _p = _cur_params[0]._asdict()
+        _p_flat = {}
+        for _k in _p.keys():
+            _p_flat[_k] = dc(onp.array(_p[_k].flatten()))
+        _param_hist[0].append(_p_flat)
+    else:
+        _param_hist[0].append(None)
+
+    # _prop_dict = {'head_mean_kernel': _cur_params[1]._dict['params']['head_mean_fn']['kernel'].flatten(),
+    #               'head_mean_bias': _cur_params[1]._dict['params']['head_mean_fn']['bias'].flatten(),
+    #               'head_var_bias': np.exp(_cur_params[1]._dict['params']['head_log_var_fn']['bias'])}
+    # _param_hist[1].append(_prop_dict)
+    #
+    # _tilt_dict = {'head_mean_kernel': _cur_params[2]._dict['params']['head_mean_fn']['kernel'].flatten(),
+    #               'head_mean_bias': _cur_params[2]._dict['params']['head_mean_fn']['bias'].flatten(),
+    #               'head_var_bias': np.exp(_cur_params[2]._dict['params']['head_log_var_fn']['bias'])}
+    # _param_hist[2].append(_tilt_dict)
+
+    # PROPOSAL.
+    if _cur_params[1] is not None:
+        _p = _cur_params[1]['params']._dict
+        _p_flat = {}
+        for _ko in _p.keys():
+            for _ki in _p[_ko].keys():
+                _k = _ko + '_' + _ki
+                if ('var' in _k) and ('bias' in _k):
+                    _p_flat[_k + '_(EXP)'] = onp.array(np.exp(_p[_ko][_ki]))
+                else:
+                    _p_flat[_k] = onp.array(_p[_ko][_ki])
+                # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+        _param_hist[1].append(_p_flat)
+    else:
+        _param_hist[1].append(None)
+
+    # TILT.
+    if _cur_params[2] is not None:
+        _p = _cur_params[2]['params']._dict
+        _p_flat = {}
+        for _ko in _p.keys():
+            for _ki in _p[_ko].keys():
+                _k = _ko + '_' + _ki
+                if ('var' in _k) and ('bias' in _k):
+                    _p_flat[_k + '_(EXP)'] = onp.array(np.exp(_p[_ko][_ki]))
+                else:
+                    _p_flat[_k] = onp.array(_p[_ko][_ki])
+                # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+        _param_hist[2].append(_p_flat)
+    else:
+        _param_hist[2].append(None)
+
+    # Add the loss terms.
+    _param_hist[3].append(dc(_cur_lml))
+    _param_hist[4].append(dc(_cur_fivo))
+    _param_hist[5].append(dc(_cur_em))
+    _param_hist[6].append(dc(_step))
+
+    return _param_hist
 

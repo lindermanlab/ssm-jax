@@ -16,14 +16,7 @@ import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 
 
-def gdm_define_test(key):
-
-    proposal_structure = 'DIRECT'   # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
-    tilt_structure = 'DIRECT'     # {'DIRECT', 'NONE'/None/'BOOTSTRAP'}
-
-    # Define the parameter names that we are going to learn.
-    # This has to be a tuple of strings that index which args we will pull out.
-    free_parameters = ('dynamics_bias', )
+def gdm_define_test(key, free_parameters, proposal_structure, tilt_structure):
 
     # Define the true model.
     key, subkey = jr.split(key)
@@ -86,7 +79,7 @@ def gdm_define_test_model(key, true_model, free_parameters):
         for _k in free_parameters:
             _base = getattr(default_params, _k)
             key, subkey = jr.split(key)
-            new_val = {_k: _base + (2.0 * jr.normal(key=subkey, shape=_base.shape))}
+            new_val = {_k: _base + (10.0 * jr.normal(key=subkey, shape=_base.shape))}
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
         # Build out a new model using these values.
@@ -180,7 +173,7 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
 
     # Check whether we have a valid number of proposals.
     n_props = len(dataset[0])
-
+    plt.figure()
     # Define the proposal itself.
     proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
                                                      stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
@@ -207,7 +200,7 @@ def gdm_define_true_model_and_data(key):
 
     # Create a more reasonable emission scale.
     dynamics_scale_tril = 1.0 * np.eye(latent_dim)
-    emission_scale_tril = 1.0 * np.eye(emissions_dim)
+    emission_scale_tril = 0.1 * np.eye(emissions_dim)  # TODO - made observations tighter.
     true_dynamics_weights = np.eye(latent_dim)
     true_emission_weights = np.eye(emissions_dim)
 
@@ -221,7 +214,6 @@ def gdm_define_true_model_and_data(key):
                              dynamics_weights=true_dynamics_weights,
                              emission_weights=true_emission_weights,
                              emission_scale_tril=emission_scale_tril,
-                             # initial_state_scale_tril=np.ones((latent_dim, latent_dim)) * 0.000001,  # TODO - surpressing initialization.
                              )
 
     # Sample some data.
@@ -240,7 +232,7 @@ def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_pa
     fsize = (12, 8)
     idx_to_str = lambda _idx: ['Model (p): ', 'Proposal (q): ', 'Tilt (r): '][_idx]
 
-    for _p, _hist in enumerate(_param_hist):
+    for _p, _hist in enumerate(_param_hist[:3]):
 
         if _hist[0] is not None:
             if len(_hist[0]) > 0:
