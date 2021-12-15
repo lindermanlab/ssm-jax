@@ -718,7 +718,12 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
         "tab:orange",
         "tab:green",
         "tab:red",
-        "tab:purple"
+        "tab:purple",
+        "tab:brown",
+        "tab:pink",
+        "tab:gray",
+        "tab:olive",
+        "tab:cyan"
     ]
 
     gen_label = lambda _k, _s: _s if _k == 0 else None

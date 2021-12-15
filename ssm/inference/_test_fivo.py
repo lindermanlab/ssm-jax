@@ -308,12 +308,13 @@ def do_config():
     # Set up the experiment.
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', default=default_seed, type=int)
-    parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
+    parser.add_argument('--log-group', default='debug-1', type=str)               # {'debug', 'gdm-v1.0'}
 
-    parser.add_argument('--free-parameters', default='dynamics_bias', type=str) # CSV.
-    parser.add_argument('--proposal-structure', default='BOOTSTRAP', type=str)     # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
-    parser.add_argument('--tilt-structure', default='NONE', type=str)         # {'DIRECT', 'NONE'/None}
+    parser.add_argument('--proposal-structure', default='DIRECT', type=str)     # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {'DIRECT', 'NONE'/None}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
+
+    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.
 
     config = parser.parse_args().__dict__
 
@@ -328,9 +329,9 @@ def do_config():
         'sweep_test_particles': 10,
 
         # Define the parameters to be used during optimization.
-        'num_particles': 10,
-        'opt_steps': 20000,
-        'datasets_per_batch': 8,
+        'num_particles': 25,
+        'opt_steps': 50000,
+        'datasets_per_batch': 16,
 
         'load_path': None,  # './params_tmp.p',  # './params_tmp.p'  # './params_tmp.p'  # {None, './params_tmp.p'}.
         'save_path': None,  # './params_tmp.p'  # {None, './params_tmp.p'}.
@@ -586,6 +587,8 @@ def main():
                           'params_p_pred': param_hist[0][-1],
                           'params_q_pred': param_hist[1][-1],
                           'params_r_pred': param_hist[2][-1],
+                          'pred_fivo_bound': pred_fivo_bound_to_print,
+                          'pred_lml': pred_lml_to_print,
                           'small_lml_variance_bpf_true': np.var(np.asarray(bpf),),
                           'small_lml_mean_em_true': em_log_marginal_likelihood,
                           'small_lml_mean_bpf_true': true_lml,
@@ -595,16 +598,16 @@ def main():
                           }
                 log_to_wandb(to_log, _epoch=_step)
 
+        # # Do some final validation.
+        # _final_validation(env,
+        #                   opt,
+        #                   dataset[:env.config.num_val_datasets],
+        #                   true_model,
+        #                   rebuild_model_fn,
+        #                   rebuild_prop_fn,
+        #                   rebuild_tilt_fn,
+        #                   key)
 
-        # Do some final validation.
-        _final_validation(env,
-                          opt,
-                          dataset[:env.config.num_val_datasets],
-                          true_model,
-                          rebuild_model_fn,
-                          rebuild_prop_fn,
-                          rebuild_tilt_fn,
-                          key)
 
 if __name__ == '__main__':
     main()
