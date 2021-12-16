@@ -5,6 +5,7 @@ from jax import random as jr
 import flax.linen as nn
 from typing import NamedTuple
 from copy import deepcopy as dc
+from tensorflow_probability.substrates.jax import distributions as tfd
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
@@ -33,6 +34,9 @@ def gdm_define_test(key, free_parameters, proposal_structure, tilt_structure):
     # Define the tilt.
     key, subkey = jr.split(key)
     tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, dataset, tilt_structure)
+
+    # TODO test.
+    gdm_get_true_target_marginal(model, dataset)
 
     # Return this big pile of stuff.
     ret_model = (true_model, true_states, dataset)
@@ -187,6 +191,43 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     return proposal, proposal_params, rebuild_prop_fn
 
 
+def gdm_get_true_target_marginal(model, data):
+    """
+    Take in a model and some data and return the tfd distribution representing the marginals of true posterior.
+    Args:
+        model:
+        data:
+
+    Returns:
+
+    """
+
+    # TODO - this assumes that `\alpha = 0`.
+
+    assert len(data.shape) == 3
+
+    T = data.shape[1] - 1
+    t = np.arange(0, T + 1)
+    sigma_p_sq = model.initial_covariance.squeeze()
+    sigma_f_sq = model.dynamics_noise_covariance.squeeze()
+    sigma_x_sq = model.emissions_noise_covariance.squeeze()
+    mu_p = model.initial_mean.squeeze()
+    obs = data[:, -1, :].squeeze()
+
+    precision_1 = 1.0 / (sigma_p_sq + t * sigma_f_sq)
+    precision_2 = 1.0 / (sigma_x_sq + (T - t) * sigma_f_sq)
+
+    sigma_sq = 1.0 / (precision_1 + precision_2)
+    mu = (((mu_p * precision_1) + (np.expand_dims(obs, 1) * precision_2)) * sigma_sq)
+
+    dist = tfd.MultivariateNormalDiag(loc=mu, scale_diag=np.sqrt(sigma_sq))
+
+    assert dist.batch_shape == data.shape[0]
+    assert dist.event_shape == data.shape[1]
+
+    return dist
+
+
 def gdm_define_true_model_and_data(key):
     """
 
@@ -196,7 +237,7 @@ def gdm_define_true_model_and_data(key):
     latent_dim = 1
     emissions_dim = 1
     num_trials = 100000
-    num_timesteps = 10
+    T = 9  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
     # Create a more reasonable emission scale.
     dynamics_scale_tril = 1.0 * np.eye(latent_dim)
@@ -220,7 +261,7 @@ def gdm_define_true_model_and_data(key):
 
     # Sample some data.
     key, subkey = jr.split(key)
-    true_states, dataset = true_model.sample(key=subkey, num_steps=num_timesteps, num_samples=num_trials)
+    true_states, dataset = true_model.sample(key=subkey, num_steps=T+1, num_samples=num_trials)
 
     # For the GDM example we zero out all but the last elements.
     dataset = dataset.at[:, :-1].set(np.nan)
@@ -260,6 +301,8 @@ def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_pa
                     plt.grid(True)
                     plt.tight_layout()
                     plt.pause(0.00001)
+
+                plt.savefig('./param_{}.pdf'.format(_p))
 
     return param_figs
 

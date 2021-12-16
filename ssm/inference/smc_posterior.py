@@ -204,6 +204,10 @@ class SMCPosterior(tfd.Distribution):
     def log_normalizer(self):
         return self._log_marginal_likelihood
 
+    @property
+    def weighted_smoothing_particles(self):
+        return self._smoothing_particles
+
     def _gen_dist(self):
         """
         TODO - This function generates the smoothing distribution as a TFP object.  This is kind clunky though.
