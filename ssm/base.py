@@ -155,7 +155,7 @@ class SSM(object):
              metadata=None,
              num_samples=1):
         """
-        Compute an _evidence lower bound_ (ELBO) using the joint probability and an
+        Compute an evidence lower bound (ELBO) using the joint probability and an
         approximate posterior :math:`q(x) \\approx p(x | y)`:
 
         .. math:
@@ -163,7 +163,7 @@ class SSM(object):
 
         While in some cases the expectation can be computed in closed form, in
         general we will approximate it with ordinary Monte Carlo.
-        
+
         Args:
             key (jr.PRNGKey): random seed
             data (PyTree): observed data with leaf shape ([B, T, D])
@@ -172,10 +172,10 @@ class SSM(object):
             metadata (PyTree, optional): optional metadata with leaf shape ([B, ...]).
                 Defaults to None.
             num_samples (int): number of samples to evaluate the ELBO
-    
+
         Returns:
             elbo: the evidence lower bound of shape ([B,])
-        
+
         """
         def _elbo_single(_key):
             sample = posterior.sample(seed=_key)

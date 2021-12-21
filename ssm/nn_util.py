@@ -187,3 +187,87 @@ def build_gaussian_network(input_dim, output_dim,
             return (J_diag, h)
 
     return PotentialGenerator()
+
+class Bidirectional_RNN(nn.Module):
+    
+    latent_dim : int = None
+    forward_RNN : nn.Module = None
+    backward_RNN : nn.Module = None
+    head_mean_fn : nn.Module = None
+    head_log_var_fn : nn.Module = None
+
+    @classmethod
+    def from_params(cls, latent_dim, 
+                    cell_type=nn.GRUCell,
+                    forward_RNN=None, backward_RNN=None, 
+                    head_mean_fn=None, head_log_var_fn=None): 
+
+        forward_RNN = forward_RNN or nn.scan(cell_type, variable_broadcast="params", 
+                                             split_rngs={"params": False})()
+        backward_RNN = backward_RNN or nn.scan(cell_type, variable_broadcast="params", 
+                                               split_rngs={"params": False}, reverse=True)()
+
+        head_mean_fn = head_mean_fn or nn.Dense(latent_dim)
+        head_log_var_fn = head_log_var_fn or nn.Dense(latent_dim)
+
+        return cls(latent_dim, forward_RNN, backward_RNN, head_mean_fn, head_log_var_fn)
+
+    def tree_flatten(self):
+        children = (self.latent_dim, self.forward_RNN, self.backward_RNN, self.head_mean_fn, self.head_log_var_fn)
+        aux_data = None
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
+
+    def __call__(self, inputs):
+        """
+        Equivalent to the `.forward` method in PyTorch.  Generates the parameters of an independent
+        multivariate Gaussian distribution as a function of the inputs.
+        Args:
+            inputs:
+        Returns:
+        """
+        J_diag, h = self._generate_distribution_parameters(inputs)
+        return (J_diag, h)
+    
+    def _generate_distribution_parameters(self, inputs):
+        """
+        Map over the inputs if there are multiple inputs, otherwise, apply it to a single input.
+        Whether there is a batch dimension is established by whether the whole shape of the input equals the
+        pre-specified input shape.  If they are unequal, assumes that the first dimension is a batch dimension.
+        Args:
+            inputs (ndarray):   Possibly batched set of inputs (if batched, first dimension is batch dimension).
+        Returns:
+            (ndarray):          Possibly batched set of Gaussian parameters (if batched, first dimension is batch
+                                dimension).
+        """
+        is_batched = (len(inputs.shape) == 3)
+        if is_batched:
+            return vmap(self._call_single, in_axes=0)(inputs)
+        else:
+            return self._call_single(inputs)
+    
+    # Applied the BiRNN to a single sequence of inputs
+    def _call_single(self, inputs):
+        
+        init_carry_forward = np.zeros((self.latent_dim,))
+        _, out_forward = self.forward_RNN(init_carry_forward, inputs)
+        
+        init_carry_backward = np.zeros((self.latent_dim,))
+        _, out_backward = self.backward_RNN(init_carry_backward, inputs)
+
+        # Concatenate the forward and backward outputs
+        out_combined = np.concatenate([out_forward, out_backward], axis=-1)
+        
+        # Get the mean.
+        # vmap over the time dimension
+        h_flat = vmap(self.head_mean_fn)(out_combined)
+        h = h_flat
+        # Get the variance output and reshape it.
+        # vmap over the time dimension
+        var_output_flat = vmap(self.head_log_var_fn)(out_combined)
+        J_diag = np.exp(var_output_flat)
+        
+        return (J_diag, h)

@@ -8,7 +8,7 @@ from ssm.utils import Verbosity, debug_rejit, ensure_has_batch_dim, ssm_pbar
 import flax.optim as opt
 
 @ensure_has_batch_dim(model_arg="model")
-def svae_fit(key,
+def deep_variational_inference(key,
              model,
              data,
              rec_net,

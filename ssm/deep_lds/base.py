@@ -14,14 +14,14 @@ from ssm.lds.initial import StandardInitialCondition
 from ssm.lds.dynamics import StationaryDynamics
 from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, random_rotation
 
-from ssm.inference.svae_fit import svae_fit
-from ssm.lds_svae.posterior import LDSSVAEPosterior
+from ssm.inference.deep_vi import deep_variational_inference
+from ssm.lds_svae.posterior import LDSSVAEPosterior, DKFPosterior
 from ssm.nn_util import build_gaussian_network
 
 # To keep it really really simple, we don't even to write ANYTHING
 # Except for the fit function
 @register_pytree_node_class
-class LDS_SVAE(LDS):
+class DeepLDS(LDS):
 
     def __init__(self, num_latent_dims,
                  num_emission_dims,
@@ -56,7 +56,7 @@ class LDS_SVAE(LDS):
                                          bias=dynamics_bias,
                                          scale_tril=dynamics_scale_tril)
 
-        super(LDS_SVAE, self).__init__(initial_condition, transitions, emissions)
+        super(DeepLDS, self).__init__(initial_condition, transitions, emissions)
 
     @property
     def latent_dim(self):
@@ -115,7 +115,7 @@ class LDS_SVAE(LDS):
             data: np.ndarray,
             covariates=None,
             metadata=None,
-            method: str="svae_fit",
+            method: str="svae",
             num_iters: int=100,
             tol: float=1e-4,
             verbosity: Verbosity=Verbosity.DEBUG
@@ -130,17 +130,19 @@ class LDS_SVAE(LDS):
         # TODO: figure out the proper assumptions of data shape!
         N, T, D = data.shape
 
-        posterior = LDSSVAEPosterior.initialize(
+        if method == "svae":
+            posterior = LDSSVAEPosterior.initialize(
             self, data, covariates=covariates, metadata=metadata)
-
-        rec_net = build_gaussian_network(D, self.latent_dim)
-
-        if method == "svae_fit":
-            bounds, model, posterior = svae_fit(
-                key, self, data, rec_net, posterior, covariates=covariates, metadata=metadata,
-                num_iters=num_iters, tol=tol, verbosity=verbosity)
-
+            rec_net = build_gaussian_network(D, self.latent_dim)
+        elif method == "dkf":
+            posterior = DKFPosterior.initialize(
+            self, data, covariates=covariates, metadata=metadata)
+            rec_net = Bidirectional_RNN.from_params(self.latent_dim)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
+
+        bounds, model, posterior = deep_variational_inference(
+                key, self, data, rec_net, posterior, covariates=covariates, metadata=metadata,
+                num_iters=num_iters, tol=tol, verbosity=verbosity)
 
         return bounds, model, posterior

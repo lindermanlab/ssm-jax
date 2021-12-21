@@ -1,9 +1,14 @@
+from __future__ import annotations
 import jax.numpy as np
 from jax import vmap
-from jax.tree_util import register_pytree_node_class
+from jax.tree_util import register_pytree_node_class, tree_flatten, tree_unflatten
+from jax.flatten_util import ravel_pytree
+import jax.scipy.optimize
+
 from tensorflow_probability.substrates import jax as tfp
 import ssm.distributions as ssmd
 tfd = tfp.distributions
+
 
 
 class Emissions:
@@ -21,7 +26,7 @@ class Emissions:
     @property
     def num_states(self):
         return self._num_states
-    
+
     @property
     def emissions_shape(self):
         raise NotImplementedError
@@ -40,9 +45,43 @@ class Emissions:
         inds = np.arange(self.num_states)
         return vmap(lambda k: self.distribution(k, covariates=covariates, metadata=metadata).log_prob(data))(inds).T
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
-        # TODO: implement generic m-step
-        raise NotImplementedError
+    # TODO: ensure_has_batched_dim?
+    def m_step(self, data, posterior, covariates=None, metadata=None) -> Emissions:
+        """By default, try to optimize the emission distribution via generic
+        gradient-based optimization of the expected log likelihood.
+
+        This function assumes that the Emissions subclass is a PyTree and
+        that all of its leaf nodes are unconstrained parameters.
+        
+        Args:
+            data (np.ndarray): the observed data
+            posterior (HMMPosterior): the HMM posterior
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+                
+        Returns:
+            emissions (ExponentialFamilyEmissions): updated emissions object
+        """
+        # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
+        flat_self, unravel = ravel_pytree(self)
+
+        def _objective(flat_emissions):
+            emissions = unravel(flat_emissions)
+            f = lambda data, expected_states: \
+                np.sum(emissions.log_likelihoods(data, covariates=covariates, metadata=metadata) * expected_states)
+            lp = vmap(f)(data, posterior.expected_states).sum()
+            return -lp / data.size
+
+        results = jax.scipy.optimize.minimize(
+            _objective,
+            flat_self,
+            method="bfgs",
+            options=dict(maxiter=100))
+
+        # Update class parameters
+        return unravel(results.x)
 
 
 class ExponentialFamilyEmissions(Emissions):
@@ -103,8 +142,8 @@ class ExponentialFamilyEmissions(Emissions):
         """
         return self._distribution[state]
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
-        """Update the emissions distribution in-place using an M-step.
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> ExponentialFamilyEmissions:
+        """Update the emissions distribution using an M-step.
 
         Operates over a batch of data (posterior must have the same batch dim).
 
@@ -115,11 +154,15 @@ class ExponentialFamilyEmissions(Emissions):
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
+                
+        Returns:
+            emissions (ExponentialFamilyEmissions): updated emissions object
         """
         conditional = self._emissions_distribution_class.compute_conditional(
             dataset, weights=posteriors.expected_states, prior=self._prior)
         self._distribution = self._emissions_distribution_class.from_params(
             conditional.mode())
+        return self
 
 
 @register_pytree_node_class
