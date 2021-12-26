@@ -43,12 +43,16 @@ pip install -r requirements.txt
 ├── notebooks                 # [example jupyter notebooks]
 ├── ssm                       # [main code repository]
 │   ├── hmm                       # hmm   models
+│   ├── factorial_hmm             # factorial hmm models
 │   ├── arhmm                     # arhmm models
+│   ├── twarhmm                   # twarhmm models
 │   ├── lds                       # lds   models
 │   ├── slds                      # slds  models
 │   ├── inference                 # inference code
 │   ├── distributions             # distributions (generally, extensions of tfp distributions)
 └── tests                     # [tests]
+    ├── [unit tests]              # unit test files mirroring the structure of ssm directory
+    |   ...
     └── timing_comparisons        # benchmarking code (including comparisons to SSM_v0)
  ```
 

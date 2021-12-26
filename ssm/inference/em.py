@@ -42,20 +42,11 @@ def em(model,
     """
 
     @jit
-    def update(parameters):
-        with model.inject(parameters):  # avoid side-effects by injecting new parameters into model temporarily
-            posterior = model.e_step(data, covariates=covariates, metadata=metadata)
-            lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
-            
-            # should this return parameters?
-            model.m_step(data, posterior, covariates=covariates, metadata=metadata)
-            
-            # for now, we can extract new parameters post m_step
-            # we know that the `inject` context manager will set our parameters back to the originals
-            # so we don't have to worry about side effects here
-            parameters = model._parameters
-            
-        return parameters, posterior, lp
+    def update(model):
+        posterior = model.e_step(data, covariates=covariates, metadata=metadata)
+        lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
+        model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        return model, posterior, lp
 
     # Run the EM algorithm to convergence
     log_probs = []

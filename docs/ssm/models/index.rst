@@ -9,5 +9,7 @@ API Documentation for models as defined by the SSM-JAX package.
 
    base
    hmm/index
+   factorial_hmm/index
    arhmm/index
+   twarhmm/index
    lds/index
