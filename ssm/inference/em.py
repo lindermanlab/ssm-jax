@@ -42,11 +42,19 @@ def em(model,
     """
 
     @jit
-    def update(model):
-        posterior = model.e_step(data, covariates=covariates, metadata=metadata)
-        lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
-        model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
-        return model, posterior, lp
+    def update(parameters):
+        with model.inject(parameters):
+            posterior = model.e_step(data, covariates=covariates, metadata=metadata)
+            lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
+            
+            # should this return parameters?
+            new_model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
+            
+            # either way, we can extract updated parameters here and rely on context manager
+            # to reset any side effects
+            parameters = new_model._parameters
+            
+        return parameters, posterior, lp
 
     # Run the EM algorithm to convergence
     log_probs = []
