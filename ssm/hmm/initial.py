@@ -1,6 +1,7 @@
 import jax.numpy as np
 import jax.scipy.special as spsp
 from jax.tree_util import register_pytree_node_class
+from flax.core.frozen_dict import freeze, FrozenDict
 
 import ssm.distributions as ssmd
 
@@ -81,6 +82,24 @@ class StandardInitialCondition(InitialCondition):
         if initial_distribution_prior is None:
             initial_distribution_prior = ssmd.Dirichlet(1.1 * np.ones(num_states))
         self._distribution_prior = initial_distribution_prior
+        
+    @property
+    def _parameters(self):
+        # return freeze(dict(distribution=self._distribution._my_parameters))
+        return freeze(dict(distribution=self._distribution))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        # self._distribution._my_parameters = params["distribution"]
+        self._distribution = params["distribution"]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(distribution_prior=self._distribution_prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._distribution_prior = hyperparams["distribution_prior"]
 
     def tree_flatten(self):
         children = (self._distribution, self._distribution_prior)

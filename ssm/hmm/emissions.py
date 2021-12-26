@@ -2,6 +2,7 @@ import jax.numpy as np
 from jax import vmap
 from jax.tree_util import register_pytree_node_class
 from tensorflow_probability.substrates import jax as tfp
+from flax.core.frozen_dict import freeze, FrozenDict
 import ssm.distributions as ssmd
 tfd = tfp.distributions
 
@@ -70,6 +71,22 @@ class ExponentialFamilyEmissions(Emissions):
         super(ExponentialFamilyEmissions, self).__init__(num_states)
         self._distribution = emissions_distribution
         self._prior = emissions_distribution_prior
+        
+    @property
+    def _parameters(self):
+        return freeze(dict(distribution=self._distribution))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._distribution = params["distribution"]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(prior=self._prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._prior = hyperparams["prior"]
 
     def tree_flatten(self):
         children = (self._distribution, self._prior)

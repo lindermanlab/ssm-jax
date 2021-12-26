@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
+from flax.core.frozen_dict import freeze, FrozenDict
 
 from ssm.base import SSM
 from ssm.inference.em import em
@@ -54,6 +55,30 @@ class HMM(SSM):
     @property
     def emissions_shape(self):
         return self._emissions.emissions_shape
+    
+    @property
+    def _parameters(self):
+        return freeze(dict(initial_condition=self._initial_condition._parameters,
+                           transitions=self._transitions._parameters,
+                           emissions=self._emissions._parameters))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._initial_condition._parameters = params["initial_condition"]
+        self._transitions._parameters = params["transitions"]
+        self._emissions._parameters = params["emissions"]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(initial_condition=self._initial_condition._hyperparameters,
+                           transitions=self._transitions._hyperparameters,
+                           emissions=self._emissions._hyperparameters))
+        
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._initial_condition._hyperparameters = hyperparams["initial_condition"]
+        self._transitions._hyperparameters = hyperparams["transitions"]
+        self._emissions._hyperparameters = hyperparams["emissions"]
 
     def tree_flatten(self):
         children = (self._initial_condition,

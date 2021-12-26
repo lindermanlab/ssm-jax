@@ -5,6 +5,7 @@ tfb = tfp.bijectors
 
 
 from ssm.distributions.expfam import ConjugatePrior, ExponentialFamilyDistribution
+from flax.core.frozen_dict import freeze, FrozenDict
 from ssm.utils import one_hot
 
 
@@ -85,6 +86,14 @@ class Categorical(ExponentialFamilyDistribution, tfd.Categorical):
         # it's important to be consistent with how we init classes
         # to avoid re-jit (i.e. logits then probs causes recompile)
         return cls(logits=np.log(params))
+    
+    @property
+    def _my_parameters(self):
+        return freeze(dict(logits=self.logits))
+    
+    @_my_parameters.setter
+    def _my_parameters(self, params):
+        self.logits = params["logits"]
 
     @staticmethod
     def sufficient_statistics(datapoint, num_classes):
@@ -123,6 +132,14 @@ class MultivariateNormalFullCovariance(ExponentialFamilyDistribution,
     @classmethod
     def from_params(cls, params, **kwargs):
         return cls(*params, **kwargs)
+    
+    @property
+    def _my_parameters(self):
+        return freeze(dict(logits=self.logits))
+    
+    @_my_parameters.setter
+    def _my_parameters(self, params):
+        self.logits = params["logits"]
 
     @staticmethod
     def sufficient_statistics(datapoint):
@@ -135,6 +152,15 @@ class MultivariateNormalTriL(ExponentialFamilyDistribution,
     def from_params(cls, params):
         loc, covariance = params
         return cls(loc, np.linalg.cholesky(covariance))
+    
+    @property
+    def _my_parameters(self):
+        return freeze(dict(loc=self.loc, scale_tril=self.scale_tril))
+    
+    @_my_parameters.setter
+    def _my_parameters(self, params):
+        self.loc = params["loc"]
+        self.scale_tril = params["scale_tril"]
 
     @staticmethod
     def sufficient_statistics(datapoint):

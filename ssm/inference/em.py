@@ -42,11 +42,20 @@ def em(model,
     """
 
     @jit
-    def update(model):
-        posterior = model.e_step(data, covariates=covariates, metadata=metadata)
-        lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
-        model.m_step(data, posterior, covariates=covariates, metadata=metadata)
-        return model, posterior, lp
+    def update(parameters):
+        with model.inject(parameters):  # avoid side-effects by injecting new parameters into model temporarily
+            posterior = model.e_step(data, covariates=covariates, metadata=metadata)
+            lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
+            
+            # should this return parameters?
+            model.m_step(data, posterior, covariates=covariates, metadata=metadata)
+            
+            # for now, we can extract new parameters post m_step
+            # we know that the `inject` context manager will set our parameters back to the originals
+            # so we don't have to worry about side effects here
+            parameters = model._parameters
+            
+        return parameters, posterior, lp
 
     # Run the EM algorithm to convergence
     log_probs = []
@@ -55,8 +64,11 @@ def em(model,
     if verbosity > Verbosity.OFF:
         pbar.set_description("[jit compiling...]")
 
+    # pull parameters out of the model
+    parameters = model._parameters
+    
     for itr in pbar:
-        model, posterior, lp = update(model)
+        parameters, posterior, lp = update(parameters)
         assert np.isfinite(lp), "NaNs in marginal log probability"
 
         log_probs.append(lp)
@@ -72,5 +84,8 @@ def em(model,
                 pbar.set_description("[converged] LP: {:.3f}".format(lp))
                 pbar.refresh()
                 break
+
+    # update the model object with our new parameters
+    model._parameters = parameters
 
     return np.array(log_probs), model, posterior

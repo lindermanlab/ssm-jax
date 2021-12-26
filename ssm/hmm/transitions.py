@@ -2,6 +2,7 @@ import jax.numpy as np
 import jax.scipy.special as spsp
 from jax import vmap
 from jax.tree_util import register_pytree_node_class
+from flax.core.frozen_dict import freeze, FrozenDict
 
 import ssm.distributions as ssmd
 
@@ -104,6 +105,22 @@ class StationaryTransitions(Transitions):
             transition_distribution_prior = \
                 ssmd.Dirichlet(1.1 * np.ones((num_states, num_states)))
         self._prior = transition_distribution_prior
+        
+    @property
+    def _parameters(self):
+        return freeze(dict(distribution=self._distribution))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._distribution = params["distribution"]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(prior=self._prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._prior = hyperparams["prior"]
 
     def tree_flatten(self):
         children = (self._distribution, self._prior)

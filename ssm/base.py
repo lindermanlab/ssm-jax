@@ -12,6 +12,8 @@ import jax.random as jr
 from jax import lax, vmap
 from functools import partial
 from jax.tree_util import tree_map
+import copy
+from contextlib import contextmanager
 
 import tensorflow_probability.substrates.jax as tfp
 
@@ -90,6 +92,13 @@ class SSM(object):
             A tuple or tree of tuples giving the emission shape(s).
         """
         raise NotImplementedError
+    
+    @contextmanager
+    def inject(self, new_parameters):
+        old_parameters = copy.deepcopy(self._parameters)
+        self._parameters = new_parameters
+        yield self
+        self._parameters = old_parameters
 
     @auto_batch(batched_args=("states", "data", "covariates", "metadata"))
     def log_probability(self,
