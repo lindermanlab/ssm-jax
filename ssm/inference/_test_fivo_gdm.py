@@ -177,7 +177,7 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
 
     # Check whether we have a valid number of proposals.
     n_props = len(dataset[0])
-    plt.figure()
+
     # Define the proposal itself.
     proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
                                                      stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,

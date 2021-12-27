@@ -34,6 +34,7 @@ default_verbosity = Verbosity.DEBUG
 # config.update("jax_debug_nans", True)
 
 DISABLE_JIT = False
+PLOT = False
 
 # If we are on Mac, assume it is a local run
 local_system = (('mac' in platform.platform()) or ('Mac' in platform.platform()))
@@ -290,7 +291,7 @@ def compare_kls(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn
     pred_smc_kls = compute_marginal_kls(true_model, dataset, pred_smc_posterior.weighted_smoothing_particles)
     # init_bpf_kls = compute_marginal_kls(true_model, dataset, init_bpf_posterior.weighted_smoothing_particles)
 
-    if plot:
+    if plot and PLOT:
         plt.figure()
         plt.plot(np.median(np.asarray(true_bpf_kls), axis=1), label='True (BPF)')
         plt.plot(np.median(np.asarray(pred_smc_kls), axis=1), label='Pred (FIVO-AUX)')
@@ -440,9 +441,9 @@ def do_config():
         'sweep_test_particles': 10,
 
         # Define the parameters to be used during optimization.
-        'num_particles': 50,
+        'num_particles': 10,
         'opt_steps': 100000,
-        'datasets_per_batch': 32,
+        'datasets_per_batch': 8,
 
         'load_path': None,  # './params_tmp.p'  # './params_tmp.p'  # {None, './params_tmp.p'}.
         'save_path': None,  # './params_tmp.p'  # {None, './params_tmp.p'}.
@@ -676,12 +677,13 @@ def main():
                     fig=sweep_fig,
                     _obs=dataset[env.config.dset_to_plot])
 
-                param_figures = do_plot(param_hist,
-                                        lml_hist,
-                                        em_log_marginal_likelihood,
-                                        true_lml,
-                                        get_model_free_params(true_model),
-                                        param_figures)
+                if PLOT:
+                    param_figures = do_plot(param_hist,
+                                            lml_hist,
+                                            em_log_marginal_likelihood,
+                                            true_lml,
+                                            get_model_free_params(true_model),
+                                            param_figures)
 
                 # Log the validation step.
                 val_hist = fivo.log_params(val_hist,
