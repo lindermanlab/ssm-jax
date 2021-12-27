@@ -15,157 +15,160 @@ from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
 from ssm.utils import Verbosity
 
+from typing import (NamedTuple, Any, Callable, Sequence, Iterable, List, Optional, Tuple,
+                    Set, Type, Union, TypeVar, Generic, Dict)
+
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
 
 
-def build_independent_gaussian_generator(dummy_input, dummy_output,
-                                         trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
-    """
-    Build a nn.Module that implements a conditional Gaussian density.  This function basically wraps a generator and
-    allows for more flexible definition of link functions.
+class IndependentGaussianGenerator(nn.Module):
 
-    Args:
-        dummy_input (ndarray):                  Correctly shaped ndarray of dummy input values that is the same size as
-                                                the input.  No leading batch dimension.
+    trunk_fn: Callable
+    head_mean_fn: Callable
+    head_log_var_fn: Callable
+    unravel_output: Callable
+    input_flat_dim: Sequence
 
-        dummy_output (ndarray):                 Correctly shaped ndarray of dummy output values that is the same size as
-                                                the input.  No leading batch dimension.
+    @classmethod
+    def from_params(cls, dummy_input, dummy_output,
+                    trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
+        """
+        Build a nn.Module that implements a conditional Gaussian density.  This function basically wraps a generator and
+        allows for more flexible definition of link functions.
 
-        trunk_fn (nn.Module or None):           Module that is applied to input to create embedding.  Defaults to I.
+        Args:
+            dummy_input (ndarray):                  Correctly shaped ndarray of dummy input values that is the same size as
+                                                    the input.  No leading batch dimension.
 
-        head_mean_fn (nn.Module or None):       Module applied to embedded values to create mean.  Defaults to affine.
+            dummy_output (ndarray):                 Correctly shaped ndarray of dummy output values that is the same size as
+                                                    the input.  No leading batch dimension.
 
-        head_log_var_fn (nn.Module or None):    Module applied to embedded values to create variance.  Defaults to
-                                                affine.
+            trunk_fn (nn.Module or None):           Module that is applied to input to create embedding.  Defaults to I.
 
-    Returns:
-        (nn.Module):                            Proposal object.
+            head_mean_fn (nn.Module or None):       Module applied to embedded values to create mean.  Defaults to affine.
 
-    """
+            head_log_var_fn (nn.Module or None):    Module applied to embedded values to create variance.  Defaults to
+                                                    affine.
 
-    input_flat, _ = flatten_util.ravel_pytree(dummy_input)
-    input_flat_shape = input_flat.shape
-    input_flat_dim = input_flat_shape[0]
+        Returns:
+            (nn.Module):                            Proposal object.
 
-    output_flat, unravel_output = flatten_util.ravel_pytree(dummy_output)
-    output_flat_shape = output_flat.shape
-    output_flat_dim = output_flat_shape[0]
+        """
 
-    # If no trunk if defined, then use the identity.
-    if trunk_fn is None:
-        trunk_fn = nn_util.Identity(input_flat_dim)
+        input_flat, _ = flatten_util.ravel_pytree(dummy_input)
+        input_flat_shape = input_flat.shape
+        input_flat_dim = input_flat_shape[0]
 
-    # If no head mean function is specified, default to an affine transformation.
-    if head_mean_fn is None:
-        head_mean_fn = nn.Dense(output_flat_dim)
+        output_flat, unravel_output = flatten_util.ravel_pytree(dummy_output)
+        output_flat_shape = output_flat.shape
+        output_flat_dim = output_flat_shape[0]
 
-    # If no head mean function is specified, default to an affine transformation.
-    if head_log_var_fn is None:
-        head_log_var_fn = nn.Dense(output_flat_dim)
+        # If no trunk if defined, then use the identity.
+        if trunk_fn is None:
+            trunk_fn = nn_util.Identity(input_flat_dim)
 
-    # # This MVN can only handle vector events, so we need to type check for that.
-    # assert len(output_dim) == 1, "Output dimensions must be one."
+        # If no head mean function is specified, default to an affine transformation.
+        if head_mean_fn is None:
+            head_mean_fn = nn.Dense(output_flat_dim)
 
-    # Type check to make sure that the mean function produces the right size.
-    _dim = head_mean_fn.features[-1] if hasattr(head_mean_fn.features, '__iter__') else head_mean_fn.features
-    assert output_flat_dim == _dim, \
-        'Error: head mean output dimensions not equal to the target output dimensions.'
+        # If no head mean function is specified, default to an affine transformation.
+        if head_log_var_fn is None:
+            head_log_var_fn = nn.Dense(output_flat_dim)
 
-    # Type check to make sure that the variance function produces the right size.
-    _dim = head_log_var_fn.features[-1] if hasattr(head_log_var_fn.features, '__iter__') else head_log_var_fn.features
-    assert output_flat_dim == _dim, \
-        'Error: head variance output dimensions not equal to the target output dimensions.'
+        # # This MVN can only handle vector events, so we need to type check for that.
+        # assert len(output_dim) == 1, "Output dimensions must be one."
 
-    class IndependentGaussianGenerator(nn.Module):
+        # Type check to make sure that the mean function produces the right size.
+        _dim = head_mean_fn.features[-1] if hasattr(head_mean_fn.features, '__iter__') else head_mean_fn.features
+        assert output_flat_dim == _dim, \
+            'Error: head mean output dimensions not equal to the target output dimensions.'
 
-        def setup(self):
-            """
-            Method required by Flax/Linen to set up the neural network.  Inscribes the layers defined in the outer
-            scope.
+        # Type check to make sure that the variance function produces the right size.
+        _dim = head_log_var_fn.features[-1] if hasattr(head_log_var_fn.features, '__iter__') else head_log_var_fn.features
+        assert output_flat_dim == _dim, \
+            'Error: head variance output dimensions not equal to the target output dimensions.'
 
-            Returns:
-                - None
-            """
+        return cls(trunk_fn, head_mean_fn, head_log_var_fn, unravel_output, input_flat_dim)
 
-            # Inscribe this stuff.
-            self.trunk_fn = trunk_fn
-            self.head_mean_fn = head_mean_fn
-            self.head_log_var_fn = head_log_var_fn
-            self.unravel_output = unravel_output
+    def tree_flatten(self):
+        children = (self.trunk_fn, self.head_mean_fn, self.head_log_var_fn, self.unravel_output)
+        aux_data = None
+        return children, aux_data
 
-        def __call__(self, inputs):
-            """
-            Equivalent to the `.forward` method in PyTorch.  Generates the parameters of an independent
-            multivariate Gaussian distribution as a function of the inputs.
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
 
-            Args:
-                inputs:
+    def __call__(self, inputs):
+        """
+        Equivalent to the `.forward` method in PyTorch.  Generates the parameters of an independent
+        multivariate Gaussian distribution as a function of the inputs.
 
-            Returns:
+        Args:
+            inputs:
 
-            """
-            mean, var = self._generate_distribution_parameters(inputs)
-            dist = jax.tree_map(lambda _mu, _var: tfd.MultivariateNormalDiag(loc=_mu, scale_diag=np.sqrt(_var)),
-                                mean, var)
-            return dist
+        Returns:
 
-        def _generate_distribution_parameters(self, inputs):
-            """
-            Map over the inputs if there are multiple inputs, otherwise, apply it to a single input.
+        """
+        mean, var = self._generate_distribution_parameters(inputs)
+        dist = jax.tree_map(lambda _mu, _var: tfd.MultivariateNormalDiag(loc=_mu, scale_diag=np.sqrt(_var)),
+                            mean, var)
+        return dist
 
-            Whether there is a batch dimension is established by whether the whole shape of the input equals the
-            pre-specified input shape.  If they are unequal, assumes that the first dimension is a batch dimension.
+    def _generate_distribution_parameters(self, inputs):
+        """
+        Map over the inputs if there are multiple inputs, otherwise, apply it to a single input.
 
-            Args:
-                inputs (ndarray):   Possibly batched set of inputs (if batched, first dimension is batch dimension).
+        Whether there is a batch dimension is established by whether the whole shape of the input equals the
+        pre-specified input shape.  If they are unequal, assumes that the first dimension is a batch dimension.
 
-            Returns:
-                (ndarray):          Possibly batched set of Gaussian parameters (if batched, first dimension is batch
-                                    dimension).
+        Args:
+            inputs (ndarray):   Possibly batched set of inputs (if batched, first dimension is batch dimension).
 
-            """
+        Returns:
+            (ndarray):          Possibly batched set of Gaussian parameters (if batched, first dimension is batch
+                                dimension).
 
-            # If the shape is equal to the input dimensions then there is no batch dimension
-            # and we can call the forward function as is.  Otherwise we need to do a vmap
-            # over the batch dimension.
-            is_batched = (flatten_util.ravel_pytree(inputs[0])[0].shape[0] == input_flat_dim)
+        """
 
-            if is_batched:
-                return vmap(self._call_single)(inputs)
-            else:
-                return self._call_single(inputs)
+        # If the shape is equal to the input dimensions then there is no batch dimension
+        # and we can call the forward function as is.  Otherwise we need to do a vmap
+        # over the batch dimension.
+        is_batched = (flatten_util.ravel_pytree(inputs[0])[0].shape[0] == self.input_flat_dim)
 
-        def _call_single(self, inputs):
-            """
+        if is_batched:
+            return vmap(self._call_single)(inputs)
+        else:
+            return self._call_single(inputs)
 
-            Args:
-                inputs (ndarray):   Single input data point (NO batch dimension).
+    def _call_single(self, inputs):
+        """
 
-            Returns:
-                (ndarray):          Single mean and variance VECTORS representing the parameters of a single
-                                    independent multivariate normal distribution.
-            """
+        Args:
+            inputs (ndarray):   Single input data point (NO batch dimension).
 
-            # Flatten the input.
-            inputs_flat = nn_util.vectorize_pytree(inputs)
+        Returns:
+            (ndarray):          Single mean and variance VECTORS representing the parameters of a single
+                                independent multivariate normal distribution.
+        """
 
-            # Apply the trunk.
-            trunk_output = self.trunk_fn(inputs_flat)
+        # Flatten the input.
+        inputs_flat = nn_util.vectorize_pytree(inputs)
 
-            # Get the mean.
-            mean_output_flat = self.head_mean_fn(trunk_output)
-            mean_output = mean_output_flat
+        # Apply the trunk.
+        trunk_output = self.trunk_fn(inputs_flat)
 
-            # Get the variance output and reshape it.
-            var_output_flat = self.head_log_var_fn(trunk_output)
-            var_output = np.exp(var_output_flat)  # TODO - removed exp from output.
+        # Get the mean.
+        mean_output_flat = self.head_mean_fn(trunk_output)
+        mean_output = mean_output_flat
 
-            # Unravel the output to the original shape.
-            mean_output_shaped = unravel_output(mean_output)
-            var_output_shaped = unravel_output(var_output)
+        # Get the variance output and reshape it.
+        var_output_flat = self.head_log_var_fn(trunk_output)
+        var_output = var_output_flat  # np.exp(var_output_flat)  # TODO - removed exp from output.
 
-            return mean_output_shaped, var_output_shaped
+        # Unravel the output to the original shape.
+        mean_output_shaped = self.unravel_output(mean_output)
+        var_output_shaped = self.unravel_output(var_output)
 
-    return IndependentGaussianGenerator()
-
+        return mean_output_shaped, var_output_shaped
