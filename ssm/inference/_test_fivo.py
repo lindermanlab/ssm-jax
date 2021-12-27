@@ -416,7 +416,7 @@ def do_config():
     # Set up the experiment.
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', default=default_seed, type=int)
-    parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
+    parser.add_argument('--log-group', default='gdm-v3.0.0', type=str)               # {'debug', 'gdm-v1.0'}
 
     parser.add_argument('--proposal-structure', default='DIRECT', type=str)     # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {'DIRECT', 'NONE'/None}
