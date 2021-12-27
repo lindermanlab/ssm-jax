@@ -35,8 +35,8 @@ def gdm_define_test(key, free_parameters, proposal_structure, tilt_structure):
     key, subkey = jr.split(key)
     tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, dataset, tilt_structure)
 
-    # TODO test.
-    gdm_get_true_target_marginal(model, dataset)
+    # # TODO test.
+    # gdm_get_true_target_marginal(model, dataset)
 
     # Return this big pile of stuff.
     ret_model = (true_model, true_states, dataset)
@@ -126,7 +126,7 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)
 
-    # head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)
+    # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0], bias_init=b_init)
 
@@ -168,9 +168,9 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     # Define a more conservative initialization.
     w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - no bias.
 
-    # w_init = lambda *args: (0.01 * jax.nn.initializers.normal()(*args))
+    # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
     head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=b_init)
@@ -343,7 +343,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
 
         try:
             r_mean_b = r_param['head_mean_fn']['bias']  # ADD THIS BACK IF WE ARE USING THE BIAS
-            print('\t\tR mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(r_mean_b.flatten())]))
+            print('\t\tR mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(r_mean_b.flatten()))]))  # TODO - np.exp
         except:
             pass
 
@@ -354,7 +354,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
             pass
 
         r_lvar_b = r_param['head_log_var_fn']['bias']
-        print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(r_lvar_b.flatten())]))
+        print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(r_lvar_b.flatten()))]))  # TODO - np.exp
 
     if opt[1] is not None:
         q_param = opt[1].target._dict['params']
@@ -365,7 +365,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
 
         try:
             q_mean_b = q_param['head_mean_fn']['bias']  # ADD THIS BACK IF WE ARE USING THE BIAS
-            print('\t\tQ mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(q_mean_b.flatten())]))
+            print('\t\tQ mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(q_mean_b.flatten()))]))  # TODO - np.exp
         except:
             pass
 
@@ -376,7 +376,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
             pass
 
         q_lvar_b = q_param['head_log_var_fn']['bias']
-        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in np.exp(q_lvar_b.flatten())]))
+        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(q_lvar_b.flatten()))]))  # TODO - np.exp
 
     print()
     print()

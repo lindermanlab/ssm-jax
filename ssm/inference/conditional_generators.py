@@ -165,7 +165,7 @@ class IndependentGaussianGenerator(nn.Module):
 
         # Get the variance output and reshape it.
         var_output_flat = self.head_log_var_fn(trunk_output)
-        var_output = var_output_flat  # np.exp(var_output_flat)  # TODO - removed exp from output.
+        var_output = np.exp(var_output_flat)
 
         # Unravel the output to the original shape.
         mean_output_shaped = self.unravel_output(mean_output)

@@ -1,7 +1,7 @@
 """
 Useful utility functions.
 """
-
+import wandb
 import jax.numpy as np
 import jax.random as jr
 import jax
@@ -13,7 +13,7 @@ import inspect
 from enum import IntEnum
 from tqdm.auto import trange
 from scipy.optimize import linear_sum_assignment
-from typing import Sequence, Optional
+from typing import Sequence, Optional, Iterable
 from functools import wraps, partial
 from jax.scipy import special as spsp
 from contextlib import contextmanager
@@ -676,3 +676,53 @@ def clock(_st, _str='', _verbose=True):
     """
     if _verbose: print('CLOCK:', _str, '{:5.3f}'.format(dt() - _st))
     return dt()
+
+
+def log_to_wandb(_dict=None, _ims=None, _epoch=None, _commit=True, USE_WANDB=True):
+    """
+    AW - Helper to push some info to WandB.
+
+    The default behaviour is to push each time this fn is called, which steps on
+    the counter inside WandB.  This can be surpressed by setting _commit=False to
+    instead push on demand (by lastly calling log_to_wandb()) or push on the next
+    time that this fn is called with _commit=True.  This means things can be
+    logged from different subsections of the code and sitll be aligned.
+
+    Also separates _dict, which should be
+
+    :param _dict:
+    :param _epoch:
+    :param _commit:
+    :param _ims:
+    :param USE_WANDB:
+    :return:
+    """
+
+    # Check if we are able to log.  If not, exit.
+    if not USE_WANDB:
+        return None
+
+    _to_log = {}
+
+    if _dict is not None:
+        for _k in _dict:
+            if (isinstance(_dict[_k], Iterable)) or (_dict[_k] is None):
+                _to_log[_k] = _dict[_k]
+            else:
+                _to_log[_k] = float(_dict[_k])
+
+    if _epoch is not None:
+        _to_log['epoch'] = _epoch
+
+    if _ims is not None:
+        if type(_ims) is dict:
+            _to_log = {**_to_log, **{_k: wandb.Image(_ims[_k]) for _k in _ims.keys()}}
+        else:
+            _to_log['image'] = wandb.Image(_ims)
+
+    try:
+        wandb.log(_to_log, commit=_commit, step=_epoch)
+    except Exception as err:
+        print('Error uploading to WandB: ', err)
+
+

@@ -10,7 +10,7 @@ from tensorflow_probability.substrates.jax import distributions as tfd
 from copy import deepcopy as dc
 
 # Import some ssm stuff.
-from ssm.inference.conditional_generators import build_independent_gaussian_generator
+from ssm.inference.conditional_generators import IndependentGaussianGenerator
 import ssm.nn_util as nn_util
 
 
@@ -36,11 +36,11 @@ class IndependentGaussianTilt:
         output_dim = dummy_output.shape[0]
 
         # Build out the function approximator.
-        self.tilt = build_independent_gaussian_generator(self._dummy_processed_input,
-                                                         dummy_output,
-                                                         trunk_fn=trunk_fn,
-                                                         head_mean_fn=head_mean_fn,
-                                                         head_log_var_fn=head_log_var_fn, )
+        self.tilt = IndependentGaussianGenerator.from_params(self._dummy_processed_input,
+                                                             dummy_output,
+                                                             trunk_fn=trunk_fn,
+                                                             head_mean_fn=head_mean_fn,
+                                                             head_log_var_fn=head_log_var_fn, )
 
     def init(self, key):
         """
@@ -83,9 +83,9 @@ class IndependentGaussianTilt:
         tilt_inputs = self._tilt_input_generator(*inputs)
         r_dist = self.tilt.apply(t_params, tilt_inputs)
 
-        # # TODO - forcing here.
+        # # TODO - forcing here for stock GSM example.
         # r_dist = tfd.MultivariateNormalDiag(loc=tilt_inputs, scale_diag=np.sqrt(r_dist.variance()))
-        # # TODO - forcing here.
+        # # TODO - forcing here for stock GSM example.
 
         # Now score under that distribution.
         tilt_outputs = self._tilt_output_generator(*inputs)

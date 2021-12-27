@@ -48,9 +48,9 @@ from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
 from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
 
 # Uncomment this remove the functionality of the plotting code.
-if (not local_system) and False:
+if (not local_system) or True:
     _plot_single_sweep = lambda *args, **kwargs: None
-    do_plot = lambda *args, **kwargs: None
+    # do_plot = lambda *args, **kwargs: None
 
 # Import and configure WandB.
 try:
@@ -68,55 +68,25 @@ _verbose_clock_print = False
 clock = lambda __st, __str: utils.clock(__st, __str, _verbose_clock_print)
 
 
-def log_to_wandb(_dict=None, _ims=None, _epoch=None, _commit=True):
-    """
-    AW - Helper to push some info to WandB.
-
-    The default behaviour is to push each time this fn is called, which steps on
-    the counter inside WandB.  This can be surpressed by setting _commit=False to
-    instead push on demand (by lastly calling log_to_wandb()) or push on the next
-    time that this fn is called with _commit=True.  This means things can be
-    logged from different subsections of the code and sitll be aligned.
-
-    Also separates _dict, which should be
-
-    :param _dict:
-    :param _epoch:
-    :param _commit:
-    :param _ims:
-    :return:
-    """
-
-    # Check if we are able to log.  If not, exit.
-    if not USE_WANDB:
-        return None
-
-    _to_log = {}
-
-    if _dict is not None:
-        for _k in _dict:
-            if (isinstance(_dict[_k], Iterable)) or (_dict[_k] is None):
-                _to_log[_k] = _dict[_k]
-            else:
-                _to_log[_k] = float(_dict[_k])
-
-    if _epoch is not None:
-        _to_log['epoch'] = _epoch
-
-    if _ims is not None:
-        if type(_ims) is dict:
-            _to_log = {**_to_log, **{_k: wandb.Image(_ims[_k]) for _k in _ims.keys()}}
-        else:
-            _to_log['image'] = wandb.Image(_ims)
-
-    try:
-        wandb.log(_to_log, commit=_commit, step=_epoch)
-    except Exception as err:
-        print('Error uploading to WandB: ', err)
-
-
 def temp_validation_code(key, true_model, dataset, true_states, opt, _do_fivo_sweep_jitted, _smc_jit,
                          _num_particles=10, _dset_to_plot=0, _init_model=None):
+    """
+
+    Args:
+        key:
+        true_model:
+        dataset:
+        true_states:
+        opt:
+        _do_fivo_sweep_jitted:
+        _smc_jit:
+        _num_particles:
+        _dset_to_plot:
+        _init_model:
+
+    Returns:
+
+    """
 
     # Do some sweeps.
     key, subkey = jr.split(key)
@@ -199,21 +169,25 @@ def compute_marginal_kls(true_model, dataset, smoothing_particles):
 def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_sweep_jitted, _smc_jit,
                        _num_particles=1000, _dset_to_plot=0, _init_model=None):
     """
-    Do an test of the true model and the initialized model.
-    :param key:
-    :param true_model:
-    :param dataset:
-    :param true_states:
-    :param opt:
-    :param _do_fivo_sweep_jitted:
-    :param _smc_jit:
-    :param _num_particles:
-    :param _dset_to_plot:
-    :param _init_model:
-    :return:
+
+    Args:
+        key:
+        true_model:
+        dataset:
+        true_states:
+        opt:
+        _do_fivo_sweep_jitted:
+        _smc_jit:
+        _num_particles:
+        _dset_to_plot:
+        _init_model:
+
+    Returns:
+
     """
     true_lml, em_log_marginal_likelihood = 0.0, 0.0
     init_bpf_posterior = None
+    em_posterior = None
 
     # Test against EM (which for the LDS is exact).
     em_posterior = jax.vmap(true_model.e_step)(dataset)
@@ -244,11 +218,12 @@ def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_swee
     #                      _num_particles=10, _dset_to_plot=_dset_to_plot, _init_model=_init_model)
 
     # Do some plotting.
-    sweep_em_mean = em_posterior.mean()[_dset_to_plot]
-    sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[_dset_to_plot]
-    sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
-    _plot_single_sweep(sweep_em_statistics, true_states[_dset_to_plot],
-                       tag='EM smoothing', preprocessed=True, _obs=dataset[_dset_to_plot])
+    if em_posterior is not None:
+        sweep_em_mean = em_posterior.mean()[_dset_to_plot]
+        sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[_dset_to_plot]
+        sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
+        _plot_single_sweep(sweep_em_statistics, true_states[_dset_to_plot],
+                           tag='EM smoothing', preprocessed=True, _obs=dataset[_dset_to_plot])
 
     _plot_single_sweep(true_bpf_posterior[_dset_to_plot].filtering_particles,
                        true_states[_dset_to_plot],
@@ -283,9 +258,71 @@ def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_swee
     return true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
 
 
-def _final_validation(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
-                      _do_fivo_sweep_jitted):
+def compare_kls(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, _do_fivo_sweep_jitted, plot=False):
+    """
 
+    Args:
+        env:
+        opt:
+        dataset:
+        true_model:
+        rebuild_model_fn:
+        rebuild_prop_fn:
+        rebuild_tilt_fn:
+        key:
+        _do_fivo_sweep_jitted:
+        plot:
+
+    Returns:
+
+    """
+
+    # Compare the KLs of the smoothing distributions.
+    key, subkey = jr.split(key)
+    true_bpf_posterior = smc(subkey, true_model, dataset, num_particles=env.config.sweep_test_particles)
+    key, subkey = jr.split(key)
+    _, pred_smc_posterior = _do_fivo_sweep_jitted(subkey,
+                                                  fivo.get_params_from_opt(opt),
+                                                  _num_particles=env.config.sweep_test_particles,
+                                                  _datasets=dataset)
+
+    true_bpf_kls = compute_marginal_kls(true_model, dataset, true_bpf_posterior.weighted_smoothing_particles)
+    pred_smc_kls = compute_marginal_kls(true_model, dataset, pred_smc_posterior.weighted_smoothing_particles)
+    # init_bpf_kls = compute_marginal_kls(true_model, dataset, init_bpf_posterior.weighted_smoothing_particles)
+
+    if plot:
+        plt.figure()
+        plt.plot(np.median(np.asarray(true_bpf_kls), axis=1), label='True (BPF)')
+        plt.plot(np.median(np.asarray(pred_smc_kls), axis=1), label='Pred (FIVO-AUX)')
+        # plt.plot(np.median(np.asarray(init_bpf_kls), axis=1), label='bpf')
+        plt.legend()
+        plt.grid(True)
+        plt.title('E_sweeps [ KL [ p_true[t] || q_pred[t] ] ]')
+        plt.xlabel('Time, t')
+        plt.ylabel('KL_t')
+        plt.pause(0.001)
+        plt.savefig('./kl_diff.pdf')
+
+    return true_bpf_kls, pred_smc_kls
+
+
+def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, _do_fivo_sweep_jitted):
+    """
+
+    Args:
+        env:
+        opt:
+        dataset:
+        true_model:
+        rebuild_model_fn:
+        rebuild_prop_fn:
+        rebuild_tilt_fn:
+        key:
+        _do_fivo_sweep_jitted:
+
+    Returns:
+
+    """
     # Do some final validation.
     # Rebuild the initial distribution.
     _prop = rebuild_prop_fn(fivo.get_params_from_opt(opt)[1])
@@ -340,34 +377,31 @@ def _final_validation(env, opt, dataset, true_model, rebuild_model_fn, rebuild_p
         plt.pause(0.01)
         plt.savefig('./tmp_sweep_{}_{}.pdf'.format(_tag, _idx))
 
-    #
-    #
-    # Compare the KLs of the smoothing distributions.
-    key, subkey = jr.split(key)
-    true_bpf_posterior = smc(subkey, true_model, dataset, num_particles=env.config.sweep_test_particles)
-    key, subkey = jr.split(key)
-    _, pred_smc_posterior = _do_fivo_sweep_jitted(subkey,
-                                                  fivo.get_params_from_opt(opt),
-                                                  _num_particles=env.config.sweep_test_particles,
-                                                  _datasets=dataset)
 
-    true_bpf_kls = compute_marginal_kls(true_model, dataset, true_bpf_posterior.weighted_smoothing_particles)
-    pred_smc_kls = compute_marginal_kls(true_model, dataset, pred_smc_posterior.weighted_smoothing_particles)
-    # init_bpf_kls = compute_marginal_kls(true_model, dataset, init_bpf_posterior.weighted_smoothing_particles)
+def _final_validation(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, _do_fivo_sweep_jitted):
+    """
 
-    plt.figure()
-    plt.plot(np.median(np.asarray(true_bpf_kls), axis=1), label='True (BPF)')
-    plt.plot(np.median(np.asarray(pred_smc_kls), axis=1), label='Pred (FIVO-AUX)')
-    # plt.plot(np.median(np.asarray(init_bpf_kls), axis=1), label='bpf')
-    plt.legend()
-    plt.grid(True)
-    plt.title('E_sweeps [ KL [ p_true[t] || q_pred[t] ] ]')
-    plt.xlabel('Time, t')
-    plt.ylabel('KL_t')
-    plt.pause(0.001)
-    plt.savefig('./kl_diff.pdf')
-    #
-    #
+    Args:
+        env:
+        opt:
+        dataset:
+        true_model:
+        rebuild_model_fn:
+        rebuild_prop_fn:
+        rebuild_tilt_fn:
+        key:
+        _do_fivo_sweep_jitted:
+
+    Returns:
+
+    """
+
+    # Compare the sweeps.
+    compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, _do_fivo_sweep_jitted)
+
+    # Compare the KLs.
+    true_bpf_kls, pred_smc_kls = compare_kls(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn,
+                                             rebuild_tilt_fn, key, _do_fivo_sweep_jitted, plot=True)
 
 
 def do_config():
@@ -388,13 +422,16 @@ def do_config():
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {'DIRECT', 'NONE'/None}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
-    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.
+    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.  # TODO  'dynamics_bias'
 
     config = parser.parse_args().__dict__
 
     # Define the parameter names that we are going to learn.
     # This has to be a tuple of strings that index which args we will pull out.
-    config['free_parameters'] = tuple(config['free_parameters'].split(','))
+    if config['free_parameters'] is None or config['free_parameters'] == '':
+        config['free_parameters'] = ()
+    else:
+        config['free_parameters'] = tuple(config['free_parameters'].split(','))
 
     env = {  # Define some defaults.
         'dset_to_plot': 2,
@@ -403,9 +440,9 @@ def do_config():
         'sweep_test_particles': 10,
 
         # Define the parameters to be used during optimization.
-        'num_particles': 20,
+        'num_particles': 50,
         'opt_steps': 100000,
-        'datasets_per_batch': 8,
+        'datasets_per_batch': 32,
 
         'load_path': None,  # './params_tmp.p'  # './params_tmp.p'  # {None, './params_tmp.p'}.
         'save_path': None,  # './params_tmp.p'  # {None, './params_tmp.p'}.
@@ -417,7 +454,7 @@ def do_config():
     config['use_sgr'] = bool(config['use_sgr'])
 
     # Get everything.
-    if log_to_wandb:
+    if USE_WANDB:
         # Set up WandB
         env = wandb.init(project=PROJECT, entity=USERNAME, group=env['log_group'], config=env)
     else:
@@ -426,7 +463,7 @@ def do_config():
                                  'log_group': log_group})
 
     # Set up some WandB stuff.
-    env.config.log_to_wandb = bool(log_to_wandb)
+    env.config.USE_WANDB = bool(USE_WANDB)
     env.config.wandb_group = env.config.log_group
     env.config.wandb_project = PROJECT
     env.config.local_system = local_system
@@ -618,6 +655,10 @@ def main():
                     val_fivo_lml.append(_val_fivo_lml)
                 # print('Variance: FIVO-AUX: ', np.var(np.asarray(val_fivo_lml)))
 
+                # Test the KLs.
+                true_bpf_kls, pred_smc_kls = compare_kls(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
+                                                         do_fivo_sweep_jitted)
+
                 # Do some printing.
                 do_print(_step,
                          true_model,
@@ -672,8 +713,10 @@ def main():
                           'small_lml_variance_fivo': np.var(np.asarray(val_fivo_lml)),
                           'small_lml_mean_fivo': np.mean(np.asarray(val_fivo_lml)),
                           'small_fivo_bound': np.mean(np.asarray(val_fivo_bound)),
+                          'expected_kl_true': np.mean(true_bpf_kls),
+                          'expected_kl_pred': np.mean(pred_smc_kls)
                           }
-                log_to_wandb(to_log, _epoch=_step)
+                utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=USE_WANDB)
 
         # Do some final validation.
         _final_validation(env,

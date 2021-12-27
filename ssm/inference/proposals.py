@@ -11,7 +11,7 @@ from copy import deepcopy as dc
 import flax.linen as nn
 
 # Import some ssm stuff.
-from ssm.inference.conditional_generators import build_independent_gaussian_generator
+from ssm.inference.conditional_generators import IndependentGaussianGenerator
 import ssm.nn_util as nn_util
 
 
@@ -65,11 +65,11 @@ class IndependentGaussianProposal:
         # head_log_var_fn = nn.Dense(output_dim, kernel_init=w_init_mean)
 
         # Build out the function approximator.
-        self.proposal = build_independent_gaussian_generator(self._dummy_processed_input,
-                                                             dummy_output,
-                                                             trunk_fn=trunk_fn,
-                                                             head_mean_fn=head_mean_fn,
-                                                             head_log_var_fn=head_log_var_fn, )
+        self.proposal = IndependentGaussianGenerator.from_params(self._dummy_processed_input,
+                                                                 dummy_output,
+                                                                 trunk_fn=trunk_fn,
+                                                                 head_mean_fn=head_mean_fn,
+                                                                 head_log_var_fn=head_log_var_fn, )
 
     def init(self, key):
         """
@@ -83,7 +83,7 @@ class IndependentGaussianProposal:
 
         """
         # return self.proposal.init(key, self._dummy_processed_input)
-        return jax.vmap(self.proposal.init, in_axes=(0, None)) \
+        return jax.vmap(self.proposal.init, in_axes=(0, None))\
             (jr.split(key, self.n_proposals), self._dummy_processed_input)
 
     def apply(self, params, inputs):
@@ -99,15 +99,40 @@ class IndependentGaussianProposal:
             (Tuple): (TFP distribution over latent state, updated q internal state).
 
         """
+
         # Pull out the time and the appropriate proposal.
+        t = inputs[3]
         if self.n_proposals == 1:
             t_params = jax.tree_map(lambda args: args[0], params)
         else:
-            t = inputs[3]
             t_params = jax.tree_map(lambda args: args[t], params)
 
         proposal_inputs = self._proposal_input_generator(*inputs)
         q_dist = self.proposal.apply(t_params, proposal_inputs)
+
+        # # TODO - Can force the optimal proposal here for the stock GDM example..
+        # _prop_inp_old = proposal_inputs
+        # if proposal_inputs.ndim == 1:
+        #     proposal_inputs = np.expand_dims(proposal_inputs, axis=0)
+        #
+        # mean = jax.lax.cond(
+        #          t == 0,
+        #          lambda *args: (proposal_inputs[..., 0] / (np.asarray([9.0 + 1.0]))),
+        #          lambda *args: (((9.0 - np.asarray([t]) + 1) * proposal_inputs[:, 1]) + proposal_inputs[:, 0]) / (9.0 - np.asarray([t]) + 1 + 1),
+        #          None)
+        #
+        # std = jax.lax.cond(t == 0,
+        #                    lambda *args: (mean * 0.0) + np.sqrt(10.0 / 11.0 + np.asarray([0])),
+        #                    lambda *args: (mean * 0.0) + np.sqrt(1.0 / (1.0 + (1.0 / (1.0 + ((9.0 - np.asarray([t])) * 1.0))))),
+        #                    None)
+        #
+        # # q_dist = tfd.MultivariateNormalDiag((q_dist.mean().squeeze() * 0.0) + np.expand_dims(mean, -1), (q_dist.stddev() * 0.0) + std)
+        # if _prop_inp_old.ndim == 1:
+        #     q_dist = tfd.MultivariateNormalDiag(mean, std)
+        # else:
+        #     q_dist = tfd.MultivariateNormalDiag(np.expand_dims(mean, axis=1), np.expand_dims(std, axis=1))
+        # # TODO - Can force the optimal proposal here for the stock GDM example..
+
         return q_dist, None
 
     def _proposal_input_generator(self, *_inputs):

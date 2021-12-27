@@ -187,7 +187,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.003, q_lr=0.003, r_lr=0.003):
+def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.01, q_lr=0.0003, r_lr=0.003):
     """
     Build out the appropriate optimizer.
 
@@ -266,11 +266,15 @@ def log_params(_param_hist, _cur_params, _cur_lml, _cur_fivo, _cur_em, _step):
         for _ko in _p.keys():
             for _ki in _p[_ko].keys():
                 _k = _ko + '_' + _ki
-                if ('var' in _k) and ('bias' in _k):
-                    _p_flat[_k + '_(EXP)'] = onp.array(np.exp(_p[_ko][_ki]))
-                else:
-                    _p_flat[_k] = onp.array(_p[_ko][_ki])
+
                 # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+
+                # TODO - ----
+                if ('var' in _k) and ('bias' in _k):
+                    _p_flat[_k + '_(EXP)'] = dc(onp.array(np.exp(_p[_ko][_ki])))
+                else:
+                    _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+
         _param_hist[1].append(_p_flat)
     else:
         _param_hist[1].append(None)
@@ -282,11 +286,15 @@ def log_params(_param_hist, _cur_params, _cur_lml, _cur_fivo, _cur_em, _step):
         for _ko in _p.keys():
             for _ki in _p[_ko].keys():
                 _k = _ko + '_' + _ki
-                if ('var' in _k) and ('bias' in _k):
-                    _p_flat[_k + '_(EXP)'] = onp.array(np.exp(_p[_ko][_ki]))
-                else:
-                    _p_flat[_k] = onp.array(_p[_ko][_ki])
+
                 # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+
+                # TODO - ----
+                if ('var' in _k) and ('bias' in _k):
+                    _p_flat[_k + '_(EXP)'] = dc(onp.array(np.exp(_p[_ko][_ki])))
+                else:
+                    _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+
         _param_hist[2].append(_p_flat)
     else:
         _param_hist[2].append(None)
