@@ -438,7 +438,7 @@ def do_config():
         'dset_to_plot': 2,
         'num_val_datasets': 50,
         'validation_particles': 1000,
-        'sweep_test_particles': 10,
+        'sweep_test_particles': 25,
 
         # Define the parameters to be used during optimization.
         'num_particles': 10,
