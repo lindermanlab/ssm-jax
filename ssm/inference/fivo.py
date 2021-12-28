@@ -187,7 +187,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.01, q_lr=0.0003, r_lr=0.003):
+def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.003, q_lr=0.003, r_lr=0.003):
     """
     Build out the appropriate optimizer.
 
