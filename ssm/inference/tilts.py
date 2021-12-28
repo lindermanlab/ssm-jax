@@ -20,16 +20,20 @@ class IndependentGaussianTilt:
 
     """
 
-    def __init__(self, n_tilts, tilt_input,
+    def __init__(self, n_tilts, tilt_input, input_generator, output_generator,
                  trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
-
-        # Re-build the full input that will be used to condition the tilt.
-        self._dummy_processed_input = self._tilt_input_generator(*tilt_input)
 
         # Work out the number of tilts.
         assert (n_tilts == 1) or (n_tilts == len(tilt_input[0]) - 1), \
             'Can only use a single tilt or as many tilt as there are transitions.'
         self.n_tilts = n_tilts
+
+        # Inscribe the generators.
+        self._tilt_input_generator = input_generator
+        self._tilt_output_generator = output_generator
+
+        # Re-build the full input that will be used to condition the tilt.
+        self._dummy_processed_input = self._tilt_input_generator(*tilt_input)
 
         # Re-build the output that we will score under the tilt.
         dummy_output = self._tilt_output_generator(*tilt_input)
@@ -83,9 +87,9 @@ class IndependentGaussianTilt:
         tilt_inputs = self._tilt_input_generator(*inputs)
         r_dist = self.tilt.apply(t_params, tilt_inputs)
 
-        # # TODO - forcing here for stock GSM example.
+        # # TODO - forcing here for stock GDM example.
         # r_dist = tfd.MultivariateNormalDiag(loc=tilt_inputs, scale_diag=np.sqrt(r_dist.variance()))
-        # # TODO - forcing here for stock GSM example.
+        # # TODO - forcing here for stock GDM example.
 
         # Now score under that distribution.
         tilt_outputs = self._tilt_output_generator(*inputs)
@@ -93,11 +97,14 @@ class IndependentGaussianTilt:
 
         return log_r_val
 
-    def _tilt_input_generator(self, *_inputs):
+    @staticmethod
+    def _tilt_input_generator(*_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be input into the tilt.
 
+        NOTE - this is an abstract method and must be implemented by wherever this is being used.
+
         Args:
             *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
                                     (dataset, model, particles, time)
@@ -106,24 +113,16 @@ class IndependentGaussianTilt:
             (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
 
         """
+        raise NotImplementedError()
 
-        _, model, particles, t = _inputs
-
-        # Just the particles are passed in.
-        tilt_inputs = (particles, )
-
-        is_batched = (model.latent_dim != particles.shape[0])
-        if not is_batched:
-            return nn_util.vectorize_pytree(tilt_inputs)
-        else:
-            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(0, ))
-            return vmapped(*tilt_inputs)
-
-    def _tilt_output_generator(self, *_inputs):
+    @staticmethod
+    def _tilt_output_generator(*_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be scored under into the tilt.
 
+        NOTE - this is an abstract method and must be implemented by wherever this is being used.
+
         Args:
             *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
                                     (dataset, model, particles, time)
@@ -132,14 +131,7 @@ class IndependentGaussianTilt:
             (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
 
         """
-
-        data, _, _, t = _inputs
-
-        # TODO - Need to dynamically slice this to pick off the last T-t elements...
-
-        # TODO - this is currently set up for the GDM case.  Need to impleemnt this more generally.
-        tilt_inputs = (data[-1], )  # Just the data are passed in.
-        return nn_util.vectorize_pytree(tilt_inputs)
+        raise NotImplementedError()
 
 
 def rebuild_tilt(tilt, tilt_structure):

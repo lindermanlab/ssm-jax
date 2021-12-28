@@ -417,13 +417,13 @@ def do_config():
     # Set up the experiment.
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', default=default_seed, type=int)
-    parser.add_argument('--log-group', default='gdm-v3.0.0', type=str)               # {'debug', 'gdm-v1.0'}
+    parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
 
     parser.add_argument('--proposal-structure', default='DIRECT', type=str)     # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {'DIRECT', 'NONE'/None}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
-    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.  # TODO  'dynamics_bias'
+    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.
 
     config = parser.parse_args().__dict__
 
@@ -438,7 +438,7 @@ def do_config():
         'dset_to_plot': 2,
         'num_val_datasets': 50,
         'validation_particles': 1000,
-        'sweep_test_particles': 25,
+        'sweep_test_particles': 10,
 
         # Define the parameters to be used during optimization.
         'num_particles': 10,

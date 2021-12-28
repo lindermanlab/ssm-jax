@@ -133,11 +133,58 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
     # Check whether we have a valid number of tilts.
     n_tilts = len(dataset[0]) - 1
 
+    # Define a method for generating thei nputs to the tilt.
+    def gdm_tilt_input_generator(*_inputs):
+        """
+        Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
+        can be input into the tilt.
+
+        Args:
+            *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
+                                    (dataset, model, particles, time)
+
+        Returns:
+            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
+
+        """
+
+        _, model, particles, t = _inputs
+
+        # Just the particles are passed in.
+        tilt_inputs = (particles, )
+
+        is_batched = (model.latent_dim != particles.shape[0])
+        if not is_batched:
+            return nn_util.vectorize_pytree(tilt_inputs)
+        else:
+            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(0, ))
+            return vmapped(*tilt_inputs)
+
+    # We need to define the method for generating the inputs.
+    def gdm_tilt_output_generator(*_inputs):
+        """
+        Define the output generator for the gdm example.
+        Args:
+            *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
+                                    (dataset, model, particles, time)
+
+        Returns:
+
+        """
+
+        data, _, _, t = _inputs
+        tilt_inputs = (data[-1],)  # Just the data are passed in.
+        return nn_util.vectorize_pytree(tilt_inputs)
+
     # Define the proposal itself.
     tilt = tilts.IndependentGaussianTilt(n_tilts=n_tilts,
                                          tilt_input=stock_tilt_input,
+                                         input_generator=gdm_tilt_input_generator,
+                                         output_generator=gdm_tilt_output_generator,
                                          head_mean_fn=head_mean_fn,
                                          head_log_var_fn=head_log_var_fn)
+
+    # Initialize the network.
     tilt_params = tilt.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
@@ -178,12 +225,42 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     # Check whether we have a valid number of proposals.
     n_props = len(dataset[0])
 
+    # Define the required method for building the inputs.
+    def gdm_proposal_input_generator(*_inputs):
+        """
+        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
+        can be input into the proposal.
+
+        Args:
+            *_inputs (tuple):       Tuple of standard inputs to the proposal in SMC:
+                                    (dataset, model, particles, time, p_dist)
+
+        Returns:
+            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
+
+        """
+
+        dataset, _, particles, t, _, _ = _inputs  # NOTE - this part of q can't actually use model or p_dist.
+
+        proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=len(dataset)-1, axis=0, keepdims=False),
+                           _inputs[2])
+
+        is_batched = (_inputs[1].latent_dim != particles.shape[0])
+        if not is_batched:
+            return nn_util.vectorize_pytree(proposal_inputs)
+        else:
+            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
+            return vmapped(*proposal_inputs)
+
     # Define the proposal itself.
     proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
                                                      stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
                                                      dummy_output=dummy_proposal_output,
+                                                     input_generator=gdm_proposal_input_generator,
                                                      head_mean_fn=head_mean_fn,
                                                      head_log_var_fn=head_log_var_fn, )
+
+    # Initialize the network.
     proposal_params = proposal.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
