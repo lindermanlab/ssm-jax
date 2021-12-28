@@ -702,7 +702,7 @@ def do_resample(key,
     return resampled_particles, ancestors, resamp_log_ws, should_resample
 
 
-def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=None, _obs=None):
+def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=None, obs=None):
     """
     Some stock code for plotting the results of an SMC sweep.
     :param particles:
@@ -752,9 +752,9 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
         plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
 
     # Enable plotting obs here.
-    # if _obs is not None:
-    #     for _i, _c in zip(range(_obs.shape[1]), color_names):
-    #         plt.scatter(ts, _obs[:, _i], c=_c, marker='.', label=gen_label(_i, 'Observed'))
+    # if obs is not None:
+    #     for _i, _c in zip(range(obs.shape[1]), color_names):
+    #         plt.scatter(ts, obs[:, _i], c=_c, marker='.', label=gen_label(_i, 'Observed'))
 
     plt.title(tag)
     plt.grid(True)

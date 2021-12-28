@@ -20,6 +20,7 @@ from pprint import pprint
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
 from ssm.inference.smc import _plot_single_sweep
 from ssm.inference.smc import smc
+import ssm.inference.fivo_util as fivoutil
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
 from tensorflow_probability.substrates.jax import distributions as tfd
@@ -67,342 +68,6 @@ except:
 _st = dt()
 _verbose_clock_print = False
 clock = lambda __st, __str: utils.clock(__st, __str, _verbose_clock_print)
-
-
-def temp_validation_code(key, true_model, dataset, true_states, opt, _do_fivo_sweep_jitted, _smc_jit,
-                         _num_particles=10, _dset_to_plot=0, _init_model=None):
-    """
-
-    Args:
-        key:
-        true_model:
-        dataset:
-        true_states:
-        opt:
-        _do_fivo_sweep_jitted:
-        _smc_jit:
-        _num_particles:
-        _dset_to_plot:
-        _init_model:
-
-    Returns:
-
-    """
-
-    # Do some sweeps.
-    key, subkey = jr.split(key)
-    smc_posterior = _smc_jit(subkey, true_model, dataset, num_particles=_num_particles)
-    key, subkey = jr.split(key)
-    initial_fivo_bound, sweep_posteriors = _do_fivo_sweep_jitted(subkey, fivo.get_params_from_opt(opt),
-                                                                 _num_particles=_num_particles,
-                                                                 _datasets=dataset)
-
-    # CODE for plotting lineages.
-    idx = 7
-    fig, ax = plt.subplots(2, 1, sharex=True, sharey=True, squeeze=True, figsize=(8, 8), tight_layout=True)
-    for _p in smc_posterior[idx].weighted_smoothing_particles:
-        ax[0].plot(_p, linewidth=0.1, c='b')
-    ax[0].grid(True)
-    for _p in sweep_posteriors[idx].weighted_smoothing_particles:
-        ax[1].plot(_p, linewidth=0.1, c='b')
-    ax[1].grid(True)
-    plt.pause(0.01)
-
-    # Compare the variances of the LML estimates.
-    # Test BPF in the initial model..
-    val_bpf_lml, val_fivo_lml = [], []
-    for _ in range(20):
-        key, subkey = jr.split(key)
-        true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=_num_particles)
-        true_bpf_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
-        val_bpf_lml.append(true_bpf_lml)
-
-    for _ in range(20):
-        key, subkey = jr.split(key)
-        initial_fivo_bound, sweep_posteriors = _do_fivo_sweep_jitted(subkey, fivo.get_params_from_opt(opt),
-                                                                     _num_particles=_num_particles,
-                                                                     _datasets=dataset)
-        initial_lml = -utils.lexp(sweep_posteriors.log_normalizer)
-        val_fivo_lml.append(initial_lml)
-
-    print('Variance: BPF:      ', np.var(np.asarray(val_bpf_lml)))
-    print('Variance: FIVO-AUX: ', np.var(np.asarray(val_fivo_lml)))
-
-
-def compute_marginal_kls(true_model, dataset, smoothing_particles):
-    """
-
-    E_q [ log Q / P ]
-
-    Args:
-        true_model:
-        dataset:
-        smoothing_particles:
-
-    Returns:
-
-    """
-
-    eps = 1e-3
-
-    # Get the analytic smoothing marginals.
-    marginals = get_marginals(true_model, dataset)
-
-    # To compute the marginals we are just going to fit a Gaussian.
-    kl_p_q = []
-    for _t in range(smoothing_particles.shape[-2]):
-        samples = smoothing_particles.squeeze()[:, :, _t]
-        q_mu = np.mean(samples, axis=1)
-        q_sd = np.std(samples, axis=1) + eps
-
-        p_mu = marginals.mean()[:, _t]
-        p_sd = marginals.stddev()[:, _t] + eps
-
-        _kl_p_q = np.log(q_sd / p_sd) + \
-                  (((p_sd ** 2) + ((p_mu - q_mu) ** 2)) / (2.0 * (q_sd ** 2))) + \
-                  - 0.5
-
-        kl_p_q.append(_kl_p_q)
-
-    return np.asarray(kl_p_q)
-
-
-def initial_validation(key, true_model, dataset, true_states, opt, _do_fivo_sweep_jitted, _smc_jit,
-                       _num_particles=1000, _dset_to_plot=0, _init_model=None):
-    """
-
-    Args:
-        key:
-        true_model:
-        dataset:
-        true_states:
-        opt:
-        _do_fivo_sweep_jitted:
-        _smc_jit:
-        _num_particles:
-        _dset_to_plot:
-        _init_model:
-
-    Returns:
-
-    """
-    true_lml, em_log_marginal_likelihood = 0.0, 0.0
-    init_bpf_posterior = None
-    em_posterior = None
-
-    # Test against EM (which for the LDS is exact).
-    em_posterior = jax.vmap(true_model.e_step)(dataset)
-    em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
-    em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
-
-    # Test BPF in the true model..
-    key, subkey = jr.split(key)
-    true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=_num_particles)
-    true_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
-
-    if _init_model is not None:
-        # Test BPF in the initial model..
-        key, subkey = jr.split(key)
-        init_bpf_posterior = _smc_jit(subkey, _init_model, dataset, num_particles=_num_particles)
-        initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
-        print('Initial BPF LML: ', initial_bpf_lml)
-
-    # Test SMC in the initial model.
-    key, subkey = jr.split(key)
-    initial_fivo_bound, init_smc_posterior = _do_fivo_sweep_jitted(subkey, fivo.get_params_from_opt(opt),
-                                                                   _num_particles=_num_particles,
-                                                                   _datasets=dataset)
-    initial_lml = -utils.lexp(init_smc_posterior.log_normalizer)
-
-    # # Dump any odd and ends of test code in here.
-    # temp_validation_code(key, true_model, dataset, true_states, opt, _do_fivo_sweep_jitted, _smc_jit,
-    #                      _num_particles=10, _dset_to_plot=_dset_to_plot, _init_model=_init_model)
-
-    # Do some plotting.
-    if em_posterior is not None:
-        sweep_em_mean = em_posterior.mean()[_dset_to_plot]
-        sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[_dset_to_plot]
-        sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
-        _plot_single_sweep(sweep_em_statistics, true_states[_dset_to_plot],
-                           tag='EM smoothing', preprocessed=True, _obs=dataset[_dset_to_plot])
-
-    _plot_single_sweep(true_bpf_posterior[_dset_to_plot].filtering_particles,
-                       true_states[_dset_to_plot],
-                       tag='True BPF Filtering.',
-                       _obs=dataset[_dset_to_plot])
-    _plot_single_sweep(true_bpf_posterior[_dset_to_plot].sample(sample_shape=(_num_particles,), seed=jr.PRNGKey(0)),
-                       true_states[_dset_to_plot],
-                       tag='True BPF Smoothing.',
-                       _obs=dataset[_dset_to_plot])
-
-    if init_bpf_posterior is not None:
-        _plot_single_sweep(init_bpf_posterior[_dset_to_plot].filtering_particles,
-                           true_states[_dset_to_plot],
-                           tag='Initial BPF Filtering.',
-                           _obs=dataset[_dset_to_plot])
-        _plot_single_sweep(init_bpf_posterior[_dset_to_plot].sample(sample_shape=(_num_particles,), seed=jr.PRNGKey(0)),
-                           true_states[_dset_to_plot],
-                           tag='Initial BPF Smoothing.',
-                           _obs=dataset[_dset_to_plot])
-
-    filt_fig = _plot_single_sweep(init_smc_posterior[_dset_to_plot].filtering_particles,
-                                  true_states[_dset_to_plot],
-                                  tag='Initial SMC Filtering.',
-                                  _obs=dataset[_dset_to_plot])
-    sweep_fig = _plot_single_sweep(init_smc_posterior[_dset_to_plot].sample(sample_shape=(_num_particles,), seed=jr.PRNGKey(0)),
-                                   true_states[_dset_to_plot],
-                                   tag='Initial SMC Smoothing.',
-                                   _obs=dataset[_dset_to_plot])
-
-    # Do some print.
-    do_print(0, true_model, opt, true_lml, initial_lml, initial_fivo_bound, em_log_marginal_likelihood)
-    return true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
-
-
-def compare_kls(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, _do_fivo_sweep_jitted, plot=False):
-    """
-
-    Args:
-        env:
-        opt:
-        dataset:
-        true_model:
-        rebuild_model_fn:
-        rebuild_prop_fn:
-        rebuild_tilt_fn:
-        key:
-        _do_fivo_sweep_jitted:
-        plot:
-
-    Returns:
-
-    """
-
-    # Compare the KLs of the smoothing distributions.
-    key, subkey = jr.split(key)
-    true_bpf_posterior = smc(subkey, true_model, dataset, num_particles=env.config.sweep_test_particles)
-    key, subkey = jr.split(key)
-    _, pred_smc_posterior = _do_fivo_sweep_jitted(subkey,
-                                                  fivo.get_params_from_opt(opt),
-                                                  _num_particles=env.config.sweep_test_particles,
-                                                  _datasets=dataset)
-
-    true_bpf_kls = compute_marginal_kls(true_model, dataset, true_bpf_posterior.weighted_smoothing_particles)
-    pred_smc_kls = compute_marginal_kls(true_model, dataset, pred_smc_posterior.weighted_smoothing_particles)
-    # init_bpf_kls = compute_marginal_kls(true_model, dataset, init_bpf_posterior.weighted_smoothing_particles)
-
-    if plot and PLOT:
-        plt.figure()
-        plt.plot(np.median(np.asarray(true_bpf_kls), axis=1), label='True (BPF)')
-        plt.plot(np.median(np.asarray(pred_smc_kls), axis=1), label='Pred (FIVO-AUX)')
-        # plt.plot(np.median(np.asarray(init_bpf_kls), axis=1), label='bpf')
-        plt.legend()
-        plt.grid(True)
-        plt.title('E_sweeps [ KL [ p_true[t] || q_pred[t] ] ]')
-        plt.xlabel('Time, t')
-        plt.ylabel('KL_t')
-        plt.pause(0.001)
-        plt.savefig('./kl_diff.pdf')
-
-    return true_bpf_kls, pred_smc_kls
-
-
-def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, _do_fivo_sweep_jitted):
-    """
-
-    Args:
-        env:
-        opt:
-        dataset:
-        true_model:
-        rebuild_model_fn:
-        rebuild_prop_fn:
-        rebuild_tilt_fn:
-        key:
-        _do_fivo_sweep_jitted:
-
-    Returns:
-
-    """
-    # Do some final validation.
-    # Rebuild the initial distribution.
-    _prop = rebuild_prop_fn(fivo.get_params_from_opt(opt)[1])
-    if _prop is not None:
-        initial_distribution = lambda _dset, _model:  _prop(_dset, _model, np.zeros(dataset.shape[-1], ), 0, None, None)
-    else:
-        initial_distribution = None
-
-    # BPF in true model.
-    key, subkey = jr.split(key)
-    final_val_posterior_bpf_true = smc(subkey,
-                                       true_model,
-                                       dataset,
-                                       num_particles=env.config.sweep_test_particles)
-
-    # SMC with tilt.
-    key, subkey = jr.split(key)
-    final_val_posterior_fivo_aux = smc(subkey,
-                                       rebuild_model_fn(fivo.get_params_from_opt(opt)[0]),
-                                       dataset,
-                                       initialization_distribution=initial_distribution,
-                                       proposal=rebuild_prop_fn(fivo.get_params_from_opt(opt)[1]),
-                                       tilt=rebuild_tilt_fn(fivo.get_params_from_opt(opt)[2]),
-                                       num_particles=env.config.sweep_test_particles)
-
-    # CODE for plotting lineages.
-    for _idx in range(10):
-        fig, ax = plt.subplots(2, 1, sharex=True, sharey=True, squeeze=True, figsize=(8, 8), tight_layout=True)
-
-        for _p in final_val_posterior_bpf_true[_idx].weighted_smoothing_particles:
-            ax[0].plot(_p, linewidth=0.1, c='b')
-        ax[0].grid(True)
-        ax[0].set_title('BPF in true model.')
-
-        for _p in final_val_posterior_fivo_aux[_idx].weighted_smoothing_particles:
-            ax[1].plot(_p, linewidth=0.1, c='b')
-        ax[1].grid(True)
-
-        if (fivo.get_params_from_opt(opt)[1] is not None) and (fivo.get_params_from_opt(opt)[2] is not None):
-            ax[1].set_title('SMC-AUX with learned pqr.')
-            _tag = 'pqr'
-        elif (fivo.get_params_from_opt(opt)[1] is not None) and (fivo.get_params_from_opt(opt)[2] is None):
-            ax[1].set_title('SMC-AUX with learned pq.')
-            _tag = 'pq'
-        elif (fivo.get_params_from_opt(opt)[1] is None) and (fivo.get_params_from_opt(opt)[2] is not None):
-            ax[1].set_title('SMC-AUX with learned pr.')
-            _tag = 'pr'
-        else:
-            ax[1].set_title('SMC-AUX with learned p...?')
-            _tag = 'p'
-
-        plt.pause(0.01)
-        plt.savefig('./tmp_sweep_{}_{}.pdf'.format(_tag, _idx))
-
-
-def _final_validation(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, _do_fivo_sweep_jitted):
-    """
-
-    Args:
-        env:
-        opt:
-        dataset:
-        true_model:
-        rebuild_model_fn:
-        rebuild_prop_fn:
-        rebuild_tilt_fn:
-        key:
-        _do_fivo_sweep_jitted:
-
-    Returns:
-
-    """
-
-    # Compare the sweeps.
-    compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, _do_fivo_sweep_jitted)
-
-    # Compare the KLs.
-    true_bpf_kls, pred_smc_kls = compare_kls(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn,
-                                             rebuild_tilt_fn, key, _do_fivo_sweep_jitted, plot=True)
 
 
 def do_config():
@@ -572,8 +237,16 @@ def main():
 
         # Test the initial models.
         true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound = \
-            initial_validation(key, true_model, validation_datasets, true_states, opt, do_fivo_sweep_jitted, smc_jit,
-                               _num_particles=env.config.validation_particles, _dset_to_plot=env.config.dset_to_plot, _init_model=model)
+            fivoutil.initial_validation(key,
+                                        true_model,
+                                        validation_datasets, true_states,
+                                        opt,
+                                        do_fivo_sweep_jitted,
+                                        smc_jit,
+                                        num_particles=env.config.validation_particles,
+                                        dset_to_plot=env.config.dset_to_plot,
+                                        init_model=model,
+                                        do_print=do_print)
 
         # Test BPF in the initial model..
         bpf = []
@@ -583,16 +256,6 @@ def main():
             initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
             bpf.append(initial_bpf_lml)
         print('Variance: BPF: ', np.var(np.asarray(bpf)))
-
-        # # TODO - TEMP
-        # _final_validation(env,
-        #                   opt,
-        #                   validation_datasets,
-        #                   true_model,
-        #                   rebuild_model_fn,
-        #                   rebuild_prop_fn,
-        #                   rebuild_tilt_fn,
-        #                   key)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -639,7 +302,8 @@ def main():
 
                 # Do a FIVO-AUX sweep.
                 key, subkey = jr.split(key)
-                pred_fivo_bound_to_print, pred_sweep = do_fivo_sweep_jitted(subkey, fivo.get_params_from_opt(opt),
+                pred_fivo_bound_to_print, pred_sweep = do_fivo_sweep_jitted(subkey,
+                                                                            fivo.get_params_from_opt(opt),
                                                                             _num_particles=env.config.validation_particles,
                                                                             _datasets=validation_datasets)
                 pred_lml_to_print = - utils.lexp(pred_sweep.log_normalizer)
@@ -654,11 +318,18 @@ def main():
                                                                             _datasets=validation_datasets)
                     _val_fivo_lml = -utils.lexp(sweep_posteriors.log_normalizer)
                     val_fivo_lml.append(_val_fivo_lml)
-                # print('Variance: FIVO-AUX: ', np.var(np.asarray(val_fivo_lml)))
 
                 # Test the KLs.
-                true_bpf_kls, pred_smc_kls = compare_kls(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
-                                                         do_fivo_sweep_jitted)
+                true_bpf_kls, pred_smc_kls = fivoutil.compare_kls(get_marginals,
+                                                                  env,
+                                                                  opt,
+                                                                  validation_datasets,
+                                                                  true_model,
+                                                                  rebuild_model_fn,
+                                                                  rebuild_prop_fn,
+                                                                  rebuild_tilt_fn,
+                                                                  key,
+                                                                  do_fivo_sweep_jitted)
 
                 # Do some printing.
                 do_print(_step,
@@ -721,15 +392,16 @@ def main():
                 utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=USE_WANDB)
 
         # Do some final validation.
-        _final_validation(env,
-                          opt,
-                          validation_datasets,
-                          true_model,
-                          rebuild_model_fn,
-                          rebuild_prop_fn,
-                          rebuild_tilt_fn,
-                          key,
-                          do_fivo_sweep_jitted)
+        fivoutil.final_validation(get_marginals,
+                                  env,
+                                  opt,
+                                  validation_datasets,
+                                  true_model,
+                                  rebuild_model_fn,
+                                  rebuild_prop_fn,
+                                  rebuild_tilt_fn,
+                                  key,
+                                  do_fivo_sweep_jitted)
 
 
 if __name__ == '__main__':
