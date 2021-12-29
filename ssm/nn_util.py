@@ -5,6 +5,7 @@ Module containing utility scripts for neural networks.
 import jax
 import jax.numpy as np
 import flax.linen as nn
+from tensorflow_probability.substrates.jax import distributions as tfd
 
 from typing import (NamedTuple, Any, Callable, Sequence, Iterable, List, Optional, Tuple,
                     Set, Type, Union, TypeVar, Generic, Dict)
@@ -13,6 +14,7 @@ PRNGKey = Any
 Shape = Iterable[int]
 Dtype = Any  # this could be a real type?
 Array = Any
+
 
 
 def vectorize_pytree(*args):

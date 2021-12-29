@@ -160,6 +160,7 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
     em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
     em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
 
+    # TODO - add back.
     # Test BPF in the true model..
     key, subkey = jr.split(key)
     true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles)

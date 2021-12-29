@@ -17,23 +17,23 @@ import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 
 
-def gdm_define_test(key, free_parameters, proposal_structure, tilt_structure):
+def lds_define_test(key, free_parameters, proposal_structure, tilt_structure):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset = gdm_define_true_model_and_data(subkey)
+    true_model, true_states, dataset = lds_define_true_model_and_data(subkey)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, get_model_params, rebuild_model_fn = gdm_define_test_model(subkey, true_model, free_parameters)
+    model, get_model_params, rebuild_model_fn = lds_define_test_model(subkey, true_model, free_parameters)
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = gdm_define_proposal(subkey, model, dataset, proposal_structure)
+    proposal, proposal_params, rebuild_prop_fn = lds_define_proposal(subkey, model, dataset, proposal_structure)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, dataset, tilt_structure)
+    tilt, tilt_params, rebuild_tilt_fn = lds_define_tilt(subkey, model, dataset, tilt_structure)
 
     # Return this big pile of stuff.
     ret_model = (true_model, true_states, dataset)
@@ -43,7 +43,7 @@ def gdm_define_test(key, free_parameters, proposal_structure, tilt_structure):
     return ret_model, ret_test, ret_prop, ret_tilt
 
 
-def gdm_define_test_model(key, true_model, free_parameters):
+def lds_define_test_model(key, true_model, free_parameters):
     """
 
     :param subkey:
@@ -93,11 +93,10 @@ def gdm_define_test_model(key, true_model, free_parameters):
     return default_model, get_free_model_params_fn, rebuild_model_fn
 
 
-class GdmTilt(tilts.IndependentGaussianTilt):
+class LdsTilt(tilts.IndependentGaussianTilt):
 
     def apply(self, params, inputs):
         """
-        NOTE - this can be overwritten elsewhere for more specialist application requirements.
 
         Args:
             params (FrozenDict):    FrozenDict of the parameters of the proposal.
@@ -112,28 +111,48 @@ class GdmTilt(tilts.IndependentGaussianTilt):
 
         """
 
+        # Pull out the time.
+        t = inputs[3]
+
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
             t_params = params[0]
         else:
-            t = inputs[3]
             t_params = jax.tree_map(lambda args: args[t], params)
 
         # Generate a tilt distribution.
         tilt_inputs = self._tilt_input_generator(*inputs)
         r_dist = self.tilt.apply(t_params, tilt_inputs)
 
-        # # TODO - forcing here for stock GDM example.
-        # r_dist = tfd.MultivariateNormalDiag(loc=tilt_inputs, scale_diag=np.sqrt(r_dist.variance()))
-
         # Now score under that distribution.
         tilt_outputs = self._tilt_output_generator(*inputs)
-        log_r_val = r_dist.log_prob(tilt_outputs)
+
+        # There may be NaNs here, so we need to pull this apart.
+        means = r_dist.mean().T
+        sds = r_dist.variance().T
+
+        # Sweep over the vector and return zeros where appropriate.
+        # TODO - this should be made into a scan or a vmap...
+        def _eval(_idx, _mu, _sd, _out):
+            _dist = tfd.MultivariateNormalDiag(loc=np.expand_dims(_mu, -1), scale_diag=np.sqrt(np.expand_dims(_sd, -1)))
+            return jax.lax.cond(_idx < t,
+                                lambda *args: np.zeros(means.shape[1]),
+                                lambda *args: _dist.log_prob(np.asarray([_out])),
+                                None)
+
+        log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
+
+        # log_r_val = 0.0
+        # for _mu, _sd, _out in zip(means, sds, tilt_outputs):
+        #     log_r_val = log_r_val + jax.lax.cond(np.any(np.isnan(_out)),
+        #                                          lambda *args: np.zeros(means.shape[1]),
+        #                                          lambda *args: _dist.log_prob(np.asarray([_out])),
+        #                                          None)
 
         return log_r_val
 
     # Define a method for generating thei nputs to the tilt.
-    def gdm_tilt_input_generator(*_inputs):
+    def _tilt_input_generator(self, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be input into the tilt.
@@ -163,9 +182,9 @@ class GdmTilt(tilts.IndependentGaussianTilt):
             return vmapped(*tilt_inputs)
 
     # We need to define the method for generating the inputs.
-    def gdm_tilt_output_generator(*_inputs):
+    def _tilt_output_generator(self, *_inputs):
         """
-        Define the output generator for the gdm example.
+        Define the output generator for the lds example.
         Args:
             *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
                                     (dataset, model, particles, time)
@@ -175,11 +194,14 @@ class GdmTilt(tilts.IndependentGaussianTilt):
         """
 
         data, _, _, t = _inputs
-        tilt_inputs = (data[-1],)  # Just the data are passed in.
-        return nn_util.vectorize_pytree(tilt_inputs)
+
+        # We will pass in whole data into the tilt and then filter out as required.
+        tilt_outputs = (data, )
+
+        return nn_util.vectorize_pytree(tilt_outputs)
 
 
-def gdm_define_tilt(subkey, model, dataset, tilt_structure):
+def lds_define_tilt(subkey, model, dataset, tilt_structure):
     """
 
     Args:
@@ -200,32 +222,71 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
 
     # Tilt functions take in (dataset, model, particles, t-1).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
+    output_lengths = np.arange(len(dataset[0]), 0, -1)
+
     stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0)
-    dummy_tilt_output = nn_util.vectorize_pytree(dataset[0][-1], )
 
-    # Define a more conservative initialization.
-    w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - note can remove bias here.
+    dummy_tilt_output = nn_util.vectorize_pytree(dataset[0], )
+    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
+    head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
 
-    # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
-    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0], bias_init=b_init)
-
-    # Define the tilt itself.
-    tilt = GdmTilt(n_tilts=n_tilts,
+    # Define the tilts themselves.
+    tilt = LdsTilt(n_tilts=n_tilts,
                    tilt_input=stock_tilt_input,
                    head_mean_fn=head_mean_fn,
                    head_log_var_fn=head_log_var_fn)
 
     tilt_params = tilt.init(subkey)
 
+    #
+    # Make the params a dict.
+    # TODO - this is hella messy.
+    # tilt = utils.JaxTuple(tilt)
+    # tilt_params = tuple(tilt_params)
+    # jax.pmap(lambda _p, _k: _p.init(_k))(tilt, jr.split(subkey, n_tilts))
+
+    # # Tilt functions take in (dataset, model, particles, t-1).
+    # dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
+    # output_lengths = np.arange(len(dataset[0]), 0, -1)
+    # tilt = []
+    # tilt_params = []
+    #
+    # for _t in range(n_tilts):
+    #     _stock_tilt_input = (dataset[-1], model, dummy_particles[0], _t)
+    #
+    #     _dummy_tilt_output = nn_util.vectorize_pytree(dataset[0][-output_lengths[_t]:], )
+    #     _head_mean_fn = nn.Dense(_dummy_tilt_output.shape[0])
+    #     _head_log_var_fn = nn_util.Static(_dummy_tilt_output.shape[0])
+    #
+    #     # Define the tilts themselves.
+    #     _tilt = tilts.IndependentGaussianTilt(n_tilts=1,
+    #                                           tilt_input=_stock_tilt_input,
+    #                                           input_generator=lds_tilt_input_generator,
+    #                                           output_generator=lds_tilt_output_generator,
+    #                                           head_mean_fn=_head_mean_fn,
+    #                                           head_log_var_fn=_head_log_var_fn)
+    #
+    #     subkey, another_subkey = jr.split(subkey)
+    #     _tilt_params = _tilt.init(another_subkey)
+    #
+    #     tilt.append(_tilt)
+    #     tilt_params.append(_tilt_params)
+    #
+    # # Make the params a dict.
+    # # TODO - this is hella messy.
+    #
+    # # tilt = utils.JaxTuple(tilt)
+    #
+    # tilt_params = utils.make_named_tuple({'t' + str(_k): _p for _p, _k in zip(tilt_params, np.arange(10))})
+    # # tilt_params = tuple(tilt_params)
+    # # jax.pmap(lambda _p, _k: _p.init(_k))(tilt, jr.split(subkey, n_tilts))
+
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
     rebuild_tilt_fn = tilts.rebuild_tilt(tilt, tilt_structure)
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def gdm_define_proposal(subkey, model, dataset, proposal_structure):
+def lds_define_proposal(subkey, model, dataset, proposal_structure):
     """
 
     :param subkey:
@@ -245,21 +306,14 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles[0], 0, dummy_p_dist)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
-    # Define a more conservative initialization.
-    w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - note can remove bias here.
-
-    # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
-    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
-    head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=b_init)
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
+    head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0])
 
     # Check whether we have a valid number of proposals.
     n_props = len(dataset[0])
 
     # Define the required method for building the inputs.
-    def gdm_proposal_input_generator(*_inputs):
+    def lds_proposal_input_generator(*_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
@@ -273,23 +327,23 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
 
         """
 
-        dataset, _, particles, t, _, _ = _inputs  # NOTE - this part of q can't actually use model or p_dist.
+        _dataset, _model, _particles, _t, _, _ = _inputs  # NOTE - this part of q can't actually use model or p_dist.
 
-        proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=len(dataset)-1, axis=0, keepdims=False),
-                           _inputs[2])
+        # This proposal gets the entire dataset and the current particles.
+        _proposal_inputs = (_dataset, _particles)
 
-        is_batched = (_inputs[1].latent_dim != particles.shape[0])
-        if not is_batched:
-            return nn_util.vectorize_pytree(proposal_inputs)
+        _is_batched = (_model.latent_dim != _particles.shape[0])
+        if not _is_batched:
+            return nn_util.vectorize_pytree(_proposal_inputs)
         else:
-            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return vmapped(*proposal_inputs)
+            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
+            return _vmapped(*_proposal_inputs)
 
     # Define the proposal itself.
     proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
                                                      stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
                                                      dummy_output=dummy_proposal_output,
-                                                     input_generator=gdm_proposal_input_generator,
+                                                     input_generator=lds_proposal_input_generator,
                                                      head_mean_fn=head_mean_fn,
                                                      head_log_var_fn=head_log_var_fn, )
 
@@ -301,7 +355,7 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     return proposal, proposal_params, rebuild_prop_fn
 
 
-def gdm_get_true_target_marginal(model, data):
+def lds_get_true_target_marginal(model, data):
     """
     Take in a model and some data and return the tfd distribution representing the marginals of true posterior.
     Args:
@@ -311,34 +365,10 @@ def gdm_get_true_target_marginal(model, data):
     Returns:
 
     """
-
-    # TODO - this assumes that `\alpha = 0`.
-
-    assert len(data.shape) == 3
-
-    T = data.shape[1] - 1
-    t = np.arange(0, T + 1)
-    sigma_p_sq = model.initial_covariance.squeeze()
-    sigma_f_sq = model.dynamics_noise_covariance.squeeze()
-    sigma_x_sq = model.emissions_noise_covariance.squeeze()
-    mu_p = model.initial_mean.squeeze()
-    obs = data[:, -1, :].squeeze()
-
-    precision_1 = 1.0 / (sigma_p_sq + t * sigma_f_sq)
-    precision_2 = 1.0 / (sigma_x_sq + (T - t) * sigma_f_sq)
-
-    sigma_sq = 1.0 / (precision_1 + precision_2)
-    mu = (((mu_p * precision_1) + (np.expand_dims(obs, 1) * precision_2)) * sigma_sq)
-
-    dist = tfd.MultivariateNormalDiag(loc=mu, scale_diag=np.sqrt(sigma_sq))
-
-    assert dist.batch_shape == data.shape[0]
-    assert dist.event_shape == data.shape[1]
-
-    return dist
+    return None
 
 
-def gdm_define_true_model_and_data(key):
+def lds_define_true_model_and_data(key):
     """
 
     :param key:
@@ -354,8 +384,10 @@ def gdm_define_true_model_and_data(key):
     true_dynamics_weights = np.eye(latent_dim)
     true_emission_weights = np.eye(emissions_dim)
 
-    # emission_scale_tril = 0.1 * np.eye(emissions_dim)  # TODO - made observations tighter.
-    emission_scale_tril = 1.0 * np.eye(emissions_dim)
+    emission_scale_tril = 0.1 * np.eye(emissions_dim)  # TODO - made observations tighter.
+    # emission_scale_tril = 1.0 * np.eye(emissions_dim)
+
+    initial_state_scale_tril = 5.0 * np.eye(latent_dim)
 
     # Create the true model.
     key, subkey = jr.split(key)
@@ -367,25 +399,37 @@ def gdm_define_true_model_and_data(key):
                              dynamics_weights=true_dynamics_weights,
                              emission_weights=true_emission_weights,
                              emission_scale_tril=emission_scale_tril,
+                             initial_state_scale_tril=initial_state_scale_tril
                              )
 
     # Sample some data.
     key, subkey = jr.split(key)
     true_states, dataset = true_model.sample(key=subkey, num_steps=T+1, num_samples=num_trials)
 
-    # For the GDM example we zero out all but the last elements.
-    dataset = dataset.at[:, :-1].set(np.nan)
-
     return true_model, true_states, dataset
 
 
-def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
+def lds_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
                 param_figs):
+    """
+    NOTE - removed proposal and tilt parameters here as they will be too complex.
+
+    Args:
+        _param_hist:
+        _loss_hist:
+        _true_loss_em:
+        _true_loss_smc:
+        _true_params:
+        param_figs:
+
+    Returns:
+
+    """
 
     fsize = (12, 8)
-    idx_to_str = lambda _idx: ['Model (p): ', 'Proposal (q): ', 'Tilt (r): '][_idx]
+    idx_to_str = lambda _idx: ['Model (p): '][_idx]
 
-    for _p, _hist in enumerate(_param_hist[:3]):
+    for _p, _hist in enumerate(_param_hist[:1]):
 
         if _hist[0] is not None:
             if len(_hist[0]) > 0:
@@ -412,12 +456,12 @@ def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_pa
                     plt.tight_layout()
                     plt.pause(0.00001)
 
-                plt.savefig('./gdm_param_{}.pdf'.format(_p))
+                plt.savefig('./lds_param_{}.pdf'.format(_p))
 
     return param_figs
 
 
-def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
+def lds_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
     """
     Do menial print stuff.
     :param _step:
@@ -444,49 +488,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
             print('\t\tTrue: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in true_bias]))
             print('\t\tPred: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in pred_bias]))
 
-    if opt[2] is not None:
-        r_param = opt[2].target._dict['params']
-        print('\tTilt:')
-
-        r_mean_w = r_param['head_mean_fn']['kernel']
-        print('\t\tR mean weight:           ', '  '.join(['{: >9.3f}'.format(_s) for _s in r_mean_w.flatten()]))
-
-        try:
-            r_mean_b = r_param['head_mean_fn']['bias']  # ADD THIS BACK IF WE ARE USING THE BIAS
-            print('\t\tR mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(r_mean_b.flatten()))]))  # TODO - np.exp
-        except:
-            pass
-
-        try:
-            r_lvar_w = r_param['head_log_var_fn']['kernel']
-            print('\t\tR var(log) kernel (->0):', '  '.join(['{: >9.3f}'.format(_s) for _s in r_lvar_w.flatten()]))
-        except:
-            pass
-
-        r_lvar_b = r_param['head_log_var_fn']['bias']
-        print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(r_lvar_b.flatten()))]))  # TODO - np.exp
-
-    if opt[1] is not None:
-        q_param = opt[1].target._dict['params']
-        print('\tProposal')
-
-        q_mean_w = q_param['head_mean_fn']['kernel']
-        print('\t\tQ mean weight:           ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_mean_w.flatten()]))
-
-        try:
-            q_mean_b = q_param['head_mean_fn']['bias']  # ADD THIS BACK IF WE ARE USING THE BIAS
-            print('\t\tQ mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(q_mean_b.flatten()))]))  # TODO - np.exp
-        except:
-            pass
-
-        try:
-            q_lvar_w = q_param['head_log_var_fn']['kernel']
-            print('\t\tQ var weight      (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in q_lvar_w.flatten()]))
-        except:
-            pass
-
-        q_lvar_b = q_param['head_log_var_fn']['bias']
-        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(q_lvar_b.flatten()))]))  # TODO - np.exp
+    # NOTE - the proposal and tilt are more complex here, so don't show them.
 
     print()
     print()

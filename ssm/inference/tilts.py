@@ -20,17 +20,13 @@ class IndependentGaussianTilt:
 
     """
 
-    def __init__(self, n_tilts, tilt_input, input_generator, output_generator,
+    def __init__(self, n_tilts, tilt_input,
                  trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
 
         # Work out the number of tilts.
         assert (n_tilts == 1) or (n_tilts == len(tilt_input[0]) - 1), \
             'Can only use a single tilt or as many tilt as there are transitions.'
         self.n_tilts = n_tilts
-
-        # Inscribe the generators.
-        self._tilt_input_generator = input_generator
-        self._tilt_output_generator = output_generator
 
         # Re-build the full input that will be used to condition the tilt.
         self._dummy_processed_input = self._tilt_input_generator(*tilt_input)
@@ -62,6 +58,7 @@ class IndependentGaussianTilt:
 
     def apply(self, params, inputs):
         """
+        NOTE - this can be overwritten elsewhere for more specialist application requirements.
 
         Args:
             params (FrozenDict):    FrozenDict of the parameters of the proposal.
@@ -76,29 +73,16 @@ class IndependentGaussianTilt:
 
         """
 
-        # # TODO - removed the multiple proposals paradigm.
-        # # Pull out the time and the appropriate tilt.
-        # if self.n_tilts == 1:
-        #     t_params = params[0]
-        # else:
-        #     t = inputs[3]
-        #     t_params = jax.tree_map(lambda args: args[t], params)
-
-        # if len(params) == 1:
-        #     t_params = params[0]
-        # else:
-        #     t = inputs[3]
-        #     t_params = params[t]
-
-        t_params = params
+        # Pull out the time and the appropriate tilt.
+        if self.n_tilts == 1:
+            t_params = params[0]
+        else:
+            t = inputs[3]
+            t_params = jax.tree_map(lambda args: args[t], params)
 
         # Generate a tilt distribution.
         tilt_inputs = self._tilt_input_generator(*inputs)
         r_dist = self.tilt.apply(t_params, tilt_inputs)
-
-        # # TODO - forcing here for stock GDM example.
-        # r_dist = tfd.MultivariateNormalDiag(loc=tilt_inputs, scale_diag=np.sqrt(r_dist.variance()))
-        # # TODO - forcing here for stock GDM example.
 
         # Now score under that distribution.
         tilt_outputs = self._tilt_output_generator(*inputs)
@@ -106,8 +90,7 @@ class IndependentGaussianTilt:
 
         return log_r_val
 
-    @staticmethod
-    def _tilt_input_generator(*_inputs):
+    def _tilt_input_generator(self, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be input into the tilt.
@@ -124,8 +107,7 @@ class IndependentGaussianTilt:
         """
         raise NotImplementedError()
 
-    @staticmethod
-    def _tilt_output_generator(*_inputs):
+    def _tilt_output_generator(self, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be scored under into the tilt.
@@ -157,15 +139,18 @@ def rebuild_tilt(tilt, tilt_structure):
         if tilt_structure == 'DIRECT':
 
             def _tilt(*_input):
+                #
+                # # TODO - this has gotten a bit messy.
+                # t = _input[3]
+                #
+                # p_all = _param_vals[t]  # jax.lax.dynamic_index_in_dim(np.asarray(tuple((0, 1, 2))), t, 0)
+                #
+                # p = jax.tree_map(lambda args: jax.lax.dynamic_index_in_dim(args, 0, 0, keepdims=False), p_all)
+                #
+                # r_log_val = tilt[t].apply(p, _input)
 
-                # TODO - this has gotten a bit messy.
-                t = _input[3]
+                r_log_val = tilt.apply(_param_vals, _input)
 
-                p_all = _param_vals[t]  # jax.lax.dynamic_index_in_dim(np.asarray(tuple((0, 1, 2))), t, 0)
-
-                p = jax.tree_map(lambda args: jax.lax.dynamic_index_in_dim(args, 0, 0, keepdims=False), p_all)
-
-                r_log_val = tilt[t].apply(p, _input)
                 return r_log_val
         else:
             raise NotImplementedError()
