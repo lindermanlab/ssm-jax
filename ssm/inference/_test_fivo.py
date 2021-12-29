@@ -40,14 +40,15 @@ PLOT = False
 # If we are on Mac, assume it is a local run
 local_system = (('mac' in platform.platform()) or ('Mac' in platform.platform()))
 
-# from ssm.inference._test_fivo_lds import lds_do_print as do_print
-# from ssm.inference._test_fivo_lds import lds_define_test as define_test
-# from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
+from ssm.inference._test_fivo_lds import lds_do_print as do_print
+from ssm.inference._test_fivo_lds import lds_define_test as define_test
+from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
+from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
 
-from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
-from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
-from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
-from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
+# from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
+# from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
+# from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
+# from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
 
 # Uncomment this remove the functionality of the plotting code.
 if (not local_system) or True:

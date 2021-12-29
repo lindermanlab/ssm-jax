@@ -108,6 +108,11 @@ def compute_marginal_kls(get_marginals, true_model, dataset, smoothing_particles
     # Get the analytic smoothing marginals.
     marginals = get_marginals(true_model, dataset)
 
+    if marginals is None:
+        # TODO - make this more reliable somehow.
+        # If there was no analytic marginal available.
+        return np.asarray([0.0])
+
     # To compute the marginals we are just going to fit a Gaussian.
     kl_p_q = []
     for _t in range(smoothing_particles.shape[-2]):

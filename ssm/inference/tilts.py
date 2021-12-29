@@ -76,12 +76,21 @@ class IndependentGaussianTilt:
 
         """
 
-        # Pull out the time and the appropriate tilt.
-        if self.n_tilts == 1:
-            t_params = params[0]
-        else:
-            t = inputs[3]
-            t_params = jax.tree_map(lambda args: args[t], params)
+        # # TODO - removed the multiple proposals paradigm.
+        # # Pull out the time and the appropriate tilt.
+        # if self.n_tilts == 1:
+        #     t_params = params[0]
+        # else:
+        #     t = inputs[3]
+        #     t_params = jax.tree_map(lambda args: args[t], params)
+
+        # if len(params) == 1:
+        #     t_params = params[0]
+        # else:
+        #     t = inputs[3]
+        #     t_params = params[t]
+
+        t_params = params
 
         # Generate a tilt distribution.
         tilt_inputs = self._tilt_input_generator(*inputs)
@@ -148,7 +157,15 @@ def rebuild_tilt(tilt, tilt_structure):
         if tilt_structure == 'DIRECT':
 
             def _tilt(*_input):
-                r_log_val = tilt.apply(_param_vals, _input)
+
+                # TODO - this has gotten a bit messy.
+                t = _input[3]
+
+                p_all = _param_vals[t]  # jax.lax.dynamic_index_in_dim(np.asarray(tuple((0, 1, 2))), t, 0)
+
+                p = jax.tree_map(lambda args: jax.lax.dynamic_index_in_dim(args, 0, 0, keepdims=False), p_all)
+
+                r_log_val = tilt[t].apply(p, _input)
                 return r_log_val
         else:
             raise NotImplementedError()

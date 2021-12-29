@@ -35,9 +35,6 @@ def gdm_define_test(key, free_parameters, proposal_structure, tilt_structure):
     key, subkey = jr.split(key)
     tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, dataset, tilt_structure)
 
-    # # TODO test.
-    # gdm_get_true_target_marginal(model, dataset)
-
     # Return this big pile of stuff.
     ret_model = (true_model, true_states, dataset)
     ret_test = (model, get_model_params, rebuild_model_fn)
@@ -54,10 +51,6 @@ def gdm_define_test_model(key, true_model, free_parameters):
     :return:
     """
     key, subkey = jr.split(key)
-
-    # # Define the parameter names that we are going to learn.
-    # # This has to be a tuple of strings that index which args we will pull out.
-    # free_parameters = ()  # 'dynamics_weights', )
 
     # Close over the free parameters we have elected to learn.
     get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, free_parameters)
@@ -116,28 +109,14 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
-    # Tilt functions take in (dataset, model, particles, t-1).
-    dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
-    stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0)
-    dummy_tilt_output = nn_util.vectorize_pytree(dataset[0][-1], )
-
-    # Define a more conservative initialization.
-    w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)
-
-    # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
-    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0], bias_init=b_init)
-
-    # Check whether we have a valid number of tilts.
-    n_tilts = len(dataset[0]) - 1
-
     # Define a method for generating thei nputs to the tilt.
     def gdm_tilt_input_generator(*_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be input into the tilt.
+
+        NOTE - because of the conditional independncies introduced by the HMM, there is no dependence
+        on the previous states.
 
         Args:
             *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
@@ -176,16 +155,42 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
         tilt_inputs = (data[-1],)  # Just the data are passed in.
         return nn_util.vectorize_pytree(tilt_inputs)
 
-    # Define the proposal itself.
-    tilt = tilts.IndependentGaussianTilt(n_tilts=n_tilts,
-                                         tilt_input=stock_tilt_input,
-                                         input_generator=gdm_tilt_input_generator,
-                                         output_generator=gdm_tilt_output_generator,
-                                         head_mean_fn=head_mean_fn,
-                                         head_log_var_fn=head_log_var_fn)
+    # Check whether we have a valid number of tilts.
+    n_tilts = len(dataset[0]) - 1
 
-    # Initialize the network.
-    tilt_params = tilt.init(subkey)
+    # Tilt functions take in (dataset, model, particles, t-1).
+    dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
+    stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0)
+    dummy_tilt_output = nn_util.vectorize_pytree(dataset[0][-1], )
+
+    # Define a more conservative initialization.
+    w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
+    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
+    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - note can remove bias here.
+
+    # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
+    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
+    head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0], bias_init=b_init)
+
+    # Define the proposal itself.
+    tilt = []
+    tilt_params = []
+    for _t in range(n_tilts):
+        _tilt = tilts.IndependentGaussianTilt(n_tilts=1,
+                                              tilt_input=stock_tilt_input,
+                                              input_generator=gdm_tilt_input_generator,
+                                              output_generator=gdm_tilt_output_generator,
+                                              head_mean_fn=head_mean_fn,
+                                              head_log_var_fn=head_log_var_fn)
+
+        subkey, another_subkey = jr.split(subkey)
+        _tilt_params = _tilt.init(another_subkey)
+
+        tilt.append(_tilt)
+        tilt_params.append(_tilt_params)
+
+    # Make the params a dict.
+    tilt_params = tuple(tilt_params)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
     rebuild_tilt_fn = tilts.rebuild_tilt(tilt, tilt_structure)
@@ -215,7 +220,7 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     # Define a more conservative initialization.
     w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - no bias.
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - note can remove bias here.
 
     # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
@@ -379,7 +384,7 @@ def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_pa
                     plt.tight_layout()
                     plt.pause(0.00001)
 
-                plt.savefig('./param_{}.pdf'.format(_p))
+                plt.savefig('./gdm_param_{}.pdf'.format(_p))
 
     return param_figs
 

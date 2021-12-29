@@ -98,12 +98,12 @@ class IndependentGaussianProposal:
         # Pull out the time and the appropriate proposal.
         t = inputs[3]
         if self.n_proposals == 1:
-            t_params = jax.tree_map(lambda args: args[0], params)
+            params_at_t = jax.tree_map(lambda args: args[0], params)
         else:
-            t_params = jax.tree_map(lambda args: args[t], params)
+            params_at_t = jax.tree_map(lambda args: args[t], params)
 
         proposal_inputs = self._proposal_input_generator(*inputs)
-        q_dist = self.proposal.apply(t_params, proposal_inputs)
+        q_dist = self.proposal.apply(params_at_t, proposal_inputs)
 
         # # TODO - Can force the optimal proposal here for the stock GDM example..
         # _prop_inp_old = proposal_inputs

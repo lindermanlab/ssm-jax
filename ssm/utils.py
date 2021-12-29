@@ -18,7 +18,7 @@ from functools import wraps, partial
 from jax.scipy import special as spsp
 from contextlib import contextmanager
 from typing import NamedTuple
-from jax.tree_util import register_pytree_node
+from jax.tree_util import register_pytree_node, register_pytree_node_class
 from flax.core.frozen_dict import FrozenDict
 
 
@@ -608,6 +608,21 @@ def make_named_tuple(dict_in, keys=None, name='tup'):
 
     tup = tup_class(*list_in)
     return tup
+
+
+# @register_pytree_node_class
+# class JaxTuple(tuple):
+#
+#     def __init__(self, seq=()):
+#         self = tuple(seq)
+#         self.ndim = 1
+#
+#     def tree_flatten(self):
+#         return (), self
+#
+#     @classmethod
+#     def tree_unflatten(cls, aux_data, children):
+#         cls(*aux_data)
 
 
 def mutate_named_tuple_by_key(tup, new_vals):
