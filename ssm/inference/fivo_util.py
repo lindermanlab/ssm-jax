@@ -194,30 +194,30 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
 
     _plot_single_sweep(true_bpf_posterior[dset_to_plot].filtering_particles,
                        true_states[dset_to_plot],
-                       tag='True BPF Filtering.',
+                       tag='True BPF Filtering (' + str(num_particles) + ' particles).',
                        obs=dataset[dset_to_plot])
     _plot_single_sweep(true_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
                        true_states[dset_to_plot],
-                       tag='True BPF Smoothing.',
+                       tag='True BPF Smoothing (' + str(num_particles) + ' particles).',
                        obs=dataset[dset_to_plot])
 
     if init_bpf_posterior is not None:
         _plot_single_sweep(init_bpf_posterior[dset_to_plot].filtering_particles,
                            true_states[dset_to_plot],
-                           tag='Initial BPF Filtering.',
+                           tag='Initial BPF Filtering (' + str(num_particles) + ' particles).',
                            obs=dataset[dset_to_plot])
         _plot_single_sweep(init_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
                            true_states[dset_to_plot],
-                           tag='Initial BPF Smoothing.',
+                           tag='Initial BPF Smoothing (' + str(num_particles) + ' particles).',
                            obs=dataset[dset_to_plot])
 
     filt_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].filtering_particles,
                                   true_states[dset_to_plot],
-                                  tag='Initial SMC Filtering.',
+                                  tag='Initial SMC Filtering (' + str(num_particles) + ' particles).',
                                   obs=dataset[dset_to_plot])
     sweep_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
                                    true_states[dset_to_plot],
-                                   tag='Initial SMC Smoothing.',
+                                   tag='Initial SMC Smoothing (' + str(num_particles) + ' particles).',
                                    obs=dataset[dset_to_plot])
 
     # Do some print.
@@ -274,7 +274,7 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, 
     return true_bpf_kls, pred_smc_kls
 
 
-def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted):
+def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, tag='', nrep=10):
     """
 
     Args:
@@ -291,11 +291,13 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
     Returns:
 
     """
+    num_particles = env.config.sweep_test_particles
+
     # Do some final validation.
     # Rebuild the initial distribution.
     _prop = rebuild_prop_fn(fivo.get_params_from_opt(opt)[1])
     if _prop is not None:
-        initial_distribution = lambda _dset, _model:  _prop(_dset, _model, np.zeros(dataset.shape[-1], ), 0, None, None)
+        initial_distribution = lambda _dset, _model:  _prop(_dset, _model, np.zeros(dataset.shape[-1], ), 0, _model.initial_distribution(), None)
     else:
         initial_distribution = None
 
@@ -304,7 +306,7 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
     final_val_posterior_bpf_true = smc(subkey,
                                        true_model,
                                        dataset,
-                                       num_particles=env.config.sweep_test_particles)
+                                       num_particles=num_particles)
 
     # SMC with tilt.
     key, subkey = jr.split(key)
@@ -314,16 +316,17 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
                                        initialization_distribution=initial_distribution,
                                        proposal=rebuild_prop_fn(fivo.get_params_from_opt(opt)[1]),
                                        tilt=rebuild_tilt_fn(fivo.get_params_from_opt(opt)[2]),
-                                       num_particles=env.config.sweep_test_particles)
+                                       num_particles=num_particles)
 
     # CODE for plotting lineages.
-    for _idx in range(10):
+    for _idx in range(nrep):
         fig, ax = plt.subplots(2, 1, sharex=True, sharey=True, squeeze=True, figsize=(8, 8), tight_layout=True)
+        plt.suptitle('Tag: ' + str(tag) + ', ' + str(num_particles) + ' particles.')
 
         for _p in final_val_posterior_bpf_true[_idx].weighted_smoothing_particles:
             ax[0].plot(_p, linewidth=0.1, c='b')
         ax[0].grid(True)
-        ax[0].set_title('BPF in true model.')
+        ax[0].set_title('BPF in true model')
 
         for _p in final_val_posterior_fivo_aux[_idx].weighted_smoothing_particles:
             ax[1].plot(_p, linewidth=0.1, c='b')
@@ -344,6 +347,7 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
 
         plt.pause(0.01)
         plt.savefig('./figs/tmp_sweep_{}_{}.pdf'.format(_tag, _idx))
+        plt.close(fig)
 
 
 def final_validation(get_marginals,
@@ -356,7 +360,8 @@ def final_validation(get_marginals,
                      rebuild_tilt_fn, 
                      key, 
                      do_fivo_sweep_jitted, 
-                     GLOBAL_PLOT=True):
+                     GLOBAL_PLOT=True,
+                     tag=''):
     """
 
     Args:
@@ -376,7 +381,7 @@ def final_validation(get_marginals,
     """
 
     # Compare the sweeps.
-    compare_sweeps(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted)
+    compare_sweeps(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, tag=tag)
 
     # Compare the KLs.
     true_bpf_kls, pred_smc_kls = compare_kls(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn,

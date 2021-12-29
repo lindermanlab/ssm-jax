@@ -74,7 +74,7 @@ def do_fivo_sweep(_param_vals,
                                                                _model,
                                                                np.zeros(_dataset.shape[-1], ),
                                                                0,
-                                                               None,
+                                                               _model.initial_distribution(),
                                                                None)
     else:
         initial_distribution = _proposal

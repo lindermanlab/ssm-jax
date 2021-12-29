@@ -35,7 +35,7 @@ default_verbosity = Verbosity.DEBUG
 # config.update("jax_debug_nans", True)
 
 DISABLE_JIT = False
-PLOT = False
+PLOT = True
 
 # If we are on Mac, assume it is a local run
 local_system = (('mac' in platform.platform()) or ('Mac' in platform.platform()))
@@ -51,7 +51,7 @@ from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_mar
 # from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
 
 # Uncomment this remove the functionality of the plotting code.
-if (not local_system) or True:
+if not (local_system and PLOT):
     _plot_single_sweep = lambda *args, **kwargs: None
     # do_plot = lambda *args, **kwargs: None
 
@@ -78,6 +78,8 @@ def do_config():
 
     """
 
+    global PLOT
+
     default_seed = 10
 
     # Set up the experiment.
@@ -85,13 +87,17 @@ def do_config():
     parser.add_argument('--seed', default=default_seed, type=int)
     parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
 
-    parser.add_argument('--proposal-structure', default='DIRECT', type=str)     # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)     # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {'DIRECT', 'NONE'/None}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
     parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.
 
+    parser.add_argument('--PLOT', default=1, type=int)
+
     config = parser.parse_args().__dict__
+
+    PLOT = config['PLOT']
 
     # Define the parameter names that we are going to learn.
     # This has to be a tuple of strings that index which args we will pull out.
@@ -332,30 +338,25 @@ def main():
                                                                   key,
                                                                   do_fivo_sweep_jitted)
 
-                # Do some printing.
-                do_print(_step,
-                         true_model,
-                         opt,
-                         true_lml,
-                         pred_lml_to_print,
-                         pred_fivo_bound_to_print,
-                         em_log_marginal_likelihood)
-
-                # Do some plotting.
-                sweep_fig = _plot_single_sweep(
-                    pred_sweep[env.config.dset_to_plot].weighted_smoothing_particles,
-                    true_states[env.config.dset_to_plot],
-                    tag='{} Smoothing.'.format(_step),
-                    fig=sweep_fig,
-                    _obs=dataset[env.config.dset_to_plot])
-
                 if PLOT:
+
+                    # Do some plotting.
+                    sweep_fig = _plot_single_sweep(
+                        pred_sweep[env.config.dset_to_plot].weighted_smoothing_particles,
+                        true_states[env.config.dset_to_plot],
+                        tag='{} Smoothing.'.format(_step),
+                        fig=sweep_fig,
+                        obs=dataset[env.config.dset_to_plot])
+
                     param_figures = do_plot(param_hist,
                                             lml_hist,
                                             em_log_marginal_likelihood,
                                             true_lml,
                                             get_model_free_params(true_model),
                                             param_figures)
+
+                    fivoutil.compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
+                                            do_fivo_sweep_jitted, tag=_step, nrep=2)
 
                 # Log the validation step.
                 val_hist = fivo.log_params(val_hist,
@@ -364,6 +365,15 @@ def main():
                                            pred_fivo_bound_to_print,
                                            pred_em_lml,
                                            _step)
+
+                # Do some printing.
+                do_print(_step,
+                         true_model,
+                         opt,
+                         true_lml,
+                         pred_lml_to_print,
+                         pred_fivo_bound_to_print,
+                         em_log_marginal_likelihood)
 
                 # Save out to a temporary location.
                 if (env.config.save_path is not None) and (env.config.load_path is None):

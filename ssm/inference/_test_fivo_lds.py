@@ -18,6 +18,17 @@ import ssm.inference.tilts as tilts
 
 
 def lds_define_test(key, free_parameters, proposal_structure, tilt_structure):
+    """
+
+    Args:
+        key:
+        free_parameters:
+        proposal_structure:
+        tilt_structure:
+
+    Returns:
+
+    """
 
     # Define the true model.
     key, subkey = jr.split(key)
@@ -46,9 +57,13 @@ def lds_define_test(key, free_parameters, proposal_structure, tilt_structure):
 def lds_define_test_model(key, true_model, free_parameters):
     """
 
-    :param subkey:
-    :param true_model:
-    :return:
+    Args:
+        key:
+        true_model:
+        free_parameters:
+
+    Returns:
+
     """
     key, subkey = jr.split(key)
 
@@ -94,6 +109,9 @@ def lds_define_test_model(key, true_model, free_parameters):
 
 
 class LdsTilt(tilts.IndependentGaussianTilt):
+    """
+
+    """
 
     def apply(self, params, inputs):
         """
@@ -132,7 +150,6 @@ class LdsTilt(tilts.IndependentGaussianTilt):
         sds = r_dist.variance().T
 
         # Sweep over the vector and return zeros where appropriate.
-        # TODO - this should be made into a scan or a vmap...
         def _eval(_idx, _mu, _sd, _out):
             _dist = tfd.MultivariateNormalDiag(loc=np.expand_dims(_mu, -1), scale_diag=np.sqrt(np.expand_dims(_sd, -1)))
             return jax.lax.cond(_idx < t,
@@ -141,13 +158,6 @@ class LdsTilt(tilts.IndependentGaussianTilt):
                                 None)
 
         log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
-
-        # log_r_val = 0.0
-        # for _mu, _sd, _out in zip(means, sds, tilt_outputs):
-        #     log_r_val = log_r_val + jax.lax.cond(np.any(np.isnan(_out)),
-        #                                          lambda *args: np.zeros(means.shape[1]),
-        #                                          lambda *args: _dist.log_prob(np.asarray([_out])),
-        #                                          None)
 
         return log_r_val
 
@@ -238,49 +248,6 @@ def lds_define_tilt(subkey, model, dataset, tilt_structure):
 
     tilt_params = tilt.init(subkey)
 
-    #
-    # Make the params a dict.
-    # TODO - this is hella messy.
-    # tilt = utils.JaxTuple(tilt)
-    # tilt_params = tuple(tilt_params)
-    # jax.pmap(lambda _p, _k: _p.init(_k))(tilt, jr.split(subkey, n_tilts))
-
-    # # Tilt functions take in (dataset, model, particles, t-1).
-    # dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
-    # output_lengths = np.arange(len(dataset[0]), 0, -1)
-    # tilt = []
-    # tilt_params = []
-    #
-    # for _t in range(n_tilts):
-    #     _stock_tilt_input = (dataset[-1], model, dummy_particles[0], _t)
-    #
-    #     _dummy_tilt_output = nn_util.vectorize_pytree(dataset[0][-output_lengths[_t]:], )
-    #     _head_mean_fn = nn.Dense(_dummy_tilt_output.shape[0])
-    #     _head_log_var_fn = nn_util.Static(_dummy_tilt_output.shape[0])
-    #
-    #     # Define the tilts themselves.
-    #     _tilt = tilts.IndependentGaussianTilt(n_tilts=1,
-    #                                           tilt_input=_stock_tilt_input,
-    #                                           input_generator=lds_tilt_input_generator,
-    #                                           output_generator=lds_tilt_output_generator,
-    #                                           head_mean_fn=_head_mean_fn,
-    #                                           head_log_var_fn=_head_log_var_fn)
-    #
-    #     subkey, another_subkey = jr.split(subkey)
-    #     _tilt_params = _tilt.init(another_subkey)
-    #
-    #     tilt.append(_tilt)
-    #     tilt_params.append(_tilt_params)
-    #
-    # # Make the params a dict.
-    # # TODO - this is hella messy.
-    #
-    # # tilt = utils.JaxTuple(tilt)
-    #
-    # tilt_params = utils.make_named_tuple({'t' + str(_k): _p for _p, _k in zip(tilt_params, np.arange(10))})
-    # # tilt_params = tuple(tilt_params)
-    # # jax.pmap(lambda _p, _k: _p.init(_k))(tilt, jr.split(subkey, n_tilts))
-
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
     rebuild_tilt_fn = tilts.rebuild_tilt(tilt, tilt_structure)
     return tilt, tilt_params, rebuild_tilt_fn
@@ -289,10 +256,14 @@ def lds_define_tilt(subkey, model, dataset, tilt_structure):
 def lds_define_proposal(subkey, model, dataset, proposal_structure):
     """
 
-    :param subkey:
-    :param model:
-    :param dataset:
-    :return:
+    Args:
+        subkey:
+        model:
+        dataset:
+        proposal_structure:
+
+    Returns:
+
     """
 
     if (proposal_structure is None) or (proposal_structure == 'BOOTSTRAP'):
@@ -371,8 +342,11 @@ def lds_get_true_target_marginal(model, data):
 def lds_define_true_model_and_data(key):
     """
 
-    :param key:
-    :return:
+    Args:
+        key:
+
+    Returns:
+
     """
     latent_dim = 1
     emissions_dim = 1
@@ -384,7 +358,7 @@ def lds_define_true_model_and_data(key):
     true_dynamics_weights = np.eye(latent_dim)
     true_emission_weights = np.eye(emissions_dim)
 
-    emission_scale_tril = 0.1 * np.eye(emissions_dim)  # TODO - made observations tighter.
+    emission_scale_tril = 0.25 * np.eye(emissions_dim)  # TODO - made observations tighter.
     # emission_scale_tril = 1.0 * np.eye(emissions_dim)
 
     initial_state_scale_tril = 5.0 * np.eye(latent_dim)
@@ -463,16 +437,19 @@ def lds_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_pa
 
 def lds_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
     """
-    Do menial print stuff.
-    :param _step:
-    :param pred_lml:
-    :param true_model:
-    :param true_lml:
-    :param opt:
-    :param em_log_marginal_likelihood:
-    :return:
-    """
 
+    Args:
+        _step:
+        true_model:
+        opt:
+        true_lml:
+        pred_lml:
+        pred_fivo_bound:
+        em_log_marginal_likelihood:
+
+    Returns:
+
+    """
     _str = 'Step: {: >5d},  True Neg-LML: {: >8.3f},  Pred Neg-LML: {: >8.3f},  Pred FIVO bound {: >8.3f}'.\
         format(_step, true_lml, pred_lml, pred_fivo_bound)
     if em_log_marginal_likelihood is not None:
