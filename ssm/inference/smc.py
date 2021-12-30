@@ -359,6 +359,8 @@ def _smc_forward_pass(key,
             Full matrix of resampled ancestor indices.
     """
 
+    print('Hello, im a sweep.  (test message).')
+
     # Generate the initial distribution.
     initial_distribution, initial_q_state = initialization_distribution(dataset, model)
 
@@ -756,7 +758,10 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
     #     for _i, _c in zip(range(obs.shape[1]), color_names):
     #         plt.scatter(ts, obs[:, _i], c=_c, marker='.', label=gen_label(_i, 'Observed'))
 
-    plt.title(tag)
+    if not preprocessed:
+        plt.title(tag + ' (' + str(particles.shape[0]) + ' particles).')
+    else:
+        plt.title(tag)
     plt.grid(True)
     plt.tight_layout()
     plt.legend()

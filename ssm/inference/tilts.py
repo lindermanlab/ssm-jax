@@ -139,18 +139,7 @@ def rebuild_tilt(tilt, tilt_structure):
         if tilt_structure == 'DIRECT':
 
             def _tilt(*_input):
-                #
-                # # TODO - this has gotten a bit messy.
-                # t = _input[3]
-                #
-                # p_all = _param_vals[t]  # jax.lax.dynamic_index_in_dim(np.asarray(tuple((0, 1, 2))), t, 0)
-                #
-                # p = jax.tree_map(lambda args: jax.lax.dynamic_index_in_dim(args, 0, 0, keepdims=False), p_all)
-                #
-                # r_log_val = tilt[t].apply(p, _input)
-
                 r_log_val = tilt.apply(_param_vals, _input)
-
                 return r_log_val
         else:
             raise NotImplementedError()

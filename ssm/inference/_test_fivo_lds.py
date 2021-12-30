@@ -277,8 +277,13 @@ def lds_define_proposal(subkey, model, dataset, proposal_structure):
     stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles[0], 0, dummy_p_dist)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
+    trunk_fn = None
     head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
     head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0])
+
+    # trunk_fn = nn_util.MLP([5, 5])
+    # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
+    # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0])
 
     # Check whether we have a valid number of proposals.
     n_props = len(dataset[0])
@@ -315,6 +320,7 @@ def lds_define_proposal(subkey, model, dataset, proposal_structure):
                                                      stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
                                                      dummy_output=dummy_proposal_output,
                                                      input_generator=lds_proposal_input_generator,
+                                                     trunk_fn=trunk_fn,
                                                      head_mean_fn=head_mean_fn,
                                                      head_log_var_fn=head_log_var_fn, )
 
@@ -336,7 +342,14 @@ def lds_get_true_target_marginal(model, data):
     Returns:
 
     """
-    return None
+    pred_em_posterior = jax.vmap(model.e_step)(data)
+
+    marginal_mean = pred_em_posterior.mean().squeeze()
+    marginal_std = np.sqrt(pred_em_posterior.covariance().squeeze())
+
+    pred_em_marginal = tfd.MultivariateNormalDiag(marginal_mean, marginal_std)
+
+    return pred_em_marginal
 
 
 def lds_define_true_model_and_data(key):
@@ -358,8 +371,8 @@ def lds_define_true_model_and_data(key):
     true_dynamics_weights = np.eye(latent_dim)
     true_emission_weights = np.eye(emissions_dim)
 
-    emission_scale_tril = 0.25 * np.eye(emissions_dim)  # TODO - made observations tighter.
-    # emission_scale_tril = 1.0 * np.eye(emissions_dim)
+    # emission_scale_tril = 0.1 * np.eye(emissions_dim)  # TODO - made observations tighter.
+    emission_scale_tril = 1.0 * np.eye(emissions_dim)
 
     initial_state_scale_tril = 5.0 * np.eye(latent_dim)
 

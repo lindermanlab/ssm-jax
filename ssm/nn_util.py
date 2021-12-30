@@ -16,7 +16,6 @@ Dtype = Any  # this could be a real type?
 Array = Any
 
 
-
 def vectorize_pytree(*args):
     """
     Flatten an arbitrary PyTree into a vector.
@@ -33,13 +32,16 @@ class MLP(nn.Module):
     Define a simple fully connected MLP with ReLU activations.
     """
     features: Sequence[int]
-    kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.glorot_normal
-    bias_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.zeros
+    # kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.glorot_normal
+    # bias_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.zeros
+
+    # TODO - the initializers havebroken somehow...
 
     @nn.compact
     def __call__(self, x):
         for feat in self.features[:-1]:
-            x = nn.relu(nn.Dense(feat, kernel_init=self.kernel_init, bias_init=self.bias_init, )(x))
+            # x = nn.relu(nn.Dense(feat, kernel_init=self.kernel_init, bias_init=self.bias_init, )(x))
+            x = nn.relu(nn.Dense(feat)(x))
         x = nn.Dense(self.features[-1])(x)
         return x
 

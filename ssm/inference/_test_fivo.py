@@ -88,7 +88,7 @@ def do_config():
     parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
 
     parser.add_argument('--proposal-structure', default='RESQ', type=str)     # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {'DIRECT', 'NONE'/None}
+    parser.add_argument('--tilt-structure', default='NONE', type=str)         # {'DIRECT', 'NONE'/None}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
     parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.
@@ -108,17 +108,22 @@ def do_config():
 
     env = {  # Define some defaults.
         'dset_to_plot': 2,
-        'num_val_datasets': 50,
+        'num_val_datasets': 20,
         'validation_particles': 1000,
-        'sweep_test_particles': 10,
+        'sweep_test_particles': 120,
 
         # Define the parameters to be used during optimization.
-        'num_particles': 10,
+        'num_particles': 11,
         'opt_steps': 100000,
-        'datasets_per_batch': 8,
+        'datasets_per_batch': 4,
+
+        # Learning rates.
+        'p_lr': 0.01,
+        'q_lr': 0.001,
+        'r_lr': 0.001,
 
         'load_path': None,  # './params_tmp.p'  # './params_tmp.p'  # {None, './params_tmp.p'}.
-        'save_path': None,  # './params_tmp.p'  # {None, './params_tmp.p'}.
+        'save_path': './params_lds_tmp.p',  # './params_tmp.p'  # {None, './params_tmp.p'}.
 
         # Add anything from the argparser  # TODO this should all be bumped into the argparser.
         **config}
@@ -170,6 +175,7 @@ def main():
         em_log_marginal_likelihood = 0.0
         filt_fig = None
         sweep_fig = None
+        bpf = 0.0
 
         # Set up the first key
         key = jr.PRNGKey(env.config.seed)
@@ -216,7 +222,11 @@ def main():
         # Build up the optimizer.
         opt = fivo.define_optimizer(p_params=get_model_free_params(model),
                                     q_params=proposal_params,
-                                    r_params=tilt_params)
+                                    r_params=tilt_params,
+                                    p_lr=env.config.p_lr,
+                                    q_lr=env.config.q_lr,
+                                    r_lr=env.config.r_lr,
+                                    )
 
         # Jit the smc subroutine for completeness.
         smc_jit = jax.jit(smc, static_argnums=6)
@@ -300,7 +310,7 @@ def main():
             # ----------------------------------------------------------------------------------------------------------
 
             # Do some validation and give some output.
-            if (_step % 2000 == 0) or (_step == 1):
+            if (_step % 250 == 0) or (_step == 1):
 
                 # Do an e step.
                 pred_em_posterior = jax.vmap(true_model.e_step)(validation_datasets)
@@ -336,11 +346,18 @@ def main():
                                                                   rebuild_prop_fn,
                                                                   rebuild_tilt_fn,
                                                                   key,
-                                                                  do_fivo_sweep_jitted)
+                                                                  do_fivo_sweep_jitted,
+                                                                  smc_jit)
 
-                if PLOT:
+                if PLOT and (_step % 2000 == 0):
 
                     # Do some plotting.
+                    sweep_fig = _plot_single_sweep(
+                        pred_sweep[env.config.dset_to_plot].filtering_particles,
+                        true_states[env.config.dset_to_plot],
+                        tag='{} Fitlering.'.format(_step),
+                        fig=sweep_fig,
+                        obs=dataset[env.config.dset_to_plot])
                     sweep_fig = _plot_single_sweep(
                         pred_sweep[env.config.dset_to_plot].weighted_smoothing_particles,
                         true_states[env.config.dset_to_plot],
@@ -355,8 +372,8 @@ def main():
                                             get_model_free_params(true_model),
                                             param_figures)
 
-                    fivoutil.compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
-                                            do_fivo_sweep_jitted, tag=_step, nrep=2)
+                    fivoutil.compare_sweeps(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
+                                            do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=5, true_states=true_states)
 
                 # Log the validation step.
                 val_hist = fivo.log_params(val_hist,
@@ -412,7 +429,8 @@ def main():
                                   rebuild_prop_fn,
                                   rebuild_tilt_fn,
                                   key,
-                                  do_fivo_sweep_jitted)
+                                  do_fivo_sweep_jitted,
+                                  smc_jit)
 
 
 if __name__ == '__main__':
