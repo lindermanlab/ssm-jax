@@ -415,7 +415,8 @@ def main():
                           'small_lml_mean_fivo': np.mean(np.asarray(val_fivo_lml)),
                           'small_fivo_bound': np.mean(np.asarray(val_fivo_bound)),
                           'expected_kl_true': np.mean(true_bpf_kls),
-                          'expected_kl_pred': np.mean(pred_smc_kls)
+                          'expected_kl_pred': np.mean(pred_smc_kls),
+                          'true_lml': true_lml,
                           }
                 utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=USE_WANDB)
 
