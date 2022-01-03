@@ -372,15 +372,15 @@ def lds_define_true_model_and_data(key):
     Returns:
 
     """
-    latent_dim = 1
-    emissions_dim = 1
+    latent_dim = 2
+    emissions_dim = 3
     num_trials = 100000
     T = 9  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
     # Create a more reasonable emission scale.
     dynamics_scale_tril = 1.0 * np.eye(latent_dim)
     true_dynamics_weights = np.eye(latent_dim)
-    true_emission_weights = np.eye(emissions_dim)
+    true_emission_weights = np.eye(emissions_dim, latent_dim)
 
     # NOTE - can make observations tighter here.
     # emission_scale_tril = 0.1 * np.eye(emissions_dim)

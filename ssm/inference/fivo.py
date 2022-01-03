@@ -122,7 +122,7 @@ def _do_single_fivo_sweep(_param_vals,
 
     # Build the initial distribution from the zeroth proposal.
     if _proposal is not None:
-        initial_distribution = lambda *_args: _proposal(np.zeros(_single_dataset.shape[-1], ),
+        initial_distribution = lambda *_args: _proposal(np.zeros(_model.latent_dim, ),
                                                         0,
                                                         _model.initial_distribution(),
                                                         None)
