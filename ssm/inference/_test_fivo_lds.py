@@ -113,14 +113,21 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
     """
 
-    def apply(self, params, inputs):
+    def apply(self, params, dataset, model, particles, t, *inputs):
         """
 
         Args:
-            params (FrozenDict):    FrozenDict of the parameters of the proposal.
+            params (FrozenDict):    FrozenDict of the parameters of the tilt.
 
-            inputs (tuple):         Tuple of standard inputs to the proposal in SMC:
-                                    (dataset, model, particles, time, p_dist)
+            dataset:
+
+            model:
+
+            particles:
+
+            t:
+
+            inputs (tuple):         Tuple of additional inputs to the tilt in SMC.
 
             data:
 
@@ -129,9 +136,6 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
         """
 
-        # Pull out the time.
-        t = inputs[3]
-
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
             t_params = params[0]
@@ -139,11 +143,11 @@ class LdsTilt(tilts.IndependentGaussianTilt):
             t_params = jax.tree_map(lambda args: args[t], params)
 
         # Generate a tilt distribution.
-        tilt_inputs = self._tilt_input_generator(*inputs)
+        tilt_inputs = self._tilt_input_generator(dataset, model, particles, t, *inputs)
         r_dist = self.tilt.apply(t_params, tilt_inputs)
 
         # Now score under that distribution.
-        tilt_outputs = self._tilt_output_generator(*inputs)
+        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, *inputs)
 
         # There may be NaNs here, so we need to pull this apart.
         means = r_dist.mean().T
@@ -162,7 +166,7 @@ class LdsTilt(tilts.IndependentGaussianTilt):
         return log_r_val
 
     # Define a method for generating thei nputs to the tilt.
-    def _tilt_input_generator(self, *_inputs):
+    def _tilt_input_generator(self, dataset, model, particles, t, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be input into the tilt.
@@ -171,15 +175,20 @@ class LdsTilt(tilts.IndependentGaussianTilt):
         on the previous states.
 
         Args:
-            *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
-                                    (dataset, model, particles, time)
+            dataset:
+
+            model:
+
+            particles:
+
+            t:
+
+            *inputs_:
 
         Returns:
             (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
 
         """
-
-        _, model, particles, t = _inputs
 
         # Just the particles are passed in.
         tilt_inputs = (particles, )
@@ -192,21 +201,26 @@ class LdsTilt(tilts.IndependentGaussianTilt):
             return vmapped(*tilt_inputs)
 
     # We need to define the method for generating the inputs.
-    def _tilt_output_generator(self, *_inputs):
+    def _tilt_output_generator(self, dataset, model, particles, t, *_inputs):
         """
         Define the output generator for the lds example.
         Args:
-            *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
-                                    (dataset, model, particles, time)
+            dataset:
+
+            model:
+
+            particles:
+
+            t:
+
+            *inputs_:
 
         Returns:
 
         """
 
-        data, _, _, t = _inputs
-
         # We will pass in whole data into the tilt and then filter out as required.
-        tilt_outputs = (data, )
+        tilt_outputs = (dataset, )
 
         return nn_util.vectorize_pytree(tilt_outputs)
 
@@ -289,21 +303,18 @@ def lds_define_proposal(subkey, model, dataset, proposal_structure):
     n_props = len(dataset[0])
 
     # Define the required method for building the inputs.
-    def lds_proposal_input_generator(*_inputs):
+    def lds_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
 
         Args:
-            *_inputs (tuple):       Tuple of standard inputs to the proposal in SMC:
-                                    (dataset, model, particles, time, p_dist)
+
 
         Returns:
             (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
 
         """
-
-        _dataset, _model, _particles, _t, _, _ = _inputs  # NOTE - this part of q can't actually use model or p_dist.
 
         # This proposal gets the entire dataset and the current particles.
         _proposal_inputs = (_dataset, _particles)

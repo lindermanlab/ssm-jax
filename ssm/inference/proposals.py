@@ -81,14 +81,23 @@ class IndependentGaussianProposal:
         return jax.vmap(self.proposal.init, in_axes=(0, None))\
             (jr.split(key, self.n_proposals), self._dummy_processed_input)
 
-    def apply(self, params, inputs):
+    def apply(self, params, dataset, model, particles, t, p_dist, q_state):
         """
 
         Args:
             params (FrozenDict):    FrozenDict of the parameters of the proposal.
 
-            inputs (tuple):         Tuple of standard inputs to the proposal in SMC:
-                                    (dataset, model, particles, time, p_dist)
+            dataset:
+
+            model:
+
+            particles:
+
+            t:
+
+            p_dist:
+
+            q_state:
 
         Returns:
             (Tuple): (TFP distribution over latent state, updated q internal state).
@@ -96,13 +105,12 @@ class IndependentGaussianProposal:
         """
 
         # Pull out the time and the appropriate proposal.
-        t = inputs[3]
         if self.n_proposals == 1:
             params_at_t = jax.tree_map(lambda args: args[0], params)
         else:
             params_at_t = jax.tree_map(lambda args: args[t], params)
 
-        proposal_inputs = self._proposal_input_generator(*inputs)
+        proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state)
         q_dist = self.proposal.apply(params_at_t, proposal_inputs)
 
         # # TODO - Can force the optimal proposal here for the stock GDM example..
@@ -131,7 +139,7 @@ class IndependentGaussianProposal:
         return q_dist, None
 
     @staticmethod
-    def _proposal_input_generator(*_inputs):
+    def _proposal_input_generator(_dataset, _model, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
@@ -139,6 +147,10 @@ class IndependentGaussianProposal:
         NOTE - this is an abstract method and must be redefined wherever it is used.
 
         Args:
+            _dataset:
+
+            _model:
+
             *_inputs (tuple):       Tuple of standard inputs to the proposal in SMC:
                                     (dataset, model, particles, time, p_dist)
 
@@ -174,7 +186,8 @@ def rebuild_proposal(proposal, proposal_structure):
 
     """
 
-    def _rebuild_proposal(_param_vals):
+    def _rebuild_proposal(_param_vals, _dataset, _model, ):
+
         # If there is no proposal, then there is no structure to define.
         if (proposal is None) or (proposal_structure == 'BOOTSTRAP') or (proposal_structure == 'NONE'):
             return None
@@ -183,18 +196,17 @@ def rebuild_proposal(proposal, proposal_structure):
         # Proposal takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
         if proposal_structure == 'DIRECT':
 
-            def _proposal(*_input):
-                z_dist, q_state = proposal.apply(_param_vals, _input)
-                return z_dist, q_state
+            def _proposal(particles, t, p_dist, q_state):
+                z_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state)
+                return z_dist, new_q_state
 
         elif proposal_structure == 'RESQ':
 
-            def _proposal(*_input):
-                dataset, model, particles, t, p_dist, q_state = _input
-                q_dist, q_state = proposal.apply(_param_vals, _input)
+            def _proposal(particles, t, p_dist, q_state):
+                q_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state)
                 z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist.mean() + q_dist.mean(),
                                                               covariance_matrix=q_dist.covariance())
-                return z_dist, q_state
+                return z_dist, new_q_state
         else:
             raise NotImplementedError()
 

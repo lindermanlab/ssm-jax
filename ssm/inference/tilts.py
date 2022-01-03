@@ -56,17 +56,22 @@ class IndependentGaussianTilt:
         return jax.vmap(self.tilt.init, in_axes=(0, None))\
             (jr.split(key, self.n_tilts), self._dummy_processed_input)
 
-    def apply(self, params, inputs):
+    def apply(self, params, dataset, model, particles, t, *inputs):
         """
         NOTE - this can be overwritten elsewhere for more specialist application requirements.
 
         Args:
-            params (FrozenDict):    FrozenDict of the parameters of the proposal.
+            params (FrozenDict):    FrozenDict of the parameters of the tilt.
 
-            inputs (tuple):         Tuple of standard inputs to the proposal in SMC:
-                                    (dataset, model, particles, time, p_dist)
+            dataset:
 
-            data:
+            model:
+
+            particles:
+
+            t:
+
+            *inputs
 
         Returns:
             (Float): Tilt log value.
@@ -77,29 +82,35 @@ class IndependentGaussianTilt:
         if self.n_tilts == 1:
             t_params = params[0]
         else:
-            t = inputs[3]
             t_params = jax.tree_map(lambda args: args[t], params)
 
         # Generate a tilt distribution.
-        tilt_inputs = self._tilt_input_generator(*inputs)
+        tilt_inputs = self._tilt_input_generator(dataset, model, *inputs)
         r_dist = self.tilt.apply(t_params, tilt_inputs)
 
         # Now score under that distribution.
-        tilt_outputs = self._tilt_output_generator(*inputs)
+        tilt_outputs = self._tilt_output_generator(dataset, model, *inputs)
         log_r_val = r_dist.log_prob(tilt_outputs)
 
         return log_r_val
 
-    def _tilt_input_generator(self, *_inputs):
+    def _tilt_input_generator(self, _dataset, _model, particles, t, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be input into the tilt.
 
         NOTE - this is an abstract method and must be implemented by wherever this is being used.
 
-        Args:
-            *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
-                                    (dataset, model, particles, time)
+        Args
+            _dataset:
+
+            _model:
+
+            particles:
+
+            t:
+
+            *_inputs (tuple):       Tuple of additional inputs.
 
         Returns:
             (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
@@ -107,7 +118,7 @@ class IndependentGaussianTilt:
         """
         raise NotImplementedError()
 
-    def _tilt_output_generator(self, *_inputs):
+    def _tilt_output_generator(self, _dataset, _model, _particles, _t, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be scored under into the tilt.
@@ -129,7 +140,7 @@ def rebuild_tilt(tilt, tilt_structure):
     """
     """
 
-    def _rebuild_tilt(_param_vals):
+    def _rebuild_tilt(_param_vals, _dataset, _model):
         # If there is no tilt, then there is no structure to define.
         if tilt is None:
             return lambda *_: 0.0
@@ -138,8 +149,8 @@ def rebuild_tilt(tilt, tilt_structure):
         # tilt takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
         if tilt_structure == 'DIRECT':
 
-            def _tilt(*_input):
-                r_log_val = tilt.apply(_param_vals, _input)
+            def _tilt(_particles, _t):
+                r_log_val = tilt.apply(_param_vals, _dataset, _model, _particles, _t)
                 return r_log_val
         else:
             raise NotImplementedError()

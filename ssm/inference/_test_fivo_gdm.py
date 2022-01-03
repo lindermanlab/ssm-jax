@@ -95,15 +95,21 @@ def gdm_define_test_model(key, true_model, free_parameters):
 
 class GdmTilt(tilts.IndependentGaussianTilt):
 
-    def apply(self, params, inputs):
+    def apply(self, params, dataset, model, particles, t, *inputs):
         """
-        NOTE - this can be overwritten elsewhere for more specialist application requirements.
 
         Args:
-            params (FrozenDict):    FrozenDict of the parameters of the proposal.
+            params (FrozenDict):    FrozenDict of the parameters of the tilt.
 
-            inputs (tuple):         Tuple of standard inputs to the proposal in SMC:
-                                    (dataset, model, particles, time, p_dist)
+            dataset:
+
+            model:
+
+            particles:
+
+            t:
+
+            inputs (tuple):         Tuple of additional inputs to the tilt in SMC.
 
             data:
 
@@ -116,24 +122,23 @@ class GdmTilt(tilts.IndependentGaussianTilt):
         if self.n_tilts == 1:
             t_params = params[0]
         else:
-            t = inputs[3]
             t_params = jax.tree_map(lambda args: args[t], params)
 
         # Generate a tilt distribution.
-        tilt_inputs = self._tilt_input_generator(*inputs)
+        tilt_inputs = self._tilt_input_generator(dataset, model, particles, t, *inputs)
         r_dist = self.tilt.apply(t_params, tilt_inputs)
 
-        # # TODO - forcing here for stock GDM example.
+        # # Force optimal tilt here for default GDM example.
         # r_dist = tfd.MultivariateNormalDiag(loc=tilt_inputs, scale_diag=np.sqrt(r_dist.variance()))
 
         # Now score under that distribution.
-        tilt_outputs = self._tilt_output_generator(*inputs)
+        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, *inputs)
         log_r_val = r_dist.log_prob(tilt_outputs)
 
         return log_r_val
 
     # Define a method for generating thei nputs to the tilt.
-    def gdm_tilt_input_generator(*_inputs):
+    def _tilt_input_generator(self, dataset, model, particles, t, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be input into the tilt.
@@ -142,15 +147,20 @@ class GdmTilt(tilts.IndependentGaussianTilt):
         on the previous states.
 
         Args:
-            *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
-                                    (dataset, model, particles, time)
+            dataset:
+
+            model:
+
+            particles:
+
+            t:
+
+            *inputs_:
 
         Returns:
             (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
 
         """
-
-        _, model, particles, t = _inputs
 
         # Just the particles are passed in.
         tilt_inputs = (particles, )
@@ -163,19 +173,25 @@ class GdmTilt(tilts.IndependentGaussianTilt):
             return vmapped(*tilt_inputs)
 
     # We need to define the method for generating the inputs.
-    def gdm_tilt_output_generator(*_inputs):
+    def _tilt_output_generator(self, dataset, model, particles, t, *_inputs):
         """
         Define the output generator for the gdm example.
         Args:
-            *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
-                                    (dataset, model, particles, time)
+            dataset:
+
+            model:
+
+            particles:
+
+            t:
+
+            *inputs_:
 
         Returns:
 
         """
 
-        data, _, _, t = _inputs
-        tilt_inputs = (data[-1],)  # Just the data are passed in.
+        tilt_inputs = (dataset[-1], )  # Just the data are passed in.
         return nn_util.vectorize_pytree(tilt_inputs)
 
 

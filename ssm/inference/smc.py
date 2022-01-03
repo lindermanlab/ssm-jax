@@ -51,26 +51,24 @@ def smc(key,
         model (SSM object, No size):
             Defines the model.
 
-        dataset (np.array, (batch x time x state_dim) --or-- (time x state_dim)):
-            Data to condition on.  If the dataset has three dimensions then the leading dimension will be vmapped over.
+        dataset (np.array, (time x state_dim)):
+            Single dataset to condition on.
 
-        initialization_distribution (function, No size, default=model.initial_distribution):
+        initialization_distribution (function, No size):
             Allows a custom distribution to be used to propose the initial states from.  Using default value of
             None means that the prior is used as the proposal.
-            Function takes arguments of (dataset, model, particles, time, p_dist, , q_state ...), but doesn't have to
+            Function takes arguments of `particles`, but doesn't have to
             make use of them.  Allows more expressive initial proposals to be constructed.  The proposal must be a
             function that can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal
             function may need to be  defined by closing over a proposal class as appropriate.
 
-        proposal (function, No size, default=model.dynamics_distribution):
+        proposal (function, No size):
             Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
             the prior is used as the proposal.
-            Function takes arguments of (dataset, model, particles, time, p_dist, , q_state ...), but doesn't have to
-            make use of them.
-
-            Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
-            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be
-            defined by closing over a proposal class as appropriate.
+            Function takes arguments of `particles, time, p_dist, q_state`, but doesn't have to
+            make use of them.  Allows more expressive proposals to be constructed.  The proposal must be a function that
+            can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may
+            need to be defined by closing over a proposal class as appropriate.
 
         tilt ():
             TODO
@@ -177,23 +175,21 @@ def _single_smc(key,
         dataset (np.array, (time x state_dim)):
             Single dataset to condition on.
 
-        initialization_distribution (function, No size, default=model.initial_distribution):
+        initialization_distribution (function, No size):
             Allows a custom distribution to be used to propose the initial states from.  Using default value of
             None means that the prior is used as the proposal.
-            Function takes arguments of (dataset, model, particles, time, p_dist, , q_state, ...), but doesn't have to
+            Function takes arguments of `particles`, but doesn't have to
             make use of them.  Allows more expressive initial proposals to be constructed.  The proposal must be a
             function that can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal
             function may need to be  defined by closing over a proposal class as appropriate.
 
-        proposal (function, No size, default=model.dynamics_distribution):
+        proposal (function, No size):
             Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
             the prior is used as the proposal.
-            Function takes arguments of (dataset, model, particles, time, p_dist, q_state, ...), but doesn't
-            have to make
-            use of them.
-            Allows more expressive proposals to be constructed.  The proposal must be a function that can be called
-            as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may need to be
-            defined by closing over a proposal class as appropriate.
+            Function takes arguments of `particles, time, p_dist, q_state`, but doesn't have to
+            make use of them.  Allows more expressive proposals to be constructed.  The proposal must be a function that
+            can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may
+            need to be defined by closing over a proposal class as appropriate.
 
         tilt ():
             TODO
@@ -248,7 +244,7 @@ def _single_smc(key,
     # This function also returns the iterated state of the proposal, and so there is no
     # initial proposal state if we are using p.
     if proposal is None:
-        proposal = lambda *args: (model.dynamics_distribution(args[2]), None)
+        proposal = lambda *args: (model.dynamics_distribution(args[0]), None)
 
     # If no explicit proposal is provided, default to a log-value of zero.
     if tilt is None:
@@ -311,7 +307,7 @@ def _smc_forward_pass(key,
         initialization_distribution (function, No size):
             Allows a custom distribution to be used to propose the initial states from.  Using default value of
             None means that the prior is used as the proposal.
-            Function takes arguments of (dataset, model, particles, time, p_dist, q_state, ...), but doesn't have to
+            Function takes arguments of `particles`, but doesn't have to
             make use of them.  Allows more expressive initial proposals to be constructed.  The proposal must be a
             function that can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal
             function may need to be  defined by closing over a proposal class as appropriate.
@@ -319,7 +315,7 @@ def _smc_forward_pass(key,
         proposal (function, No size):
             Allows a custom proposal to be used to propose transitions from.  Using default value of None means that
             the prior is used as the proposal.
-            Function takes arguments of (dataset, model, particles, time, p_dist, q_state, ...), but doesn't have to
+            Function takes arguments of `particles, time, p_dist, q_state`, but doesn't have to
             make use of them.  Allows more expressive proposals to be constructed.  The proposal must be a function that
             can be called as fn(...) and returns a TFP distribution object.  Therefore, the proposal function may
             need to be defined by closing over a proposal class as appropriate.
@@ -359,10 +355,10 @@ def _smc_forward_pass(key,
             Full matrix of resampled ancestor indices.
     """
 
-    print('Hello, im a sweep.  (test message).')
+    print('[test message]: Hello, im an uncompiled SMC sweep. ')
 
     # Generate the initial distribution.
-    initial_distribution, initial_q_state = initialization_distribution(dataset, model)
+    initial_distribution, initial_q_state = initialization_distribution()
 
     # Initialize the sweep using the initial distribution.
     key, subkey1, subkey2 = jr.split(key, num=3)
@@ -371,7 +367,7 @@ def _smc_forward_pass(key,
     # Resample particles under the zeroth observation.
     initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
     initial_q_log_probability = initial_distribution.log_prob(initial_particles)
-    initial_r_log_probability = tilt(dataset, model, initial_particles, 0)
+    initial_r_log_probability = tilt(initial_particles, 0)
 
     # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
     initial_y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
@@ -411,7 +407,7 @@ def _smc_forward_pass(key,
 
         # Compute the p and q distributions.
         p_dist = model.dynamics_distribution(particles)
-        q_dist, q_state = proposal(dataset, model, particles, t, p_dist, q_state)
+        q_dist, q_state = proposal(particles, t, p_dist, q_state)
 
         # Sample the new particles.
         new_particles = q_dist.sample(seed=subkey1)
@@ -421,12 +417,12 @@ def _smc_forward_pass(key,
         q_log_probability = q_dist.log_prob(new_particles)
 
         # Assume there is a previous tilt.
-        r_previous = tilt(dataset, model, particles, t-1)
+        r_previous = tilt(particles, t-1)
 
         # There is no tilt at the final timestep.
         r_current = jax.lax.cond(t == (len(dataset)-1),
                                  lambda *_args: np.zeros(len(new_particles)),
-                                 lambda *_args: tilt(dataset, model, new_particles, t),
+                                 lambda *_args: tilt(new_particles, t),
                                  None)
 
         # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.

@@ -28,7 +28,7 @@ def do_fivo_sweep(_param_vals,
                   _rebuild_model,
                   _rebuild_proposal,
                   _rebuild_tilt,
-                  _dataset,
+                  _datasets,
                   _num_particles,
                   **_smc_kw_args):
     """
@@ -52,7 +52,7 @@ def do_fivo_sweep(_param_vals,
 
         - _rebuild_tilt:            Callable that accepts... TODO.
 
-        - _dataset:                 Dataset(s) to condition on.
+        - _datasets:                Dataset(s) to condition on.
 
         - _num_particles:           Integer number of particles to use in the sweep.
 
@@ -62,38 +62,85 @@ def do_fivo_sweep(_param_vals,
         - Tuple: (FIVO-compatible negative log likelihood evaluation, SMCPosterior objects representing sweeps).
     """
 
+    # NOTE - this is a bit sloppy, need to work out if the data is batched in a more reliable way.
+    if len(_datasets) == 1:
+        _smc_posteriors = _do_single_fivo_sweep(_param_vals,
+                                                _key,
+                                                _rebuild_model,
+                                                _rebuild_proposal,
+                                                _rebuild_tilt,
+                                                _datasets,
+                                                _num_particles,
+                                                **_smc_kw_args)
+    else:
+        _single_fivo_sweep_closed = lambda _single_dataset: _do_single_fivo_sweep(_param_vals,
+                                                                                  _key,
+                                                                                  _rebuild_model,
+                                                                                  _rebuild_proposal,
+                                                                                  _rebuild_tilt,
+                                                                                  _single_dataset,
+                                                                                  _num_particles,
+                                                                                  **_smc_kw_args)
+
+        _smc_posteriors = jax.vmap(_single_fivo_sweep_closed)(_datasets)
+
+    # Compute the mean of the log marginal.
+    _lml = np.mean(_smc_posteriors.log_normalizer)
+
+    return - _lml, _smc_posteriors
+
+
+def _do_single_fivo_sweep(_param_vals,
+                          _key,
+                          _rebuild_model,
+                          _rebuild_proposal,
+                          _rebuild_tilt,
+                          _single_dataset,
+                          _num_particles,
+                          **_smc_kw_args):
+    """
+
+    Args:
+        _param_vals:
+        _key:
+        _rebuild_model:
+        _rebuild_proposal:
+        _rebuild_tilt:
+        _single_dataset:
+        _num_particles:
+        **_smc_kw_args:
+
+    Returns:
+
+    """
+
     # Reconstruct the model, inscribing the new parameter values.
     _model = _rebuild_model(_param_vals[0])
 
     # Reconstruct the proposal.
-    _proposal = _rebuild_proposal(_param_vals[1])
+    _proposal = _rebuild_proposal(_param_vals[1], _single_dataset, _model)
 
     # Build the initial distribution from the zeroth proposal.
     if _proposal is not None:
-        initial_distribution = lambda _dset, _model: _proposal(_dset,
-                                                               _model,
-                                                               np.zeros(_dataset.shape[-1], ),
-                                                               0,
-                                                               _model.initial_distribution(),
-                                                               None)
+        initial_distribution = lambda *_args: _proposal(np.zeros(_single_dataset.shape[-1], ),
+                                                        0,
+                                                        _model.initial_distribution(),
+                                                        None)
     else:
         initial_distribution = _proposal
 
     # Reconstruct the tilt.
-    _tilt = _rebuild_tilt(_param_vals[2])
+    _tilt = _rebuild_tilt(_param_vals[2], _single_dataset, _model)
 
     # Do the sweep.
-    _smc_posteriors = smc(_key, _model, _dataset,
+    _smc_posteriors = smc(_key, _model, _single_dataset,
                           proposal=_proposal,
                           initialization_distribution=initial_distribution,
                           tilt=_tilt,
                           num_particles=_num_particles,
                           **_smc_kw_args)
 
-    # Compute the mean of the log marginal.
-    _lml = np.mean(_smc_posteriors.log_normalizer)
-
-    return - _lml, _smc_posteriors
+    return _smc_posteriors
 
 
 def get_params_from_opt(_opt):

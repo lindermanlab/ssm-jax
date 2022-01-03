@@ -360,8 +360,8 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
             _tag = 'p'
 
         if true_states is not None:
-            ax[0].plot(true_states[_dset_idx], linewidth=0.25, c='k', linestyle=':')
-            ax[1].plot(true_states[_dset_idx], linewidth=0.25, c='k', linestyle=':')
+            ax[0].plot(true_states[_dset_idx], linewidth=1.0, c='k', linestyle=':')
+            ax[1].plot(true_states[_dset_idx], linewidth=1.0, c='k', linestyle=':')
 
         plt.pause(0.01)
         plt.savefig('./figs/tmp_sweep_{}_{}.pdf'.format(_tag, _dset_idx))

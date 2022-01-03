@@ -25,6 +25,19 @@ import ssm.utils as utils
 import ssm.inference.fivo as fivo
 from tensorflow_probability.substrates.jax import distributions as tfd
 
+# from ssm.inference._test_fivo_lds import lds_do_print as do_print
+# from ssm.inference._test_fivo_lds import lds_define_test as define_test
+# from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
+# from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
+
+from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
+from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
+from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
+from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
+
+# If we are on Mac, assume it is a local run
+LOCAL_SYSTEM = (('mac' in platform.platform()) or ('Mac' in platform.platform()))
+
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
 
@@ -35,23 +48,11 @@ default_verbosity = Verbosity.DEBUG
 # config.update("jax_debug_nans", True)
 
 DISABLE_JIT = False
-PLOT = True
 
-# If we are on Mac, assume it is a local run
-local_system = (('mac' in platform.platform()) or ('Mac' in platform.platform()))
-
-from ssm.inference._test_fivo_lds import lds_do_print as do_print
-from ssm.inference._test_fivo_lds import lds_define_test as define_test
-from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
-from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
-
-# from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
-# from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
-# from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
-# from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
+PLOT = True  # NOTE - this will be overwritten.
 
 # Uncomment this remove the functionality of the plotting code.
-if not (local_system and PLOT):
+if not (LOCAL_SYSTEM and PLOT):
     _plot_single_sweep = lambda *args, **kwargs: None
     # do_plot = lambda *args, **kwargs: None
 
@@ -78,25 +79,38 @@ def do_config():
 
     """
 
-    global PLOT
-
-    default_seed = 10
-
     # Set up the experiment.
     parser = argparse.ArgumentParser()
-    parser.add_argument('--seed', default=default_seed, type=int)
+    parser.add_argument('--seed', default=10, type=int)
     parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
 
-    parser.add_argument('--proposal-structure', default='RESQ', type=str)     # {None/'BOOTSTRAP', 'RESQ', 'DIRECT', }
-    parser.add_argument('--tilt-structure', default='NONE', type=str)         # {'DIRECT', 'NONE'/None}
+    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.
+    parser.add_argument('--proposal-structure', default='DIRECT', type=str)     # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
-    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.
+    parser.add_argument('--num-particles', default=5, type=int)
+    parser.add_argument('--datasets-per-batch', default=4, type=int)
+    parser.add_argument('--opt-steps', default=100000, type=int)
+
+    parser.add_argument('--p-lr', default=0.01, type=float)
+    parser.add_argument('--q-lr', default=0.001, type=float)
+    parser.add_argument('--r-lr', default=0.01, type=float)
+
+    parser.add_argument('--dset-to-plot', default=2, type=int)
+    parser.add_argument('--num-val-datasets', default=20, type=int)
+    parser.add_argument('--validation-particles', default=1000, type=int)
+    parser.add_argument('--sweep-test-particles', default=10, type=int)
+
+    parser.add_argument('--load-path', default=None, type=str)
+    parser.add_argument('--save-path', default='./params_lds_tmp.p', type=str)
 
     parser.add_argument('--PLOT', default=1, type=int)
 
     config = parser.parse_args().__dict__
 
+    # Write out to the global plot.
+    global PLOT
     PLOT = config['PLOT']
 
     # Define the parameter names that we are going to learn.
@@ -106,45 +120,23 @@ def do_config():
     else:
         config['free_parameters'] = tuple(config['free_parameters'].split(','))
 
-    env = {  # Define some defaults.
-        'dset_to_plot': 2,
-        'num_val_datasets': 20,
-        'validation_particles': 1000,
-        'sweep_test_particles': 120,
-
-        # Define the parameters to be used during optimization.
-        'num_particles': 11,
-        'opt_steps': 100000,
-        'datasets_per_batch': 4,
-
-        # Learning rates.
-        'p_lr': 0.01,
-        'q_lr': 0.001,
-        'r_lr': 0.001,
-
-        'load_path': None,  # './params_tmp.p'  # './params_tmp.p'  # {None, './params_tmp.p'}.
-        'save_path': './params_lds_tmp.p',  # './params_tmp.p'  # {None, './params_tmp.p'}.
-
-        # Add anything from the argparser  # TODO this should all be bumped into the argparser.
-        **config}
-
-    # do some type conversions.
+    # Do some type conversions.
     config['use_sgr'] = bool(config['use_sgr'])
 
     # Get everything.
     if USE_WANDB:
         # Set up WandB
-        env = wandb.init(project=PROJECT, entity=USERNAME, group=env['log_group'], config=env)
+        env = wandb.init(project=PROJECT, entity=USERNAME, group=config['log_group'], config=config)
     else:
         log_group = 'none'
-        env = SimpleNamespace(**{'config': SimpleNamespace(**env),
+        env = SimpleNamespace(**{'config': SimpleNamespace(**config),
                                  'log_group': log_group})
 
     # Set up some WandB stuff.
-    env.config.USE_WANDB = bool(USE_WANDB)
     env.config.wandb_group = env.config.log_group
+    env.config.use_wandb = bool(USE_WANDB)
     env.config.wandb_project = PROJECT
-    env.config.local_system = local_system
+    env.config.local_system = LOCAL_SYSTEM
 
     # Grab some git information.
     try:
@@ -418,7 +410,7 @@ def main():
                           'expected_kl_pred': np.mean(pred_smc_kls),
                           'true_lml': true_lml,
                           }
-                utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=USE_WANDB)
+                utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb)
 
         # Do some final validation.
         fivoutil.final_validation(get_marginals,
