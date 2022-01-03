@@ -20,7 +20,7 @@ from pprint import pprint
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
 from ssm.inference.smc import _plot_single_sweep
 from ssm.inference.smc import smc
-import ssm.inference.fivo_util as fivoutil
+import ssm.inference.fivo_util as fivo
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
 from tensorflow_probability.substrates.jax import distributions as tfd
@@ -93,9 +93,9 @@ def do_config():
     parser.add_argument('--datasets-per-batch', default=4, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.001, type=float)
-    parser.add_argument('--q-lr', default=0.001, type=float)
-    parser.add_argument('--r-lr', default=0.001, type=float)
+    parser.add_argument('--p-lr', default=0.01, type=float)
+    parser.add_argument('--q-lr', default=0.01, type=float)
+    parser.add_argument('--r-lr', default=0.01, type=float)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=20, type=int)
@@ -246,7 +246,7 @@ def main():
 
         # Test the initial models.
         true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound = \
-            fivoutil.initial_validation(key,
+            fivo.initial_validation(key,
                                         true_model,
                                         validation_datasets, true_states,
                                         opt,
@@ -329,7 +329,7 @@ def main():
                     val_fivo_lml.append(_val_fivo_lml)
 
                 # Test the KLs.
-                true_bpf_kls, pred_smc_kls = fivoutil.compare_kls(get_marginals,
+                true_bpf_kls, pred_smc_kls = fivo.compare_kls(get_marginals,
                                                                   env,
                                                                   opt,
                                                                   validation_datasets,
@@ -364,7 +364,7 @@ def main():
                                             get_model_free_params(true_model),
                                             param_figures)
 
-                    fivoutil.compare_sweeps(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
+                    fivo.compare_sweeps(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
                                             do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=5, true_states=true_states)
 
                 # Log the validation step.
@@ -414,7 +414,7 @@ def main():
                 utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb)
 
         # Do some final validation.
-        fivoutil.final_validation(get_marginals,
+        fivo.final_validation(get_marginals,
                                   env,
                                   opt,
                                   validation_datasets,

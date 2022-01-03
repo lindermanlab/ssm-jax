@@ -163,7 +163,7 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
         log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
 
-        return log_r_val
+        return log_r_val * 0.0  # TODO -------
 
     # Define a method for generating thei nputs to the tilt.
     def _tilt_input_generator(self, dataset, model, particles, t, *_inputs):
@@ -246,7 +246,6 @@ def lds_define_tilt(subkey, model, dataset, tilt_structure):
 
     # Tilt functions take in (dataset, model, particles, t-1).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
-    output_lengths = np.arange(len(dataset[0]), 0, -1)
 
     stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0)
 
@@ -353,12 +352,16 @@ def lds_get_true_target_marginal(model, data):
     Returns:
 
     """
-    pred_em_posterior = jax.vmap(model.e_step)(data)
 
-    marginal_mean = pred_em_posterior.mean().squeeze()
-    marginal_std = np.sqrt(pred_em_posterior.covariance().squeeze())
+    try:
+        pred_em_posterior = jax.vmap(model.e_step)(data)
 
-    pred_em_marginal = tfd.MultivariateNormalDiag(marginal_mean, marginal_std)
+        marginal_mean = pred_em_posterior.mean().squeeze()
+        marginal_std = np.sqrt(pred_em_posterior.covariance().squeeze())
+
+        pred_em_marginal = tfd.MultivariateNormalDiag(marginal_mean, marginal_std)
+    except:
+        pred_em_marginal = None
 
     return pred_em_marginal
 
@@ -372,8 +375,8 @@ def lds_define_true_model_and_data(key):
     Returns:
 
     """
-    latent_dim = 2
-    emissions_dim = 3
+    latent_dim = 1
+    emissions_dim = 1
     num_trials = 100000
     T = 9  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
