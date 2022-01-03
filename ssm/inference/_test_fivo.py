@@ -25,15 +25,15 @@ import ssm.utils as utils
 import ssm.inference.fivo as fivo
 from tensorflow_probability.substrates.jax import distributions as tfd
 
-# from ssm.inference._test_fivo_lds import lds_do_print as do_print
-# from ssm.inference._test_fivo_lds import lds_define_test as define_test
-# from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
-# from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
+from ssm.inference._test_fivo_lds import lds_do_print as do_print
+from ssm.inference._test_fivo_lds import lds_define_test as define_test
+from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
+from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
 
-from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
-from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
-from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
-from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
+# from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
+# from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
+# from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
+# from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
 
 # If we are on Mac, assume it is a local run
 LOCAL_SYSTEM = (('mac' in platform.platform()) or ('Mac' in platform.platform()))
@@ -84,18 +84,18 @@ def do_config():
     parser.add_argument('--seed', default=10, type=int)
     parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
 
-    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.
+    parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
     parser.add_argument('--proposal-structure', default='DIRECT', type=str)     # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-structure', default='NONE', type=str)         # {None/'NONE', 'DIRECT'}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
     parser.add_argument('--num-particles', default=5, type=int)
     parser.add_argument('--datasets-per-batch', default=4, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.01, type=float)
+    parser.add_argument('--p-lr', default=0.001, type=float)
     parser.add_argument('--q-lr', default=0.001, type=float)
-    parser.add_argument('--r-lr', default=0.01, type=float)
+    parser.add_argument('--r-lr', default=0.001, type=float)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=20, type=int)
@@ -388,7 +388,8 @@ def main():
                 if (env.config.save_path is not None) and (env.config.load_path is None):
                     with open(env.config.save_path, 'wb') as f:
                         params_to_dump = fivo.get_params_from_opt(opt)
-                        params_to_dump[0] = params_to_dump[0]._asdict()
+                        if params_to_dump[0] is not None:
+                            params_to_dump[0] = params_to_dump[0]._asdict()
                         p.dump(params_to_dump, f)
 
                 # Dump some stuff out to WandB.
