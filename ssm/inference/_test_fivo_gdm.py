@@ -222,7 +222,7 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
     # Define a more conservative initialization.
     w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - note can remove bias here.
+    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)
 
     # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
@@ -264,7 +264,7 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     # Define a more conservative initialization.
     w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)  # TODO - note can remove bias here.
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
 
     # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
@@ -328,7 +328,9 @@ def gdm_get_true_target_marginal(model, data):
 
     """
 
-    # TODO - this assumes that `\alpha = 0`.
+    #
+    # NOTE - this assumes that `\alpha = 0`.
+    #
 
     assert len(data.shape) == 3
 
@@ -370,7 +372,8 @@ def gdm_define_true_model_and_data(key):
     true_dynamics_weights = np.eye(latent_dim)
     true_emission_weights = np.eye(emissions_dim)
 
-    # emission_scale_tril = 0.1 * np.eye(emissions_dim)  # TODO - made observations tighter.
+    # NOTE - can make observations tighter here.
+    # emission_scale_tril = 0.1 * np.eye(emissions_dim)
     emission_scale_tril = 1.0 * np.eye(emissions_dim)
 
     # Create the true model.
@@ -469,7 +472,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
 
         try:
             r_mean_b = r_param['head_mean_fn']['bias']  # ADD THIS BACK IF WE ARE USING THE BIAS
-            print('\t\tR mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(r_mean_b.flatten()))]))  # TODO - np.exp
+            print('\t\tR mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(r_mean_b.flatten()))]))
         except:
             pass
 
@@ -480,7 +483,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
             pass
 
         r_lvar_b = r_param['head_log_var_fn']['bias']
-        print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(r_lvar_b.flatten()))]))  # TODO - np.exp
+        print('\t\tR var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(r_lvar_b.flatten()))]))
 
     if opt[1] is not None:
         q_param = opt[1].target._dict['params']
@@ -491,7 +494,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
 
         try:
             q_mean_b = q_param['head_mean_fn']['bias']  # ADD THIS BACK IF WE ARE USING THE BIAS
-            print('\t\tQ mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(q_mean_b.flatten()))]))  # TODO - np.exp
+            print('\t\tQ mean bias       (->0): ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(q_mean_b.flatten()))]))
         except:
             pass
 
@@ -502,7 +505,7 @@ def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
             pass
 
         q_lvar_b = q_param['head_log_var_fn']['bias']
-        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(q_lvar_b.flatten()))]))  # TODO - np.exp
+        print('\t\tQ var bias:              ', '  '.join(['{: >9.3f}'.format(_s) for _s in (np.exp(q_lvar_b.flatten()))]))
 
     print()
     print()

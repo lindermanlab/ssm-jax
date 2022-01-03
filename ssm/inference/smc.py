@@ -384,22 +384,6 @@ def _smc_forward_pass(key,
         do_resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
                     resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
 
-    # # Use this to no do an initial resampling step.
-    # initial_distribution = model.initial_distribution()
-    # key, subkey1, subkey2 = jr.split(key, num=3)
-    # initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
-    # y_log_probability = model.emissions_distribution(initial_particles).log_prob(dataset[0])
-    # initial_incremental_log_weights = y_log_probability
-    # initial_resampled_particles = initial_particles
-    # accumulated_log_weights = initial_incremental_log_weights
-    # initial_resampled = False
-
-    # # Defaults:
-    # initial_incremental_log_weights = np.zeros(num_particles)
-    # initial_resampled_particles = initial_particles
-    # accumulated_log_weights = np.zeros(num_particles)
-    # initial_resampled = False
-
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
         key, particles, accumulated_log_weights, q_state = carry

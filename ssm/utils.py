@@ -610,21 +610,6 @@ def make_named_tuple(dict_in, keys=None, name='tup'):
     return tup
 
 
-# @register_pytree_node_class
-# class JaxTuple(tuple):
-#
-#     def __init__(self, seq=()):
-#         self = tuple(seq)
-#         self.ndim = 1
-#
-#     def tree_flatten(self):
-#         return (), self
-#
-#     @classmethod
-#     def tree_unflatten(cls, aux_data, children):
-#         cls(*aux_data)
-
-
 def mutate_named_tuple_by_key(tup, new_vals):
     """
     Mutate a named tuple by replacing the fields of tuple.

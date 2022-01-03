@@ -316,7 +316,7 @@ def log_params(_param_hist, _cur_params, _cur_lml, _cur_fivo, _cur_em, _step):
 
                 # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
 
-                # TODO - ----
+                # TODO ---- this is kind of messy.  makes plotting GDM easier but isn't general....
                 if ('var' in _k) and ('bias' in _k):
                     _p_flat[_k + '_(EXP)'] = dc(onp.array(np.exp(_p[_ko][_ki])))
                 else:
@@ -336,7 +336,7 @@ def log_params(_param_hist, _cur_params, _cur_lml, _cur_fivo, _cur_em, _step):
 
                 # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
 
-                # TODO - ----
+                # TODO ---- this is kind of messy.  makes plotting GDM easier but isn't general....
                 if ('var' in _k) and ('bias' in _k):
                     _p_flat[_k + '_(EXP)'] = dc(onp.array(np.exp(_p[_ko][_ki])))
                 else:

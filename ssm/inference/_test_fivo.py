@@ -86,7 +86,7 @@ def do_config():
 
     parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
     parser.add_argument('--proposal-structure', default='DIRECT', type=str)     # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--tilt-structure', default='NONE', type=str)         # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
     parser.add_argument('--num-particles', default=5, type=int)
