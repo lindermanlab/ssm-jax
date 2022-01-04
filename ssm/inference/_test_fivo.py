@@ -75,13 +75,13 @@ def do_config():
     parser.add_argument('--seed', default=10, type=int)
     parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
 
-    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.  # 'dynamics_bias'
-    parser.add_argument('--proposal-structure', default='RESQ', type=str)     # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--free-parameters', default='', type=str)              # CSV.  # 'dynamics_bias'
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)       # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
-    parser.add_argument('--num-particles', default=15, type=int)
-    parser.add_argument('--datasets-per-batch', default=8, type=int)
+    parser.add_argument('--num-particles', default=5, type=int)
+    parser.add_argument('--datasets-per-batch', default=4, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--p-lr', default=0.01, type=float)
@@ -212,15 +212,6 @@ def main():
         except:
             pass
 
-        # Back up the true parameters.
-        true_hist = [[], [], [], [], [], [], []]  # Model, proposal, tilt, lml, fivo, step.
-        true_hist = fivo.log_params(true_hist,
-                                    [get_model_free_params(true_model), None, None],
-                                    true_lml,
-                                    0.0,
-                                    em_log_marginal_likelihood,
-                                    0)
-
         # --------------------------------------------------------------------------------------------------------------
 
         # Build up the optimizer.
@@ -261,7 +252,17 @@ def main():
         pred_em_lml = true_model.marginal_likelihood(validation_datasets, posterior=pred_em_posterior)
         pred_em_lml = - utils.lexp(pred_em_lml)
 
+        # Test BPF in the initial model..
+        bpf = []
+        for _ in range(20):
+            key, subkey = jr.split(key)
+            init_bpf_posterior = smc_jit(subkey, true_model, validation_datasets, num_particles=env.config.sweep_test_particles)
+            initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
+            bpf.append(initial_bpf_lml)
+        print('Variance: BPF: ', np.var(np.asarray(bpf)))
+
         # Test the initial models.
+        key, subkey = jr.split(key)
         true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound = \
             fivo.initial_validation(key,
                                     true_model,
@@ -275,8 +276,10 @@ def main():
                                     do_print=do_print,
                                     do_plot=env.config.PLOT)
 
-        # Test BPF in the initial model..
-        def _single_eval(_subkey, _params):
+        # --------------------------------------------------------------------------------------------------------------
+
+        # Wrap another call to fivo for validation.
+        def _single_fivo_eval(_subkey, _params):
             _val_fivo_bound, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
                                                                       _params,
                                                                       _num_particles=env.config.sweep_test_particles,
@@ -284,19 +287,24 @@ def main():
             _val_fivo_lml = -utils.lexp(_sweep_posteriors.log_normalizer)
             return _val_fivo_lml, _val_fivo_bound
 
-        single_eval_vmap = jax.vmap(_single_eval, in_axes=(0, None))
-
-        key, subkey = jr.split(key)
-        bpf, _ = single_eval_vmap(jr.split(key, 20), fivo.get_params_from_opt(opt))
-        print('Variance: BPF: ', np.var(np.asarray(bpf)))
-
-        # --------------------------------------------------------------------------------------------------------------
+        single_fivo_eval_vmap = jax.vmap(_single_fivo_eval, in_axes=(0, None))
 
         # Define some storage.
         param_hist = [[], [], [], [], [], [], []]  # Model, proposal, tilt, lml, fivo, em, step.
         val_hist = [[], [], [], [], [], [], []]  # Model, proposal, tilt, lml, fivo, em, step.
         lml_hist = []
         param_figures = [None, None, None, None]  # Loss, Model, proposal, tilt.
+
+        # Back up the true parameters.
+        true_hist = [[], [], [], [], [], [], []]  # Model, proposal, tilt, lml, fivo, step.
+        true_hist = fivo.log_params(true_hist,
+                                    [get_model_free_params(true_model), None, None],
+                                    true_lml,
+                                    0.0,
+                                    em_log_marginal_likelihood,
+                                    0)
+
+        # --------------------------------------------------------------------------------------------------------------
 
         # Main training loop.
         for _step in range(1, env.config.opt_steps + 1):
@@ -307,8 +315,8 @@ def main():
             batched_dataset = dataset.at[idx].get()
 
             # Do the sweep and compute the gradient.
-            key, subkey = jr.split(key)
             cur_params = dc(fivo.get_params_from_opt(opt))
+            key, subkey = jr.split(key)
             (pred_fivo_bound, smc_posteriors), grad = do_fivo_sweep_val_and_grad(subkey,
                                                                                  fivo.get_params_from_opt(opt),
                                                                                  env.config.num_particles,
@@ -338,9 +346,10 @@ def main():
 
                 # Test the variance of the estimators.
                 key, subkey = jr.split(key)
-                val_fivo_lml, val_fivo_bound = single_eval_vmap(jr.split(key, 20), fivo.get_params_from_opt(opt))
+                val_fivo_lml, val_fivo_bound = single_fivo_eval_vmap(jr.split(key, 20), fivo.get_params_from_opt(opt))
 
                 # Test the KLs.
+                key, subkey = jr.split(key)
                 true_bpf_kls, pred_smc_kls = fivo.compare_kls(get_marginals,
                                                               env,
                                                               opt,
@@ -378,7 +387,7 @@ def main():
                                             param_figures)
 
                     fivo.compare_sweeps(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
-                                            do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=5, true_states=true_states)
+                                        do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=5, true_states=true_states)
 
                 # Log the validation step.
                 val_hist = fivo.log_params(val_hist,
@@ -414,11 +423,11 @@ def main():
                           'params_r_pred': param_hist[2][-1],
                           'pred_fivo_bound': pred_fivo_bound_to_print,
                           'pred_lml': pred_lml_to_print,
-                          'small_lml_variance_bpf_true': np.var(np.asarray(bpf),),
                           'small_lml_mean_em_true': em_log_marginal_likelihood,
                           'small_lml_mean_bpf_true': true_lml,
-                          'small_lml_variance_fivo': np.var(np.asarray(val_fivo_lml)),
                           'small_lml_mean_fivo': np.mean(np.asarray(val_fivo_lml)),
+                          'small_lml_variance_bpf_true': np.var(np.asarray(bpf),),
+                          'small_lml_variance_fivo': np.var(np.asarray(val_fivo_lml)),
                           'small_fivo_bound': np.mean(np.asarray(val_fivo_bound)),
                           'expected_kl_true': np.mean(true_bpf_kls),
                           'expected_kl_pred': np.mean(pred_smc_kls),
@@ -428,16 +437,16 @@ def main():
 
         # Do some final validation.
         fivo.final_validation(get_marginals,
-                                  env,
-                                  opt,
-                                  validation_datasets,
-                                  true_model,
-                                  rebuild_model_fn,
-                                  rebuild_prop_fn,
-                                  rebuild_tilt_fn,
-                                  key,
-                                  do_fivo_sweep_jitted,
-                                  smc_jit)
+                              env,
+                              opt,
+                              validation_datasets,
+                              true_model,
+                              rebuild_model_fn,
+                              rebuild_prop_fn,
+                              rebuild_tilt_fn,
+                              key,
+                              do_fivo_sweep_jitted,
+                              smc_jit)
 
 
 if __name__ == '__main__':

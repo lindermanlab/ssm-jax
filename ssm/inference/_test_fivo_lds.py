@@ -379,20 +379,21 @@ def lds_define_true_model_and_data(key):
     num_trials = 100000
     T = 4  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
-    # Create a more reasonable emission scale.
-    dynamics_scale_tril = 1.0 * np.eye(latent_dim)
+    # Set up the transmission and emission weights to be unity.
     true_dynamics_weights = np.eye(latent_dim)
     true_emission_weights = np.eye(emissions_dim, latent_dim)
 
-    # NOTE - can make observations tighter here.
-    # emission_scale_tril = 0.1 * np.eye(emissions_dim)
-    emission_scale_tril = 0.1 * np.eye(emissions_dim)
+    # NOTE - Set the dynamics scale here.
+    dynamics_scale_tril = 0.1 * np.eye(latent_dim)
 
-    initial_state_scale_tril = 5.0 * np.eye(latent_dim)
+    # NOTE - can make observations tighter here.
+    emission_scale_tril = 1.0 * np.eye(emissions_dim)
+
+    # NOTE - change the initial scale here.
+    initial_state_scale_tril = 1.0 * np.eye(latent_dim)
 
     # Create the true model.
     key, subkey = jr.split(key)
-
     true_model = GaussianLDS(num_latent_dims=latent_dim,
                              num_emission_dims=emissions_dim,
                              seed=subkey,
