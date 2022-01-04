@@ -356,64 +356,64 @@ def log_params(_param_hist, _cur_params, _cur_lml, _cur_fivo, _cur_em, _step):
     return _param_hist
 
 
-def temp_validation_code(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
-                         num_particles=10, dset_to_plot=0, init_model=None):
-    """
-
-    Args:
-        key:
-        true_model:
-        dataset:
-        true_states:
-        opt:
-        do_fivo_sweep_jitted:
-        _smc_jit:
-        num_particles:
-        dset_to_plot:
-        init_model:
-
-    Returns:
-
-    """
-
-    # Do some sweeps.
-    key, subkey = jr.split(key)
-    smc_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles)
-    key, subkey = jr.split(key)
-    initial_fivo_bound, sweep_posteriors = do_fivo_sweep_jitted(subkey, get_params_from_opt(opt),
-                                                                num_particles=num_particles,
-                                                                datasets=dataset)
-
-    # CODE for plotting lineages.
-    idx = 7
-    fig, ax = plt.subplots(2, 1, sharex=True, sharey=True, squeeze=True, figsize=(8, 8), tight_layout=True)
-    for _p in smc_posterior[idx].weighted_smoothing_particles:
-        ax[0].plot(_p, linewidth=0.1, c='b')
-    ax[0].grid(True)
-    for _p in sweep_posteriors[idx].weighted_smoothing_particles:
-        ax[1].plot(_p, linewidth=0.1, c='b')
-    ax[1].grid(True)
-    plt.pause(0.01)
-
-    # Compare the variances of the LML estimates.
-    # Test BPF in the initial model..
-    val_bpf_lml, val_fivo_lml = [], []
-    for _ in range(20):
-        key, subkey = jr.split(key)
-        true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles)
-        true_bpf_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
-        val_bpf_lml.append(true_bpf_lml)
-
-    for _ in range(20):
-        key, subkey = jr.split(key)
-        initial_fivo_bound, sweep_posteriors = do_fivo_sweep_jitted(subkey, get_params_from_opt(opt),
-                                                                    num_particles=num_particles,
-                                                                    datasets=dataset)
-        initial_lml = -utils.lexp(sweep_posteriors.log_normalizer)
-        val_fivo_lml.append(initial_lml)
-
-    print('Variance: BPF:      ', np.var(np.asarray(val_bpf_lml)))
-    print('Variance: FIVO-AUX: ', np.var(np.asarray(val_fivo_lml)))
+# def temp_validation_code(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
+#                          num_particles=10, dset_to_plot=0, init_model=None):
+#     """
+#
+#     Args:
+#         key:
+#         true_model:
+#         dataset:
+#         true_states:
+#         opt:
+#         do_fivo_sweep_jitted:
+#         _smc_jit:
+#         num_particles:
+#         dset_to_plot:
+#         init_model:
+#
+#     Returns:
+#
+#     """
+#
+#     # Do some sweeps.
+#     key, subkey = jr.split(key)
+#     smc_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles)
+#     key, subkey = jr.split(key)
+#     initial_fivo_bound, sweep_posteriors = do_fivo_sweep_jitted(subkey, get_params_from_opt(opt),
+#                                                                 num_particles=num_particles,
+#                                                                 datasets=dataset)
+#
+#     # CODE for plotting lineages.
+#     idx = 7
+#     fig, ax = plt.subplots(2, 1, sharex=True, sharey=True, squeeze=True, figsize=(8, 8), tight_layout=True)
+#     for _p in smc_posterior[idx].weighted_smoothing_particles:
+#         ax[0].plot(_p, linewidth=0.1, c='b')
+#     ax[0].grid(True)
+#     for _p in sweep_posteriors[idx].weighted_smoothing_particles:
+#         ax[1].plot(_p, linewidth=0.1, c='b')
+#     ax[1].grid(True)
+#     plt.pause(0.01)
+#
+#     # Compare the variances of the LML estimates.
+#     # Test BPF in the initial model..
+#     val_bpf_lml, val_fivo_lml = [], []
+#     for _ in range(20):
+#         key, subkey = jr.split(key)
+#         true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles)
+#         true_bpf_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
+#         val_bpf_lml.append(true_bpf_lml)
+#
+#     for _ in range(20):
+#         key, subkey = jr.split(key)
+#         initial_fivo_bound, sweep_posteriors = do_fivo_sweep_jitted(subkey, get_params_from_opt(opt),
+#                                                                     num_particles=num_particles,
+#                                                                     datasets=dataset)
+#         initial_lml = -utils.lexp(sweep_posteriors.log_normalizer)
+#         val_fivo_lml.append(initial_lml)
+#
+#     print('Variance: BPF:      ', np.var(np.asarray(val_bpf_lml)))
+#     print('Variance: FIVO-AUX: ', np.var(np.asarray(val_fivo_lml)))
 
 
 def compute_marginal_kls(get_marginals, true_model, dataset, smoothing_particles):
@@ -652,13 +652,6 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
                                                            get_params_from_opt(opt),
                                                            _num_particles=num_particles,
                                                            _datasets=dataset,)
-    # final_val_posterior_fivo_aux = smc(subkey,
-    #                                           rebuild_model_fn(get_params_from_opt(opt)[0]),
-    #                                           dataset,
-    #                                           initialization_distribution=initial_distribution,
-    #                                           proposal=rebuild_prop_fn(get_params_from_opt(opt)[1]),
-    #                                           tilt=rebuild_tilt_fn(get_params_from_opt(opt)[2]),
-    #                                           num_particles=num_particles)
 
     # CODE for plotting lineages.
     for _dset_idx in range(nrep):
@@ -673,6 +666,10 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
         for _p in final_val_posterior_fivo_aux[_dset_idx].weighted_smoothing_particles:
             ax[1].plot(_p, linewidth=0.1, c='b')
         ax[1].grid(True)
+
+        # Plot the observed data.
+        ax[0].plot(dataset[_dset_idx], linewidth=1.0, c='k', linestyle='--')
+        ax[1].plot(dataset[_dset_idx], linewidth=1.0, c='k', linestyle='--')
 
         if (get_params_from_opt(opt)[1] is not None) and (get_params_from_opt(opt)[2] is not None):
             ax[1].set_title('SMC-AUX with learned pqr.')

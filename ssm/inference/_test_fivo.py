@@ -20,20 +20,9 @@ from pprint import pprint
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
 from ssm.inference.smc import _plot_single_sweep
 from ssm.inference.smc import smc
-import ssm.inference.fivo_util as fivo
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
 from tensorflow_probability.substrates.jax import distributions as tfd
-
-from ssm.inference._test_fivo_lds import lds_do_print as do_print
-from ssm.inference._test_fivo_lds import lds_define_test as define_test
-from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
-from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
-
-# from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
-# from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
-# from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
-# from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
 
 # If we are on Mac, assume it is a local run
 LOCAL_SYSTEM = (('mac' in platform.platform()) or ('Mac' in platform.platform()))
@@ -81,29 +70,31 @@ def do_config():
 
     # Set up the experiment.
     parser = argparse.ArgumentParser()
+    parser.add_argument('--model', default='LDS', type=str)
+
     parser.add_argument('--seed', default=10, type=int)
     parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
 
     parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
-    parser.add_argument('--proposal-structure', default='DIRECT', type=str)     # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)     # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
     parser.add_argument('--num-particles', default=5, type=int)
-    parser.add_argument('--datasets-per-batch', default=4, type=int)
+    parser.add_argument('--datasets-per-batch', default=2, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.01, type=float)
-    parser.add_argument('--q-lr', default=0.01, type=float)
-    parser.add_argument('--r-lr', default=0.01, type=float)
+    parser.add_argument('--p-lr', default=0.003, type=float)
+    parser.add_argument('--q-lr', default=0.003, type=float)
+    parser.add_argument('--r-lr', default=0.003, type=float)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=20, type=int)
-    parser.add_argument('--validation-particles', default=1000, type=int)
+    parser.add_argument('--validation-particles', default=100, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
 
-    parser.add_argument('--load-path', default=None, type=str)
-    parser.add_argument('--save-path', default='./params_lds_tmp.p', type=str)
+    parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
+    parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
 
     parser.add_argument('--PLOT', default=1, type=int)
 
@@ -150,6 +141,8 @@ def do_config():
         env.config.git_branch = 'NoneFound'
         env.config.git_is_dirty = 'NoneFound'
 
+    # Do some final bits.
+    if len(env.config.free_parameters) == 0: print('\nWARNING: NO FREE MODEL PARAMETERS...\n')
     pprint(env)
     return env
 
@@ -161,6 +154,22 @@ def main():
 
         # Set up the experiment and log to WandB
         env = do_config()
+
+        # Import the right functions.
+        if env.config.model == 'GDM':
+            from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
+            from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
+            from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
+            from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
+
+        elif env.config.model == 'LDS':
+            from ssm.inference._test_fivo_lds import lds_do_print as do_print
+            from ssm.inference._test_fivo_lds import lds_define_test as define_test
+            from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
+            from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
+
+        else:
+            raise NotImplementedError()
 
         # Define some holders that will be overwritten later.
         true_lml = 0.0
@@ -302,7 +311,7 @@ def main():
             # ----------------------------------------------------------------------------------------------------------
 
             # Do some validation and give some output.
-            if (_step % 250 == 0) or (_step == 1):
+            if (_step % 500 == 0) or (_step == 1):
 
                 # Do an e step.
                 pred_em_posterior = jax.vmap(true_model.e_step)(validation_datasets)

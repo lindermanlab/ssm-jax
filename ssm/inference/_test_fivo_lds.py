@@ -138,7 +138,7 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
-            t_params = params[0]
+            t_params = jax.tree_map(lambda args: args[0], params)
         else:
             t_params = jax.tree_map(lambda args: args[t], params)
 
@@ -163,7 +163,7 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
         log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
 
-        return log_r_val * 0.0  # TODO -------
+        return log_r_val * 0.0  # TODO - To disable tilt:  `* 0.0`
 
     # Define a method for generating thei nputs to the tilt.
     def _tilt_input_generator(self, dataset, model, particles, t, *_inputs):
@@ -221,7 +221,6 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
         # We will pass in whole data into the tilt and then filter out as required.
         tilt_outputs = (dataset, )
-
         return nn_util.vectorize_pytree(tilt_outputs)
 
 
@@ -378,7 +377,7 @@ def lds_define_true_model_and_data(key):
     latent_dim = 1
     emissions_dim = 1
     num_trials = 100000
-    T = 9  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+    T = 1  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
     # Create a more reasonable emission scale.
     dynamics_scale_tril = 1.0 * np.eye(latent_dim)
@@ -387,7 +386,7 @@ def lds_define_true_model_and_data(key):
 
     # NOTE - can make observations tighter here.
     # emission_scale_tril = 0.1 * np.eye(emissions_dim)
-    emission_scale_tril = 1.0 * np.eye(emissions_dim)
+    emission_scale_tril = 0.01 * np.eye(emissions_dim)
 
     initial_state_scale_tril = 5.0 * np.eye(latent_dim)
 
