@@ -80,8 +80,8 @@ def do_config():
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
-    parser.add_argument('--num-particles', default=5, type=int)
-    parser.add_argument('--datasets-per-batch', default=2, type=int)
+    parser.add_argument('--num-particles', default=15, type=int)
+    parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--p-lr', default=0.003, type=float)
