@@ -57,7 +57,7 @@ except:
 
 # Start the timer.
 _st = dt()
-_verbose_clock_print = False
+_verbose_clock_print = True
 clock = lambda __st, __str: utils.clock(__st, __str, _verbose_clock_print)
 
 
@@ -75,7 +75,7 @@ def do_config():
     parser.add_argument('--seed', default=10, type=int)
     parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
 
-    parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
+    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.  # 'dynamics_bias'
     parser.add_argument('--proposal-structure', default='RESQ', type=str)     # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
@@ -84,7 +84,7 @@ def do_config():
     parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.003, type=float)
+    parser.add_argument('--p-lr', default=0.01, type=float)
     parser.add_argument('--q-lr', default=0.003, type=float)
     parser.add_argument('--r-lr', default=0.003, type=float)
 
@@ -149,6 +149,8 @@ def do_config():
 
 def main():
 
+    global _st
+
     # Give the option of disabling JIT to allow for better inspection and debugging.
     with possibly_disable_jit(DISABLE_JIT):
 
@@ -177,6 +179,7 @@ def main():
         filt_fig = None
         sweep_fig = None
         bpf = 0.0
+        true_bpf_kls = None
 
         # Set up the first key
         key = jr.PRNGKey(env.config.seed)
@@ -253,26 +256,38 @@ def main():
 
         # --------------------------------------------------------------------------------------------------------------
 
+        # Do an e step.
+        pred_em_posterior = jax.vmap(true_model.e_step)(validation_datasets)
+        pred_em_lml = true_model.marginal_likelihood(validation_datasets, posterior=pred_em_posterior)
+        pred_em_lml = - utils.lexp(pred_em_lml)
+
         # Test the initial models.
         true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound = \
             fivo.initial_validation(key,
-                                        true_model,
-                                        validation_datasets, true_states,
-                                        opt,
-                                        do_fivo_sweep_jitted,
-                                        smc_jit,
-                                        num_particles=env.config.validation_particles,
-                                        dset_to_plot=env.config.dset_to_plot,
-                                        init_model=model,
-                                        do_print=do_print)
+                                    true_model,
+                                    validation_datasets, true_states,
+                                    opt,
+                                    do_fivo_sweep_jitted,
+                                    smc_jit,
+                                    num_particles=env.config.validation_particles,
+                                    dset_to_plot=env.config.dset_to_plot,
+                                    init_model=model,
+                                    do_print=do_print,
+                                    do_plot=env.config.PLOT)
 
         # Test BPF in the initial model..
-        bpf = []
-        for _ in range(20):
-            key, subkey = jr.split(key)
-            init_bpf_posterior = smc_jit(subkey, true_model, validation_datasets, num_particles=env.config.sweep_test_particles)
-            initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
-            bpf.append(initial_bpf_lml)
+        def _single_eval(_subkey, _params):
+            _val_fivo_bound, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
+                                                                      _params,
+                                                                      _num_particles=env.config.sweep_test_particles,
+                                                                      _datasets=validation_datasets)
+            _val_fivo_lml = -utils.lexp(_sweep_posteriors.log_normalizer)
+            return _val_fivo_lml, _val_fivo_bound
+
+        single_eval_vmap = jax.vmap(_single_eval, in_axes=(0, None))
+
+        key, subkey = jr.split(key)
+        bpf, _ = single_eval_vmap(jr.split(key, 20), fivo.get_params_from_opt(opt))
         print('Variance: BPF: ', np.var(np.asarray(bpf)))
 
         # --------------------------------------------------------------------------------------------------------------
@@ -313,11 +328,6 @@ def main():
             # Do some validation and give some output.
             if (_step % 500 == 0) or (_step == 1):
 
-                # Do an e step.
-                pred_em_posterior = jax.vmap(true_model.e_step)(validation_datasets)
-                pred_em_lml = true_model.marginal_likelihood(validation_datasets, posterior=pred_em_posterior)
-                pred_em_lml = - utils.lexp(pred_em_lml)
-
                 # Do a FIVO-AUX sweep.
                 key, subkey = jr.split(key)
                 pred_fivo_bound_to_print, pred_sweep = do_fivo_sweep_jitted(subkey,
@@ -327,36 +337,30 @@ def main():
                 pred_lml_to_print = - utils.lexp(pred_sweep.log_normalizer)
 
                 # Test the variance of the estimators.
-                val_fivo_lml = []
-                for _ in range(20):
-                    key, subkey = jr.split(key)
-                    val_fivo_bound, sweep_posteriors = do_fivo_sweep_jitted(subkey,
-                                                                            fivo.get_params_from_opt(opt),
-                                                                            _num_particles=env.config.sweep_test_particles,
-                                                                            _datasets=validation_datasets)
-                    _val_fivo_lml = -utils.lexp(sweep_posteriors.log_normalizer)
-                    val_fivo_lml.append(_val_fivo_lml)
+                key, subkey = jr.split(key)
+                val_fivo_lml, val_fivo_bound = single_eval_vmap(jr.split(key, 20), fivo.get_params_from_opt(opt))
 
                 # Test the KLs.
                 true_bpf_kls, pred_smc_kls = fivo.compare_kls(get_marginals,
-                                                                  env,
-                                                                  opt,
-                                                                  validation_datasets,
-                                                                  true_model,
-                                                                  rebuild_model_fn,
-                                                                  rebuild_prop_fn,
-                                                                  rebuild_tilt_fn,
-                                                                  key,
-                                                                  do_fivo_sweep_jitted,
-                                                                  smc_jit)
+                                                              env,
+                                                              opt,
+                                                              validation_datasets,
+                                                              true_model,
+                                                              rebuild_model_fn,
+                                                              rebuild_prop_fn,
+                                                              rebuild_tilt_fn,
+                                                              key,
+                                                              do_fivo_sweep_jitted,
+                                                              smc_jit,
+                                                              true_bpf_kls=true_bpf_kls)
 
-                if PLOT and (_step % 2000 == 0):
+                if env.config.PLOT and (_step % 2000 == 0):
 
                     # Do some plotting.
                     sweep_fig = _plot_single_sweep(
                         pred_sweep[env.config.dset_to_plot].filtering_particles,
                         true_states[env.config.dset_to_plot],
-                        tag='{} Fitlering.'.format(_step),
+                        tag='{} Filtering.'.format(_step),
                         fig=sweep_fig,
                         obs=dataset[env.config.dset_to_plot])
                     sweep_fig = _plot_single_sweep(

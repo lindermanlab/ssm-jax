@@ -461,7 +461,7 @@ def compute_marginal_kls(get_marginals, true_model, dataset, smoothing_particles
 
 
 def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
-                       num_particles=1000, dset_to_plot=0, init_model=None, GLOBAL_PLOT=True, do_print=None):
+                       num_particles=1000, dset_to_plot=0, init_model=None, GLOBAL_PLOT=True, do_print=None, do_plot=True):
     """
 
     Args:
@@ -517,49 +517,55 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
     #                      num_particles=10, dset_to_plot=dset_to_plot, init_model=init_model)
 
     # Do some plotting.
-    if em_posterior is not None:
-        sweep_em_mean = em_posterior.mean()[dset_to_plot]
-        sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset_to_plot]
-        sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
-        _plot_single_sweep(sweep_em_statistics, true_states[dset_to_plot],
-                           tag='EM smoothing', preprocessed=True, obs=dataset[dset_to_plot])
+    if do_plot:
+        if em_posterior is not None:
+            sweep_em_mean = em_posterior.mean()[dset_to_plot]
+            sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset_to_plot]
+            sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
+            _plot_single_sweep(sweep_em_statistics, true_states[dset_to_plot],
+                               tag='EM smoothing', preprocessed=True, obs=dataset[dset_to_plot])
 
-    if true_bpf_posterior is not None:
-        _plot_single_sweep(true_bpf_posterior[dset_to_plot].filtering_particles,
-                           true_states[dset_to_plot],
-                           tag='True BPF Filtering (' + str(num_particles) + ' particles).',
-                           obs=dataset[dset_to_plot])
-        _plot_single_sweep(true_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
-                           true_states[dset_to_plot],
-                           tag='True BPF Smoothing (' + str(num_particles) + ' particles).',
-                           obs=dataset[dset_to_plot])
+        if true_bpf_posterior is not None:
+            _plot_single_sweep(true_bpf_posterior[dset_to_plot].filtering_particles,
+                               true_states[dset_to_plot],
+                               tag='True BPF Filtering (' + str(num_particles) + ' particles).',
+                               obs=dataset[dset_to_plot])
+            _plot_single_sweep(true_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
+                               true_states[dset_to_plot],
+                               tag='True BPF Smoothing (' + str(num_particles) + ' particles).',
+                               obs=dataset[dset_to_plot])
 
-    if init_bpf_posterior is not None:
-        _plot_single_sweep(init_bpf_posterior[dset_to_plot].filtering_particles,
-                           true_states[dset_to_plot],
-                           tag='Initial BPF Filtering (' + str(num_particles) + ' particles).',
-                           obs=dataset[dset_to_plot])
-        _plot_single_sweep(init_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
-                           true_states[dset_to_plot],
-                           tag='Initial BPF Smoothing (' + str(num_particles) + ' particles).',
-                           obs=dataset[dset_to_plot])
+        if init_bpf_posterior is not None:
+            _plot_single_sweep(init_bpf_posterior[dset_to_plot].filtering_particles,
+                               true_states[dset_to_plot],
+                               tag='Initial BPF Filtering (' + str(num_particles) + ' particles).',
+                               obs=dataset[dset_to_plot])
+            _plot_single_sweep(init_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
+                               true_states[dset_to_plot],
+                               tag='Initial BPF Smoothing (' + str(num_particles) + ' particles).',
+                               obs=dataset[dset_to_plot])
 
-    if init_smc_posterior is not None:
-        filt_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].filtering_particles,
-                                      true_states[dset_to_plot],
-                                      tag='Initial SMC Filtering (' + str(num_particles) + ' particles).',
-                                      obs=dataset[dset_to_plot])
-        sweep_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
-                                       true_states[dset_to_plot],
-                                       tag='Initial SMC Smoothing (' + str(num_particles) + ' particles).',
-                                       obs=dataset[dset_to_plot])
+        if init_smc_posterior is not None:
+            filt_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].filtering_particles,
+                                          true_states[dset_to_plot],
+                                          tag='Initial SMC Filtering (' + str(num_particles) + ' particles).',
+                                          obs=dataset[dset_to_plot])
+            sweep_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
+                                           true_states[dset_to_plot],
+                                           tag='Initial SMC Smoothing (' + str(num_particles) + ' particles).',
+                                           obs=dataset[dset_to_plot])
+    else:
+        sweep_fig = None
+        filt_fig = None
 
     # Do some print.
-    if do_print is not None: do_print(0, true_model, opt, true_lml, initial_lml, initial_fivo_bound, em_log_marginal_likelihood)
+    if do_print is not None:
+        do_print(0, true_model, opt, true_lml, initial_lml, initial_fivo_bound, em_log_marginal_likelihood)
+
     return true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
 
 
-def compare_kls(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted, plot=False, GLOBAL_PLOT=True):
+def compare_kls(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted, plot=False, GLOBAL_PLOT=True, true_bpf_kls=None):
     """
 
     Args:
@@ -590,7 +596,7 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, 
                                                  _num_particles=num_particles,
                                                  _datasets=dataset)
 
-    true_bpf_kls = compute_marginal_kls(get_marginals, true_model, dataset, true_bpf_posterior.weighted_smoothing_particles)
+    if true_bpf_kls is None: true_bpf_kls = compute_marginal_kls(get_marginals, true_model, dataset, true_bpf_posterior.weighted_smoothing_particles)
     pred_smc_kls = compute_marginal_kls(get_marginals, true_model, dataset, pred_smc_posterior.weighted_smoothing_particles)
     # init_bpf_kls = compute_marginal_kls(get_marginals, true_model, dataset, init_bpf_posterior.weighted_smoothing_particles)
 
