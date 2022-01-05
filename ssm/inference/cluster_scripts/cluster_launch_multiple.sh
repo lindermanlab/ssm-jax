@@ -1,6 +1,6 @@
 #!/bin/bash
 
-glob_tag='gdm-cr-v1-0-0'
+glob_tag='gdm-informative-cr-v1-0-0'
 model='GDM'
 
 # BPF-SGR
