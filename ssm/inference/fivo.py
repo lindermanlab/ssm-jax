@@ -601,7 +601,7 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
     pred_smc_kls = compute_marginal_kls(get_marginals, true_model, dataset, pred_smc_posterior.weighted_smoothing_particles)
 
     if plot and env.config.PLOT:
-        plt.figure()
+        _fig = plt.figure()
         plt.plot(np.mean(np.asarray(true_bpf_kls), axis=1), label='True (BPF)')
         plt.plot(np.mean(np.asarray(pred_smc_kls), axis=1), label='Pred (FIVO-AUX)')
         # plt.plot(np.median(np.asarray(init_bpf_kls), axis=1), label='bpf')
@@ -612,6 +612,7 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
         plt.ylabel('KL_t')
         plt.pause(0.001)
         plt.savefig('./figs/kl_diff.pdf')
+        plt.close(_fig)
 
     return true_bpf_kls, pred_smc_kls
 
@@ -666,7 +667,7 @@ def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_s
     pred_smc_upc = calculate_unique_particle_counts(pred_smc_posterior.weighted_smoothing_particles)
 
     if plot and env.config.PLOT:
-        plt.figure()
+        _fig = plt.figure()
         plt.plot(np.mean(np.asarray(true_bpf_upc), axis=0), label='True (BPF)')
         plt.plot(np.mean(np.asarray(pred_smc_upc), axis=0), label='Pred (FIVO)')
 
@@ -677,6 +678,7 @@ def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_s
         plt.ylabel(r'#unique_particles')
         plt.pause(0.001)
         plt.savefig('./figs/ss_diff.pdf')
+        plt.close(_fig)
 
     return true_bpf_upc, pred_smc_upc
 

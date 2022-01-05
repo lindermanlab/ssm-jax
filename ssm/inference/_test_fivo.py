@@ -119,7 +119,7 @@ def do_config():
 
     # Do some final bits.
     if len(env.config.free_parameters) == 0: print('\nWARNING: NO FREE MODEL PARAMETERS...\n')
-    pprint(env)
+    pprint(env.config)
     return env
 
 

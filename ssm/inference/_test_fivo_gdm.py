@@ -39,7 +39,7 @@ def gdm_get_config():
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
 
     parser.add_argument('--num-particles', default=5, type=int)
-    parser.add_argument('--datasets-per-batch', default=64, type=int)
+    parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--p-lr', default=0.001, type=float)
