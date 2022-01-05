@@ -262,6 +262,11 @@ class SMCPosterior(tfd.Distribution):
 
     @property
     def weighted_particles(self):
+        """
+
+        Returns:
+
+        """
         return self._smoothing_particles, self.final_particle_weights_unnormalized
 
     @property

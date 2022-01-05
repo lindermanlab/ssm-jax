@@ -384,6 +384,9 @@ def _smc_forward_pass(key,
         do_resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
                     resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
 
+    initial_log_weights_pre_resamp = initial_incremental_log_weights
+    initial_log_weights_post_resamp = accumulated_log_weights
+
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
         key, particles, accumulated_log_weights, q_state = carry
@@ -436,24 +439,29 @@ def _smc_forward_pass(key,
                          lambda *args: closed_do_resample(resampling_criterion),
                          None)
 
+        # TODO - i have changed this to return the log weights of the particles after any resampling.
+        #  this means that the particles at time t are distributed according to the weights in the
+        #  final distribution object.  This needs to be updated on the main SMC branch, although i
+        #  don't think that this makes a difference.
         return ((key, resampled_particles, resampled_log_weights, q_state),
-                (resampled_particles, accumulated_log_weights, should_resample, ancestors, q_state))
+                (resampled_particles, accumulated_log_weights, resampled_log_weights, should_resample, ancestors, q_state))
 
     # Scan over the dataset.
-    _, (filtering_particles, log_weights, resampled, ancestors, q_states) = jax.lax.scan(
+    _, (filtering_particles, log_weights_pre_resamp, log_weights_post_resamp, resampled, ancestors, q_states) = jax.lax.scan(
         smc_step,
-        (key, initial_resampled_particles, accumulated_log_weights, initial_q_state),
+        (key, initial_resampled_particles, initial_log_weights_post_resamp, initial_q_state),
         np.arange(1, len(dataset)))
 
     # Need to prepend the initial timestep.
     filtering_particles = np.concatenate((initial_resampled_particles[None, :], filtering_particles))
-    log_weights = np.concatenate((initial_incremental_log_weights[None, :], log_weights))
+    log_weights_pre_resamp = np.concatenate((initial_log_weights_pre_resamp[None, :], log_weights_pre_resamp))
+    log_weights_post_resamp = np.concatenate((initial_log_weights_post_resamp[None, :], log_weights_post_resamp))
     resampled = np.concatenate((np.asarray([initial_resampled]), resampled))
     ancestors = np.concatenate((np.arange(num_particles)[None, :], ancestors))
     q_states = np.concatenate((np.asarray([initial_q_state]), q_states)) if q_states is not None else None
 
     # Average over particle dimension.
-    p_hats = spsp.logsumexp(log_weights, axis=1) - np.log(num_particles)
+    p_hats = spsp.logsumexp(log_weights_pre_resamp, axis=1) - np.log(num_particles)
 
     # Compute the log marginal likelihood.
     # Note that this needs to force the last accumulated incremental weight to be used.
@@ -464,7 +472,7 @@ def _smc_forward_pass(key,
         raise NotImplementedError("This code isn't ready yet.  There are still too many issues with indexing etc.")
         # z_hat = z_hat + _compute_resampling_grad()
         
-    return filtering_particles, l_tilde, ancestors, resampled, log_weights
+    return filtering_particles, l_tilde, ancestors, resampled, log_weights_post_resamp
 
 
 def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosity):

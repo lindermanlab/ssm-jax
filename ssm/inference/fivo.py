@@ -565,7 +565,7 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
     return true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
 
 
-def compare_kls(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted, plot=False, GLOBAL_PLOT=True, true_bpf_kls=None):
+def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=False, GLOBAL_PLOT=True, true_bpf_kls=None):
     """
 
     Args:
@@ -588,22 +588,22 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, 
     num_particles = env.config.sweep_test_particles
 
     # Compare the KLs of the smoothing distributions.
-    key, subkey = jr.split(key)
-    true_bpf_posterior = smc_jitted(subkey, true_model, dataset, num_particles=num_particles)
+    if true_bpf_kls is None:
+        key, subkey = jr.split(key)
+        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, num_particles=num_particles)
+        true_bpf_kls = compute_marginal_kls(get_marginals, true_model, dataset, true_bpf_posterior.weighted_smoothing_particles)
+
     key, subkey = jr.split(key)
     _, pred_smc_posterior = do_fivo_sweep_jitted(subkey,
                                                  get_params_from_opt(opt),
                                                  _num_particles=num_particles,
                                                  _datasets=dataset)
-
-    if true_bpf_kls is None: true_bpf_kls = compute_marginal_kls(get_marginals, true_model, dataset, true_bpf_posterior.weighted_smoothing_particles)
     pred_smc_kls = compute_marginal_kls(get_marginals, true_model, dataset, pred_smc_posterior.weighted_smoothing_particles)
-    # init_bpf_kls = compute_marginal_kls(get_marginals, true_model, dataset, init_bpf_posterior.weighted_smoothing_particles)
 
     if plot and GLOBAL_PLOT:
         plt.figure()
-        plt.plot(np.median(np.asarray(true_bpf_kls), axis=1), label='True (BPF)')
-        plt.plot(np.median(np.asarray(pred_smc_kls), axis=1), label='Pred (FIVO-AUX)')
+        plt.plot(np.mean(np.asarray(true_bpf_kls), axis=1), label='True (BPF)')
+        plt.plot(np.mean(np.asarray(pred_smc_kls), axis=1), label='Pred (FIVO-AUX)')
         # plt.plot(np.median(np.asarray(init_bpf_kls), axis=1), label='bpf')
         plt.legend()
         plt.grid(True)
@@ -614,6 +614,71 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, 
         plt.savefig('./figs/kl_diff.pdf')
 
     return true_bpf_kls, pred_smc_kls
+
+
+def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=False, GLOBAL_PLOT=True, true_bpf_upc=None):
+    """
+
+    Args:
+        env:
+        opt:
+        dataset:
+        true_model:
+        key:
+        do_fivo_sweep_jitted:
+        plot:
+
+    Returns:
+
+    """
+
+    def calculate_unique_particle_counts(_particles):
+        """
+        This is a pain to JAX, so just do it in a loop.
+
+        Args:
+            _particles:
+
+        Returns:
+
+        """
+        unique_particle_counts = []
+        for _sweep in _particles:
+            _unique_particle_counts_at_t = []
+            for _t in range(_sweep.shape[1]):
+                _unique_particle_counts_at_t.append(len(np.unique(_sweep[:, _t, :], axis=0, return_counts=True)[1]))
+            unique_particle_counts.append(_unique_particle_counts_at_t)
+        return np.asarray(unique_particle_counts)
+
+    num_particles = env.config.sweep_test_particles
+
+    # Compare the KLs of the smoothing distributions.
+    if true_bpf_upc is None:
+        key, subkey = jr.split(key)
+        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, num_particles=num_particles)
+        true_bpf_upc = calculate_unique_particle_counts(true_bpf_posterior.weighted_smoothing_particles)
+
+    key, subkey = jr.split(key)
+    _, pred_smc_posterior = do_fivo_sweep_jitted(subkey,
+                                                 get_params_from_opt(opt),
+                                                 _num_particles=num_particles,
+                                                 _datasets=dataset)
+    pred_smc_upc = calculate_unique_particle_counts(pred_smc_posterior.weighted_smoothing_particles)
+
+    if plot and GLOBAL_PLOT:
+        plt.figure()
+        plt.plot(np.mean(np.asarray(true_bpf_upc), axis=0), label='True (BPF)')
+        plt.plot(np.mean(np.asarray(pred_smc_upc), axis=0), label='Pred (FIVO)')
+
+        plt.legend()
+        plt.grid(True)
+        plt.title(r'E_{sweeps} [ #unique_particles @ t ] (max ' + str(num_particles) + ' particles).')
+        plt.xlabel('Time, t')
+        plt.ylabel(r'#unique_particles')
+        plt.pause(0.001)
+        plt.savefig('./figs/ss_diff.pdf')
+
+    return true_bpf_upc, pred_smc_upc
 
 
 def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted,
@@ -731,10 +796,10 @@ def final_validation(get_marginals,
     """
 
     # Compare the sweeps.
-    compare_sweeps(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted, tag=tag)
+    compare_sweeps(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, tag=tag)
 
     # Compare the KLs.
-    true_bpf_kls, pred_smc_kls = compare_kls(get_marginals, env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn,
-                                             rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted, plot=True, GLOBAL_PLOT=GLOBAL_PLOT)
+    true_bpf_kls, pred_smc_kls = compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted,
+                                             plot=True, GLOBAL_PLOT=GLOBAL_PLOT)
 
 
