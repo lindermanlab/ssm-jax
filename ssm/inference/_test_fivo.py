@@ -64,7 +64,12 @@ def do_config():
 
     # Quickly hack finding the model and importing the right config.
     import sys
-    model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
+    try:
+        model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
+    except:
+        print('No model specified, defaulting to: ')
+        model = 'GDM'
+
     if 'LDS' in model:
         from ssm.inference._test_fivo_lds import lds_get_config as get_config
     elif 'GDM' in model:
@@ -129,13 +134,13 @@ def main():
         env = do_config()
 
         # Import the right functions.
-        if env.config.model == 'GDM':
+        if 'GDM' in env.config.model:
             from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
             from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
             from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
             from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
 
-        elif env.config.model == 'LDS':
+        elif 'LDS' in env.config.model:
             from ssm.inference._test_fivo_lds import lds_do_print as do_print
             from ssm.inference._test_fivo_lds import lds_define_test as define_test
             from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
