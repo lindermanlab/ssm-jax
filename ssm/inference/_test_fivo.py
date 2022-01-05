@@ -411,22 +411,22 @@ def main():
                           'params_r_pred': param_hist[2][-1],
                           'pred_fivo_bound': pred_fivo_bound_to_print,
                           'pred_lml': pred_lml_to_print,
-                          'small_lml_mean_em_true': em_log_marginal_likelihood,
-                          'small_lml_mean_bpf_true': true_lml,
-                          'small_lml_mean_fivo': np.mean(np.asarray(val_fivo_lml)),
-                          'small_lml_variance_bpf_true': np.var(np.asarray(true_bpf_lml),),
-                          'small_lml_variance_fivo': np.var(np.asarray(val_fivo_lml)),
                           'small_fivo_bound': np.mean(np.asarray(val_fivo_bound)),
-                          'expected_kl_true': np.mean(true_bpf_kls),
-                          'expected_kl_pred': np.mean(pred_smc_kls),
-                          'expected_upc_bpf_true': np.mean(true_bpf_upc),
-                          'expected_upc_fivo': np.mean(pred_smc_upc),
-                          'upc_bpf_true': true_bpf_upc,
-                          'upc_fivo': pred_smc_upc,
+                          'small_lml': {'mean': {'em_true': em_log_marginal_likelihood,
+                                                 'bpf_true': true_lml,
+                                                 'fivo': np.mean(np.asarray(val_fivo_lml)),},
+                                        'variance': {'bpf_true': np.var(np.asarray(true_bpf_lml),),
+                                                     'fivo': np.var(np.asarray(val_fivo_lml))}},
+                          'expected_kl': {'bpf_true': np.mean(true_bpf_kls),
+                                          'fivo': np.mean(pred_smc_kls)},
+                          'expected_upc': {'bpf_true': np.mean(true_bpf_upc),
+                                           'fivo': np.mean(pred_smc_upc), },
+                          'upc': {'true_bpf': true_bpf_upc,
+                                  'fivo': pred_smc_upc, },
                           'true_lml': true_lml,
                           }
                 utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb)
-
+                print('Done')
 
         # Do some final validation.
         fivo.final_validation(get_marginals,
