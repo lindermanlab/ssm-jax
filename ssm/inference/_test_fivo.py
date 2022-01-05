@@ -83,7 +83,7 @@ def do_config():
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
 
     parser.add_argument('--num-particles', default=10, type=int)
-    parser.add_argument('--datasets-per-batch', default=8, type=int)
+    parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--p-lr', default=0.01, type=float)
@@ -93,7 +93,7 @@ def do_config():
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=20, type=int)
     parser.add_argument('--validation-particles', default=100, type=int)
-    parser.add_argument('--sweep-test-particles', default=10, type=int)
+    parser.add_argument('--sweep-test-particles', default=20, type=int)
 
     parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'

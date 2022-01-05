@@ -565,7 +565,7 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
     return true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
 
 
-def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=False, GLOBAL_PLOT=True, true_bpf_kls=None):
+def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_kls=None):
     """
 
     Args:
@@ -600,7 +600,7 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
                                                  _datasets=dataset)
     pred_smc_kls = compute_marginal_kls(get_marginals, true_model, dataset, pred_smc_posterior.weighted_smoothing_particles)
 
-    if plot and GLOBAL_PLOT:
+    if plot and env.config.PLOT:
         plt.figure()
         plt.plot(np.mean(np.asarray(true_bpf_kls), axis=1), label='True (BPF)')
         plt.plot(np.mean(np.asarray(pred_smc_kls), axis=1), label='Pred (FIVO-AUX)')
@@ -616,7 +616,7 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
     return true_bpf_kls, pred_smc_kls
 
 
-def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=False, GLOBAL_PLOT=True, true_bpf_upc=None):
+def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_upc=None):
     """
 
     Args:
@@ -665,7 +665,7 @@ def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_s
                                                  _datasets=dataset)
     pred_smc_upc = calculate_unique_particle_counts(pred_smc_posterior.weighted_smoothing_particles)
 
-    if plot and GLOBAL_PLOT:
+    if plot and env.config.PLOT:
         plt.figure()
         plt.plot(np.mean(np.asarray(true_bpf_upc), axis=0), label='True (BPF)')
         plt.plot(np.mean(np.asarray(pred_smc_upc), axis=0), label='Pred (FIVO)')
