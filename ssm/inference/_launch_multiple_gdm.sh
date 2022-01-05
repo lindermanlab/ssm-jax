@@ -1,7 +1,7 @@
 echo "KILLING PREVIOUS JOBS"
 pkill -f _test_fivo.py
 
-tag="gdm-v6-0"
+tag="gdm-v7-0"
 
 for i in `seq 5`
 do

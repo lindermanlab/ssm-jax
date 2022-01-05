@@ -36,15 +36,8 @@ default_verbosity = Verbosity.DEBUG
 # from jax.config import config
 # config.update("jax_debug_nans", True)
 
+# Disable jit for inspection.
 DISABLE_JIT = False
-
-PLOT = True  # NOTE - this will be overwritten.
-
-# Uncomment this remove the functionality of the plotting code.
-if not (LOCAL_SYSTEM and PLOT):
-    # _plot_single_sweep = lambda *args, **kwargs: None
-    # do_plot = lambda *args, **kwargs: None
-    pass
 
 # Import and configure WandB.
 try:
@@ -69,42 +62,18 @@ def do_config():
 
     """
 
-    # Set up the experiment.
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model', default='GDM', type=str)
+    # Quickly hack finding the model and importing the right config.
+    import sys
+    model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
+    if 'LDS' in model:
+        from ssm.inference._test_fivo_lds import lds_get_config as get_config
+    elif 'GDM' in model:
+        from ssm.inference._test_fivo_gdm import gdm_get_config as get_config
+    else:
+        raise NotImplementedError()
 
-    parser.add_argument('--seed', default=10, type=int)
-    parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
-
-    parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
-
-    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)              # CSV.  # 'dynamics_bias'
-    parser.add_argument('--proposal-structure', default='DIRECT', type=str)       # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
-
-    parser.add_argument('--num-particles', default=5, type=int)
-    parser.add_argument('--datasets-per-batch', default=16, type=int)
-    parser.add_argument('--opt-steps', default=100000, type=int)
-
-    parser.add_argument('--p-lr', default=0.001, type=float)
-    parser.add_argument('--q-lr', default=0.001, type=float)
-    parser.add_argument('--r-lr', default=0.001, type=float)
-
-    parser.add_argument('--dset-to-plot', default=2, type=int)
-    parser.add_argument('--num-val-datasets', default=20, type=int)
-    parser.add_argument('--validation-particles', default=100, type=int)
-    parser.add_argument('--sweep-test-particles', default=10, type=int)
-
-    parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
-    parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
-
-    parser.add_argument('--PLOT', default=1, type=int)
-
-    config = parser.parse_args().__dict__
-
-    # Write out to the global plot.
-    global PLOT
-    PLOT = config['PLOT']
+    # Go and get the model-specific config.
+    config = get_config()
 
     # Define the parameter names that we are going to learn.
     # This has to be a tuple of strings that index which args we will pull out.
