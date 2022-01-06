@@ -423,6 +423,9 @@ def main():
                           'expected_kl': {'bpf_true':   np.mean(true_bpf_kls),
                                           'fivo':       np.mean(pred_smc_kls)},
 
+                          'expected_upc': {'bpf_true':  np.mean(true_bpf_upc),
+                                           'fivo':      np.mean(pred_smc_upc), },
+
                           'upc': {'median':     {'bpf_true':    np.quantile(true_bpf_upc, 0.5, axis=0),
                                                  'fivo':        np.quantile(pred_smc_upc, 0.5, axis=0), },
                                   'lq':         {'bpf_true':    np.quantile(true_bpf_upc, 0.25, axis=0),
