@@ -14,6 +14,7 @@ from jax import random as jr
 from flax import optim
 from copy import deepcopy as dc
 from ssm.inference.smc import _plot_single_sweep
+from tensorflow_probability.substrates.jax import distributions as tfd
 
 # Import some ssm stuff.
 import ssm.utils as utils
@@ -275,7 +276,7 @@ def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.001, q_
     return opt
 
 
-def log_params(_param_hist, _cur_params, _cur_lml, _cur_fivo, _cur_em, _step):
+def log_params(_param_hist, _cur_params):
     """
     Parse the parameters and store them for printing.
 
@@ -347,12 +348,6 @@ def log_params(_param_hist, _cur_params, _cur_lml, _cur_fivo, _cur_em, _step):
     else:
         _param_hist[2].append(None)
 
-    # Add the loss terms.
-    _param_hist[3].append(dc(_cur_lml))
-    _param_hist[4].append(dc(_cur_fivo))
-    _param_hist[5].append(dc(_cur_em))
-    _param_hist[6].append(dc(_step))
-
     return _param_hist
 
 
@@ -414,50 +409,6 @@ def log_params(_param_hist, _cur_params, _cur_lml, _cur_fivo, _cur_em, _step):
 #
 #     print('Variance: BPF:      ', np.var(np.asarray(val_bpf_lml)))
 #     print('Variance: FIVO-AUX: ', np.var(np.asarray(val_fivo_lml)))
-
-
-def compute_marginal_kls(get_marginals, true_model, dataset, smoothing_particles):
-    """
-
-    E_q [ log Q / P ]
-
-    Args:
-        get_marginals:
-        true_model:
-        dataset:
-        smoothing_particles:
-
-    Returns:
-
-    """
-
-    eps = 1e-3
-
-    # Get the analytic smoothing marginals.
-    marginals = get_marginals(true_model, dataset)
-
-    if marginals is None:
-        # TODO - make this more reliable somehow.
-        # If there was no analytic marginal available.
-        return np.asarray([np.inf])
-
-    # To compute the marginals we are just going to fit a Gaussian.
-    kl_p_q = []
-    for _t in range(smoothing_particles.shape[-2]):
-        samples = smoothing_particles.squeeze()[:, :, _t]
-        q_mu = np.mean(samples, axis=1)
-        q_sd = np.std(samples, axis=1) + eps
-
-        p_mu = marginals.mean()[:, _t]
-        p_sd = marginals.stddev()[:, _t] + eps
-
-        _kl_p_q = np.log(q_sd / p_sd) + \
-                  (((p_sd ** 2) + ((p_mu - q_mu) ** 2)) / (2.0 * (q_sd ** 2))) + \
-                  - 0.5
-
-        kl_p_q.append(_kl_p_q)
-
-    return np.asarray(kl_p_q)
 
 
 def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
@@ -565,6 +516,102 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
     return true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
 
 
+# def compare_ess(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_ess=None):
+#     """
+#
+#     Args:
+#         get_marginals:
+#         env:
+#         opt:
+#         dataset:
+#         true_model:
+#         key:
+#         do_fivo_sweep_jitted:
+#         smc_jitted:
+#         plot:
+#         true_bpf_ess:
+#
+#     Returns:
+#
+#     """
+#
+#     def compute_ess(smoothing_particles):
+#         """
+#
+#
+#
+#         Args:
+#             get_marginals:
+#             true_model:
+#             dataset:
+#             smoothing_particles:
+#
+#         Returns:
+#
+#         """
+#
+#         # To compute the marginals we are just going to fit a Gaussian.
+#         ess = []
+#         for _t in range(smoothing_particles.shape[-2]):
+#             samples = smoothing_particles.squeeze()[:, :, _t]
+#
+#             p_mu = marginals.mean()[:, _t]
+#             p_sd = marginals.stddev()[:, _t]
+#
+#             # Evaluate the probability of the particle sets under each marginal.
+#             eval = jax.vmap(lambda _mu, _sd, _s: tfd.MultivariateNormalDiag(np.expand_dims(_mu, 0), np.expand_dims(_sd, 0)).prob(np.expand_dims(_s, 1)))
+#             weights = eval(p_mu, p_sd, samples)
+#
+#             _ess = np.square(np.sum(weights, axis=1)) / np.sum(np.square(weights), axis=1)
+#
+#             ess.append(_ess)
+#
+#         return np.asarray(ess)
+#
+#     # Set some defaults.
+#     num_particles = env.config.sweep_test_particles
+#
+#     # Get the analytic smoothing marginals.
+#     marginals = get_marginals(true_model, dataset)
+#
+#     if marginals is None:
+#         # TODO - make this more reliable somehow.
+#         # If there was no analytic marginal available.
+#         return np.asarray([np.inf])
+#
+#     # Compare the KLs of the smoothing distributions.
+#     if true_bpf_ess is None:
+#         key, subkey = jr.split(key)
+#         true_bpf_posterior = smc_jitted(subkey, true_model, dataset, num_particles=num_particles)
+#         true_bpf_ess = compute_ess(true_bpf_posterior.weighted_smoothing_particles)
+#
+#     key, subkey = jr.split(key)
+#     _, pred_smc_posterior = do_fivo_sweep_jitted(subkey,
+#                                                  get_params_from_opt(opt),
+#                                                  _num_particles=num_particles,
+#                                                  _datasets=dataset)
+#     pred_smc_ess = compute_ess(pred_smc_posterior.weighted_smoothing_particles)
+#
+#     if plot and env.config.PLOT:
+#         fig = plt.figure()
+#         plt.plot(np.mean(np.asarray(true_bpf_ess), axis=1), label='True (BPF)')
+#         plt.plot(np.mean(np.asarray(pred_smc_ess), axis=1), label='Pred (FIVO-AUX)')
+#         # plt.plot(np.median(np.asarray(init_bpf_kls), axis=1), label='bpf')
+#         plt.legend()
+#         plt.grid(True)
+#         plt.title('E_sweeps [ ess_t ] (max ' + str(num_particles) + ' particles).')
+#         plt.xlabel('Time, t')
+#         plt.ylabel('ESS_t')
+#         plt.ylim([0.9, num_particles + 0.1])
+#         plt.plot([0, len(np.mean(np.asarray(true_bpf_ess), axis=1))-1], [1.0, 1.0], c='k', linestyle=':')
+#         plt.plot([0, len(np.mean(np.asarray(true_bpf_ess), axis=1))-1], [num_particles, num_particles], c='k', linestyle='-.')
+#         plt.pause(0.001)
+#         plt.savefig('./figs/ESS_diff.pdf')
+#         plt.close(fig)
+#
+#     return true_bpf_ess, pred_smc_ess
+
+
 def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_kls=None):
     """
 
@@ -585,34 +632,96 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
 
     """
 
+    def compute_marginal_kls(smoothing_particles):
+        """
+
+        E_q [ log Q / P ]
+
+        Args:
+            smoothing_particles:
+
+        Returns:
+
+        """
+
+        # To compute the marginals we are just going to fit a Gaussian.
+        kl_p_q = []
+        for _t in range(smoothing_particles.shape[-2]):
+            samples = smoothing_particles.squeeze()[:, :, _t]
+            q_mu = np.mean(samples, axis=1)
+            q_sd = np.std(samples, axis=1)  #  + eps
+
+            p_mu = marginals.mean()[:, _t]
+            p_sd = marginals.stddev()[:, _t]  # + eps
+
+            _kl_p_q = np.log(q_sd / p_sd) + \
+                      (((p_sd ** 2) + ((p_mu - q_mu) ** 2)) / (2.0 * (q_sd ** 2))) + \
+                      - 0.5
+
+            _kl_p_q = _kl_p_q.at[q_sd < eps].set(np.nan)
+
+            kl_p_q.append(_kl_p_q)
+
+        return np.asarray(kl_p_q)
+
+    # Set some defaults.
     num_particles = env.config.sweep_test_particles
+    eps = 1e-6
+
+    # Get the analytic smoothing marginals.
+    marginals = get_marginals(true_model, dataset)
+
+    if marginals is None:
+        # TODO - make this more reliable somehow.
+        # If there was no analytic marginal available.
+        return np.asarray([np.inf])
 
     # Compare the KLs of the smoothing distributions.
     if true_bpf_kls is None:
         key, subkey = jr.split(key)
         true_bpf_posterior = smc_jitted(subkey, true_model, dataset, num_particles=num_particles)
-        true_bpf_kls = compute_marginal_kls(get_marginals, true_model, dataset, true_bpf_posterior.weighted_smoothing_particles)
+        true_bpf_kls = compute_marginal_kls(true_bpf_posterior.weighted_smoothing_particles)
 
     key, subkey = jr.split(key)
     _, pred_smc_posterior = do_fivo_sweep_jitted(subkey,
                                                  get_params_from_opt(opt),
                                                  _num_particles=num_particles,
                                                  _datasets=dataset)
-    pred_smc_kls = compute_marginal_kls(get_marginals, true_model, dataset, pred_smc_posterior.weighted_smoothing_particles)
+    pred_smc_kls = compute_marginal_kls(pred_smc_posterior.weighted_smoothing_particles)
 
     if plot and env.config.PLOT:
-        _fig = plt.figure()
-        plt.plot(np.mean(np.asarray(true_bpf_kls), axis=1), label='True (BPF)')
-        plt.plot(np.mean(np.asarray(pred_smc_kls), axis=1), label='Pred (FIVO-AUX)')
-        # plt.plot(np.median(np.asarray(init_bpf_kls), axis=1), label='bpf')
+        fig = plt.figure()
+
+        true_median = np.nanquantile(np.asarray(true_bpf_kls), 0.5, axis=1)
+        pred_median = np.nanquantile(np.asarray(pred_smc_kls), 0.5, axis=1)
+
+        true_lq = np.nanquantile(np.asarray(true_bpf_kls), 0.25, axis=1)
+        pred_lq = np.nanquantile(np.asarray(pred_smc_kls), 0.25, axis=1)
+
+        true_uq = np.nanquantile(np.asarray(true_bpf_kls), 0.75, axis=1)
+        pred_uq = np.nanquantile(np.asarray(pred_smc_kls), 0.75, axis=1)
+
+        plt.plot(true_median, label='True (BPF)', c='r')
+        plt.plot(pred_median, label='Pred (FIVO-AUX)', c='b')
+
+        plt.plot(true_lq, c='r', linewidth=0.25)
+        plt.plot(pred_lq, c='b', linewidth=0.25)
+
+        plt.plot(true_uq, c='r', linewidth=0.25)
+        plt.plot(pred_uq, c='b', linewidth=0.25)
+
         plt.legend()
         plt.grid(True)
-        plt.title('E_sweeps [ KL [ p_true[t] || q_pred[t] ] ] (' + str(num_particles) + ').')
+        plt.title('E_sweeps [ KL [ p_true[t] || q_pred[t] ] ] (max ' + str(num_particles) + ' particles).  \n' +
+                  'NaN KLs (out of ' + str(dataset.shape[0] * dataset.shape[1]) + ') : ' +
+                  ' BPF: ' + str(np.sum(np.isnan(true_bpf_kls))) +
+                  ' FIVO: ' + str(np.sum(np.isnan(pred_smc_kls))))
         plt.xlabel('Time, t')
         plt.ylabel('KL_t')
+        plt.yscale('log')
         plt.pause(0.001)
         plt.savefig('./figs/kl_diff.pdf')
-        plt.close(_fig)
+        plt.close(fig)
 
     return true_bpf_kls, pred_smc_kls
 
@@ -667,7 +776,7 @@ def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_s
     pred_smc_upc = calculate_unique_particle_counts(pred_smc_posterior.weighted_smoothing_particles)
 
     if plot and env.config.PLOT:
-        _fig = plt.figure()
+        fig = plt.figure()
         plt.plot(np.mean(np.asarray(true_bpf_upc), axis=0), label='True (BPF)')
         plt.plot(np.mean(np.asarray(pred_smc_upc), axis=0), label='Pred (FIVO)')
 
@@ -676,9 +785,12 @@ def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_s
         plt.title(r'E_{sweeps} [ #unique_particles @ t ] (max ' + str(num_particles) + ' particles).')
         plt.xlabel('Time, t')
         plt.ylabel(r'#unique_particles')
+        plt.ylim([0.9, num_particles + 0.1])
+        plt.plot([0, len(np.mean(np.asarray(true_bpf_upc), axis=0))-1], [1.0, 1.0], c='k', linestyle=':')
+        plt.plot([0, len(np.mean(np.asarray(true_bpf_upc), axis=0))-1], [num_particles, num_particles], c='k', linestyle='-.')
         plt.pause(0.001)
         plt.savefig('./figs/ss_diff.pdf')
-        plt.close(_fig)
+        plt.close(fig)
 
     return true_bpf_upc, pred_smc_upc
 

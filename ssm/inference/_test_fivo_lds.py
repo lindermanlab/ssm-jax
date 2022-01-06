@@ -39,15 +39,15 @@ def lds_get_config():
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
 
     parser.add_argument('--num-particles', default=5, type=int)
-    parser.add_argument('--datasets-per-batch', default=16, type=int)
+    parser.add_argument('--datasets-per-batch', default=64, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.001, type=float)
+    parser.add_argument('--p-lr', default=0.01, type=float)
     parser.add_argument('--q-lr', default=0.001, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
-    parser.add_argument('--num-val-datasets', default=20, type=int)
+    parser.add_argument('--num-val-datasets', default=100, type=int)
     parser.add_argument('--validation-particles', default=100, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
 
@@ -183,6 +183,10 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
         """
 
+        # Define this for when using the windowed tilt.
+        score_criteria = 'all'  # {'all', 'window'}
+        window_length = 2
+
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
             t_params = jax.tree_map(lambda args: args[0], params)
@@ -203,9 +207,25 @@ class LdsTilt(tilts.IndependentGaussianTilt):
         # Sweep over the vector and return zeros where appropriate.
         def _eval(_idx, _mu, _sd, _out):
             _dist = tfd.MultivariateNormalDiag(loc=np.expand_dims(_mu, -1), scale_diag=np.sqrt(np.expand_dims(_sd, -1)))
-            return jax.lax.cond(_idx < t,
-                                lambda *args: np.zeros(means.shape[1]),
+
+            # Define the difference scoring criteria.
+            def _score_all_future():
+                return _idx > t  # Pretty sure this should be a <= (since we are scoring _future_ observations).
+
+            def _score_window():
+                return np.logical_and(_score_all_future(), (_idx <= t + window_length))
+
+            # Decide whether we will score.
+            if score_criteria == 'window':
+                _score = _score_window()
+            elif score_criteria == 'all':
+                _score = _score_all_future()
+            else:
+                raise NotImplementedError()
+
+            return jax.lax.cond(_score,
                                 lambda *args: _dist.log_prob(np.asarray([_out])),
+                                lambda *args: np.zeros(means.shape[1]),
                                 None)
 
         log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
@@ -424,7 +444,7 @@ def lds_define_true_model_and_data(key):
     latent_dim = 1
     emissions_dim = 1
     num_trials = 100000
-    T = 4  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+    T = 9  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
     # Set up the transmission and emission weights to be unity.
     true_dynamics_weights = np.eye(latent_dim)
