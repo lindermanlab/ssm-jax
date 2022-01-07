@@ -152,12 +152,14 @@ def main():
         # Define some holders that will be overwritten later.
         true_lml = 0.0
         em_log_marginal_likelihood = 0.0
+        pred_em_lml = 0.0
         filt_fig = None
         sweep_fig_filter = None
         sweep_fig_smooth = None
         true_bpf_lml = 0.0
         true_bpf_kls = None
         true_bpf_upc = None
+        true_bpf_ess = None
 
         # Set up the first key
         key = jr.PRNGKey(env.config.seed)
@@ -223,22 +225,7 @@ def main():
         do_fivo_sweep_val_and_grad = \
             jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
 
-
         # --------------------------------------------------------------------------------------------------------------
-
-        # Do an e step.
-        pred_em_posterior = jax.vmap(true_model.e_step)(validation_datasets)
-        pred_em_lml = true_model.marginal_likelihood(validation_datasets, posterior=pred_em_posterior)
-        pred_em_lml = - utils.lexp(pred_em_lml)
-
-        # Test BPF in the true model..
-        true_bpf_lml = []
-        for _ in range(20):
-            key, subkey = jr.split(key)
-            _true_bpf_posterior = smc_jit(subkey, true_model, validation_datasets, num_particles=env.config.sweep_test_particles)
-            _true_bpf_lml = - utils.lexp(_true_bpf_posterior.log_normalizer)
-            true_bpf_lml.append(_true_bpf_lml)
-        print('Variance: BPF-true: ', np.var(np.asarray(true_bpf_lml)))
 
         # Test the initial models.
         key, subkey = jr.split(key)
@@ -258,30 +245,36 @@ def main():
         # --------------------------------------------------------------------------------------------------------------
 
         # Wrap another call to fivo for validation.
-        def _single_fivo_eval(_subkey, _params):
+        @jax.jit
+        def _single_bpf_true_eval_small(_subkey):
+            _sweep_posteriors = smc_jit(_subkey,
+                                        true_model,
+                                        validation_datasets,
+                                        num_particles=env.config.sweep_test_particles)
+            return _sweep_posteriors.log_normalizer
+
+        # Wrap another call to fivo for validation.
+        @jax.jit
+        def _single_fivo_eval_small(_subkey, _params):
             _val_fivo_bound, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
                                                                       _params,
                                                                       _num_particles=env.config.sweep_test_particles,
                                                                       _datasets=validation_datasets)
-            _val_fivo_lml = -utils.lexp(_sweep_posteriors.log_normalizer)
-            return _val_fivo_lml, _val_fivo_bound
+            return _sweep_posteriors.log_normalizer, _val_fivo_bound
 
-        single_fivo_eval_vmap = jax.vmap(_single_fivo_eval, in_axes=(0, None))
+        single_bpf_true_eval_small_vmap = jax.vmap(_single_bpf_true_eval_small)
+        single_fivo_eval_small_vmap = jax.vmap(_single_fivo_eval_small, in_axes=(0, None))
 
         # Define some storage.
-        param_hist = [[], [], [], [], [], [], []]  # Model, proposal, tilt, lml, fivo, em, step.
-        val_hist = [[], [], [], [], [], [], []]  # Model, proposal, tilt, lml, fivo, em, step.
+        param_hist = [[], [], []]  # Model, proposal, tilt.
+        val_hist = [[], [], []]  # Model, proposal, tilt.
+        param_figures = [None, None, None]  # Model, proposal, tilt.
         lml_hist = []
-        param_figures = [None, None, None, None]  # Loss, Model, proposal, tilt.
 
         # Back up the true parameters.
-        true_hist = [[], [], [], [], [], [], []]  # Model, proposal, tilt, lml, fivo, step.
+        true_hist = [[], [], []]  # Model, proposal, tilt.
         true_hist = fivo.log_params(true_hist,
-                                    [get_model_free_params(true_model), None, None],
-                                    true_lml,
-                                    0.0,
-                                    em_log_marginal_likelihood,
-                                    0)
+                                    [get_model_free_params(true_model), None, None],)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -300,20 +293,17 @@ def main():
                                                                                  fivo.get_params_from_opt(opt),
                                                                                  env.config.num_particles,
                                                                                  batched_dataset)
-            pred_lml = - utils.lexp(smc_posteriors.log_normalizer)
 
             # Apply the gradient update.
             opt = fivo.apply_gradient(grad, opt, )
 
-            # Log.
-            if (_step % 10 == 0) or (len(param_hist[0]) == 0):
-                lml_hist.append(dc(pred_lml))
-                param_hist = fivo.log_params(param_hist, cur_params, pred_lml, pred_fivo_bound, 0.0, _step)
-
             # ----------------------------------------------------------------------------------------------------------
 
             # Do some validation and give some output.
-            if (_step % 500 == 0) or (_step == 1):
+            if (_step % 1000 == 0) or (_step == 1):
+
+                # Capture the parameters.
+                param_hist = fivo.log_params(param_hist, cur_params)
 
                 # Do a FIVO-AUX sweep.
                 key, subkey = jr.split(key)
@@ -321,11 +311,20 @@ def main():
                                                                             fivo.get_params_from_opt(opt),
                                                                             _num_particles=env.config.validation_particles,
                                                                             _datasets=validation_datasets)
-                pred_lml_to_print = - utils.lexp(pred_sweep.log_normalizer)
+                pred_lml = - utils.lexp(pred_sweep.log_normalizer)
+                lml_hist.append(dc(pred_lml))
 
                 # Test the variance of the estimators.
                 key, subkey = jr.split(key)
-                val_fivo_lml, val_fivo_bound = single_fivo_eval_vmap(jr.split(key, 20), fivo.get_params_from_opt(opt))
+                small_fivo_lml_all, val_fivo_bound = single_fivo_eval_small_vmap(jr.split(key, 20), fivo.get_params_from_opt(opt))
+                small_fivo_lml = - utils.lexp(utils.lexp(small_fivo_lml_all, _axis=1))
+                small_fivo_expected_lml_var = np.mean(np.var(small_fivo_lml_all, axis=0))
+
+                # Test BPF in the true model.
+                key, subkey = jr.split(key)
+                small_true_bpf_lml_all = single_bpf_true_eval_small_vmap(jr.split(subkey, 20))
+                small_true_bpf_lml = - utils.lexp(utils.lexp(small_true_bpf_lml_all, _axis=1))
+                small_true_bpf_expected_lml_var = np.mean(np.var(small_true_bpf_lml_all, axis=0))
 
                 # Test the KLs.
                 key, subkey = jr.split(key)
@@ -336,8 +335,8 @@ def main():
                                                               true_model,
                                                               key,
                                                               do_fivo_sweep_jitted,
-                                                              smc_jit,
-                                                              true_bpf_kls=true_bpf_kls)
+                                                              smc_jit, )
+                                                              # true_bpf_kls=true_bpf_kls)  # Force re-running this.
 
                 # Compare the number of unique particles.
                 key, subkey = jr.split(key)
@@ -347,25 +346,37 @@ def main():
                                                                                  true_model,
                                                                                  key,
                                                                                  do_fivo_sweep_jitted,
-                                                                                 smc_jit,
-                                                                                 true_bpf_upc=true_bpf_upc)
+                                                                                 smc_jit, )
+                                                                                 # true_bpf_upc=true_bpf_upc)  # Force re-running this.
+
+                # # Compare the effective sample size.
+                # key, subkey = jr.split(key)
+                # true_bpf_ess, pred_smc_ess = fivo.compare_ess(get_marginals,
+                #                                               env,
+                #                                               opt,
+                #                                               validation_datasets,
+                #                                               true_model,
+                #                                               key,
+                #                                               do_fivo_sweep_jitted,
+                #                                               smc_jit,
+                #                                               true_bpf_ess=true_bpf_ess)
 
                 # Do some plotting if we are plotting.
                 if env.config.PLOT and (_step % 2000 == 0):
 
-                    # Do some plotting.
-                    sweep_fig_filter = _plot_single_sweep(
-                        pred_sweep[env.config.dset_to_plot].filtering_particles,
-                        true_states[env.config.dset_to_plot],
-                        tag='{} Filtering.'.format(_step),
-                        fig=sweep_fig_filter,
-                        obs=dataset[env.config.dset_to_plot])
-                    sweep_fig_smooth = _plot_single_sweep(
-                        pred_sweep[env.config.dset_to_plot].weighted_smoothing_particles,
-                        true_states[env.config.dset_to_plot],
-                        tag='{} Smoothing.'.format(_step),
-                        fig=sweep_fig_smooth,
-                        obs=dataset[env.config.dset_to_plot])
+                    # # Do some plotting.
+                    # sweep_fig_filter = _plot_single_sweep(
+                    #     pred_sweep[env.config.dset_to_plot].filtering_particles,
+                    #     true_states[env.config.dset_to_plot],
+                    #     tag='{} Filtering.'.format(_step),
+                    #     fig=sweep_fig_filter,
+                    #     obs=dataset[env.config.dset_to_plot])
+                    # sweep_fig_smooth = _plot_single_sweep(
+                    #     pred_sweep[env.config.dset_to_plot].weighted_smoothing_particles,
+                    #     true_states[env.config.dset_to_plot],
+                    #     tag='{} Smoothing.'.format(_step),
+                    #     fig=sweep_fig_smooth,
+                    #     obs=dataset[env.config.dset_to_plot])
 
                     param_figures = do_plot(param_hist,
                                             lml_hist,
@@ -375,24 +386,11 @@ def main():
                                             param_figures)
 
                     fivo.compare_sweeps(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
-                                        do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=5, true_states=true_states)
+                                        do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=2, true_states=true_states)
 
                 # Log the validation step.
                 val_hist = fivo.log_params(val_hist,
-                                           cur_params,
-                                           pred_lml_to_print,
-                                           pred_fivo_bound_to_print,
-                                           pred_em_lml,
-                                           _step)
-
-                # Do some printing.
-                do_print(_step,
-                         true_model,
-                         opt,
-                         true_lml,
-                         pred_lml_to_print,
-                         pred_fivo_bound_to_print,
-                         em_log_marginal_likelihood)
+                                           cur_params,)
 
                 # Save out to a temporary location.
                 if (env.config.save_path is not None) and (env.config.load_path is None):
@@ -410,18 +408,35 @@ def main():
                           'params_q_pred': param_hist[1][-1],
                           'params_r_pred': param_hist[2][-1],
                           'true_lml': true_lml,
-                          'pred_lml': pred_lml_to_print,
+                          'pred_lml': pred_lml,
                           'pred_fivo_bound': pred_fivo_bound_to_print,
                           'small_fivo_bound': np.mean(np.asarray(val_fivo_bound)),
 
                           'small_lml': {'mean':         {'em_true': em_log_marginal_likelihood,
-                                                         'bpf_true': true_lml,
-                                                         'fivo': np.mean(np.asarray(val_fivo_lml)), },
-                                        'variance':     {'bpf_true': np.var(np.asarray(true_bpf_lml),),
-                                                         'fivo': np.var(np.asarray(val_fivo_lml))}},
+                                                         'bpf_true': small_true_bpf_lml,
+                                                         'fivo': small_fivo_lml, },
+                                        'variance':     {'bpf_true': small_true_bpf_expected_lml_var,
+                                                         'fivo': small_fivo_expected_lml_var}},
 
-                          'expected_kl': {'bpf_true':   np.mean(true_bpf_kls),
-                                          'fivo':       np.mean(pred_smc_kls)},
+                          'kl': {'median':          {'bpf_true':    np.nanquantile(true_bpf_kls, 0.5, axis=1),
+                                                     'fivo':        np.nanquantile(pred_smc_kls, 0.5, axis=1), },
+                                 'lq':              {'bpf_true':    np.nanquantile(true_bpf_kls, 0.25, axis=1),
+                                                     'fivo':        np.nanquantile(pred_smc_kls, 0.25, axis=1), },
+                                 'uq':              {'bpf_true':    np.nanquantile(true_bpf_kls, 0.75, axis=1),
+                                                     'fivo':        np.nanquantile(pred_smc_kls, 0.75, axis=1), },
+                                 'mean':            {'bpf_true':    np.nanmean(true_bpf_kls, axis=1),
+                                                     'fivo':        np.nanmean(pred_smc_kls, axis=1), },
+                                 'variance':        {'bpf_true':    np.nanvar(true_bpf_kls, axis=1),
+                                                     'fivo':        np.nanvar(pred_smc_kls, axis=1), },
+                                 'nan':             {'bpf_true':    np.sum(np.isnan(true_bpf_kls), axis=1),
+                                                     'fivo':        np.sum(np.isnan(pred_smc_kls), axis=1), },
+                                  },
+
+                          'expected_kl': {'bpf_true':   np.nanmean(true_bpf_kls),
+                                          'fivo':       np.nanmean(pred_smc_kls)},
+
+                          'expected_upc': {'bpf_true':  np.mean(true_bpf_upc),
+                                           'fivo':      np.mean(pred_smc_upc), },
 
                           'upc': {'median':     {'bpf_true':    np.quantile(true_bpf_upc, 0.5, axis=0),
                                                  'fivo':        np.quantile(pred_smc_upc, 0.5, axis=0), },
@@ -434,9 +449,32 @@ def main():
                                   'variance':   {'bpf_true':    np.var(true_bpf_upc, axis=0),
                                                  'fivo':        np.var(pred_smc_upc, axis=0), },
                                   },
+
+                          # 'expected_ess': {'bpf_true':          np.mean(true_bpf_ess),
+                          #                  'fivo':              np.mean(pred_smc_ess), },
+                          #
+                          # 'ess': {'median':     {'bpf_true':    np.quantile(true_bpf_ess, 0.5, axis=0),
+                          #                        'fivo':        np.quantile(pred_smc_ess, 0.5, axis=0), },
+                          #         'lq':         {'bpf_true':    np.quantile(true_bpf_ess, 0.25, axis=0),
+                          #                        'fivo':        np.quantile(pred_smc_ess, 0.25, axis=0), },
+                          #         'uq':         {'bpf_true':    np.quantile(true_bpf_ess, 0.75, axis=0),
+                          #                        'fivo':        np.quantile(pred_smc_ess, 0.75, axis=0), },
+                          #         'mean':       {'bpf_true':    np.mean(true_bpf_ess, axis=0),
+                          #                        'fivo':        np.mean(pred_smc_ess, axis=0), },
+                          #         'variance':   {'bpf_true':    np.var(true_bpf_ess, axis=0),
+                          #                        'fivo':        np.var(pred_smc_ess, axis=0), },
+                          #         },
                           }
                 utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb)
-                print('Done')
+
+                # Do some printing.
+                do_print(_step,
+                         true_model,
+                         opt,
+                         true_lml,
+                         pred_lml,
+                         pred_fivo_bound_to_print,
+                         em_log_marginal_likelihood)
 
         # Do some final validation.
         fivo.final_validation(get_marginals,

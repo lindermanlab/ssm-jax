@@ -47,7 +47,7 @@ def gdm_get_config():
     parser.add_argument('--r-lr', default=0.001, type=float)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
-    parser.add_argument('--num-val-datasets', default=20, type=int)
+    parser.add_argument('--num-val-datasets', default=1000, type=int)
     parser.add_argument('--validation-particles', default=250, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
 
