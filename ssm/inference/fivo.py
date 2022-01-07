@@ -466,14 +466,22 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
     # temp_validation_code(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
     #                      num_particles=10, dset_to_plot=dset_to_plot, init_model=init_model)
 
+    # TODO - remove this block.  just forcing some EM plotting.
+    if em_posterior is not None:
+        sweep_em_mean = em_posterior.mean()[dset_to_plot]
+        sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset_to_plot]
+        sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
+        _plot_single_sweep(sweep_em_statistics, true_states[dset_to_plot],
+                           tag='EM smoothing', preprocessed=True, obs=dataset[dset_to_plot])
+
     # Do some plotting.
     if do_plot:
-        if em_posterior is not None:
-            sweep_em_mean = em_posterior.mean()[dset_to_plot]
-            sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset_to_plot]
-            sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
-            _plot_single_sweep(sweep_em_statistics, true_states[dset_to_plot],
-                               tag='EM smoothing', preprocessed=True, obs=dataset[dset_to_plot])
+        # if em_posterior is not None:
+        #     sweep_em_mean = em_posterior.mean()[dset_to_plot]
+        #     sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset_to_plot]
+        #     sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
+        #     _plot_single_sweep(sweep_em_statistics, true_states[dset_to_plot],
+        #                        tag='EM smoothing', preprocessed=True, obs=dataset[dset_to_plot])
 
         if true_bpf_posterior is not None:
             _plot_single_sweep(true_bpf_posterior[dset_to_plot].filtering_particles,

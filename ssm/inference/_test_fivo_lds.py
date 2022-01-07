@@ -36,19 +36,19 @@ def lds_get_config():
 
     parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
     parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
 
     parser.add_argument('--num-particles', default=5, type=int)
-    parser.add_argument('--datasets-per-batch', default=8, type=int)
+    parser.add_argument('--datasets-per-batch', default=32, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.01, type=float)
-    parser.add_argument('--q-lr', default=0.01, type=float)
-    parser.add_argument('--r-lr', default=0.01, type=float)
+    parser.add_argument('--p-lr', default=0.001, type=float)
+    parser.add_argument('--q-lr', default=0.001, type=float)
+    parser.add_argument('--r-lr', default=0.001, type=float)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=100, type=int)
-    parser.add_argument('--validation-particles', default=100, type=int)
+    parser.add_argument('--validation-particles', default=250, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
 
     parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
@@ -185,7 +185,7 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
         # Define this for when using the windowed tilt.
         score_criteria = 'window'  # {'all', 'window'}
-        window_length = 3
+        window_length = 2
 
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:

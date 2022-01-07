@@ -68,7 +68,7 @@ def do_config():
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
         print('No model specified, defaulting to: ')
-        model = 'GDM'
+        model = 'LDS'
 
     if 'LDS' in model:
         from ssm.inference._test_fivo_lds import lds_get_config as get_config
@@ -240,7 +240,7 @@ def main():
                                     dset_to_plot=env.config.dset_to_plot,
                                     init_model=model,
                                     do_print=do_print,
-                                    do_plot=env.config.PLOT)
+                                    do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -364,19 +364,19 @@ def main():
                 # Do some plotting if we are plotting.
                 if env.config.PLOT and (_step % 2000 == 0):
 
-                    # # Do some plotting.
-                    # sweep_fig_filter = _plot_single_sweep(
-                    #     pred_sweep[env.config.dset_to_plot].filtering_particles,
-                    #     true_states[env.config.dset_to_plot],
-                    #     tag='{} Filtering.'.format(_step),
-                    #     fig=sweep_fig_filter,
-                    #     obs=dataset[env.config.dset_to_plot])
-                    # sweep_fig_smooth = _plot_single_sweep(
-                    #     pred_sweep[env.config.dset_to_plot].weighted_smoothing_particles,
-                    #     true_states[env.config.dset_to_plot],
-                    #     tag='{} Smoothing.'.format(_step),
-                    #     fig=sweep_fig_smooth,
-                    #     obs=dataset[env.config.dset_to_plot])
+                    # Do some plotting.
+                    sweep_fig_filter = _plot_single_sweep(
+                        pred_sweep[env.config.dset_to_plot].filtering_particles,
+                        true_states[env.config.dset_to_plot],
+                        tag='{} Filtering.'.format(_step),
+                        fig=sweep_fig_filter,
+                        obs=dataset[env.config.dset_to_plot])
+                    sweep_fig_smooth = _plot_single_sweep(
+                        pred_sweep[env.config.dset_to_plot].weighted_smoothing_particles,
+                        true_states[env.config.dset_to_plot],
+                        tag='{} Smoothing.'.format(_step),
+                        fig=sweep_fig_smooth,
+                        obs=dataset[env.config.dset_to_plot])
 
                     key, subkey = jr.split(key)
                     fivo.compare_sweeps(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, subkey,
@@ -470,8 +470,10 @@ def main():
 
                 # If we are not on the local system, push less frequently (or WandB starts to cry).
                 if not env.config.local_system:
-                    if _step % 10000 == 0:
+                    if (_step % 10000 == 0) or (_step == 1):
                         utils.log_to_wandb()
+                else:
+                    utils.log_to_wandb()
 
                 # Do some printing.
                 do_print(_step,
