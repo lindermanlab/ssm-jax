@@ -466,7 +466,12 @@ def main():
                           #                        'fivo':        np.var(pred_smc_ess, axis=0), },
                           #         },
                           }
-                utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb)
+                utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb, _commit=False)
+
+                # If we are not on the local system, push less frequently (or WandB starts to cry).
+                if not env.config.local_system:
+                    if _step % 10000 == 0:
+                        utils.log_to_wandb()
 
                 # Do some printing.
                 do_print(_step,
