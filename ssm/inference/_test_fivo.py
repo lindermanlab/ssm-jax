@@ -316,7 +316,7 @@ def main():
 
                 # Test the variance of the estimators.
                 key, subkey = jr.split(key)
-                small_fivo_lml_all, val_fivo_bound = single_fivo_eval_small_vmap(jr.split(key, 20), fivo.get_params_from_opt(opt))
+                small_fivo_lml_all, val_fivo_bound = single_fivo_eval_small_vmap(jr.split(subkey, 20), fivo.get_params_from_opt(opt))
                 small_fivo_lml = - utils.lexp(utils.lexp(small_fivo_lml_all, _axis=1))
                 small_fivo_expected_lml_var = np.mean(np.var(small_fivo_lml_all, axis=0))
 
@@ -333,7 +333,7 @@ def main():
                                                               opt,
                                                               validation_datasets,
                                                               true_model,
-                                                              key,
+                                                              subkey,
                                                               do_fivo_sweep_jitted,
                                                               smc_jit, )
                                                               # true_bpf_kls=true_bpf_kls)  # Force re-running this.
@@ -344,7 +344,7 @@ def main():
                                                                                  opt,
                                                                                  validation_datasets,
                                                                                  true_model,
-                                                                                 key,
+                                                                                 subkey,
                                                                                  do_fivo_sweep_jitted,
                                                                                  smc_jit, )
                                                                                  # true_bpf_upc=true_bpf_upc)  # Force re-running this.
@@ -356,7 +356,7 @@ def main():
                 #                                               opt,
                 #                                               validation_datasets,
                 #                                               true_model,
-                #                                               key,
+                #                                               subkey,
                 #                                               do_fivo_sweep_jitted,
                 #                                               smc_jit,
                 #                                               true_bpf_ess=true_bpf_ess)
@@ -378,15 +378,16 @@ def main():
                     #     fig=sweep_fig_smooth,
                     #     obs=dataset[env.config.dset_to_plot])
 
+                    key, subkey = jr.split(key)
+                    fivo.compare_sweeps(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, subkey,
+                                        do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=2, true_states=true_states)
+
                     param_figures = do_plot(param_hist,
                                             lml_hist,
                                             em_log_marginal_likelihood,
                                             true_lml,
                                             get_model_free_params(true_model),
                                             param_figures)
-
-                    fivo.compare_sweeps(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key,
-                                        do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=2, true_states=true_states)
 
                 # Log the validation step.
                 val_hist = fivo.log_params(val_hist,
