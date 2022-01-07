@@ -71,7 +71,6 @@ def smc(key,
             need to be defined by closing over a proposal class as appropriate.
 
         tilt ():
-            TODO
 
         num_particles (int, No size, default=50):
             Number of particles to use.
@@ -192,7 +191,6 @@ def _single_smc(key,
             need to be defined by closing over a proposal class as appropriate.
 
         tilt ():
-            TODO
 
         num_particles (int, No size, default=50):
             Number of particles to use.
@@ -321,7 +319,6 @@ def _smc_forward_pass(key,
             need to be defined by closing over a proposal class as appropriate.
 
         tilt ():
-            TODO
 
         num_particles (int, No size):
             Number of particles to use.

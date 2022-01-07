@@ -454,7 +454,6 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
         key, subkey = jr.split(key)
         init_bpf_posterior = _smc_jit(subkey, init_model, dataset, num_particles=num_particles)
         initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
-        print('Initial BPF LML: ', initial_bpf_lml)
 
     # Test SMC in the initial model.
     key, subkey = jr.split(key)

@@ -34,17 +34,17 @@ def lds_get_config():
 
     parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
 
-    parser.add_argument('--free-parameters', default='dynamics_bias', type=str)  # CSV.  # 'dynamics_bias'
-    parser.add_argument('--proposal-structure', default='DIRECT', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
 
     parser.add_argument('--num-particles', default=5, type=int)
-    parser.add_argument('--datasets-per-batch', default=64, type=int)
+    parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--p-lr', default=0.01, type=float)
-    parser.add_argument('--q-lr', default=0.001, type=float)
-    parser.add_argument('--r-lr', default=0.001, type=float)
+    parser.add_argument('--q-lr', default=0.01, type=float)
+    parser.add_argument('--r-lr', default=0.01, type=float)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=100, type=int)
@@ -184,8 +184,8 @@ class LdsTilt(tilts.IndependentGaussianTilt):
         """
 
         # Define this for when using the windowed tilt.
-        score_criteria = 'all'  # {'all', 'window'}
-        window_length = 2
+        score_criteria = 'window'  # {'all', 'window'}
+        window_length = 3
 
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
@@ -451,7 +451,7 @@ def lds_define_true_model_and_data(key):
     true_emission_weights = np.eye(emissions_dim, latent_dim)
 
     # NOTE - Set the dynamics scale here.
-    dynamics_scale_tril = 0.1 * np.eye(latent_dim)
+    dynamics_scale_tril = 1.0 * np.eye(latent_dim)
 
     # NOTE - can make observations tighter here.
     emission_scale_tril = 1.0 * np.eye(emissions_dim)
