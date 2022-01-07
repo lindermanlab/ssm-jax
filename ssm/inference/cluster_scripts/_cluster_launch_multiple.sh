@@ -2,7 +2,7 @@
 #SBATCH --job-name=gdm-1-sig0.1
 #SBATCH --nodes=1 --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --time=02:59:59
+#SBATCH --time=04:59:59
 #SBATCH --output=./Reports/fivo_%A_%a.out
 #SBATCH --error=./Reports/fivo_%A_%a.err
 #SBATCH --array=0-19
