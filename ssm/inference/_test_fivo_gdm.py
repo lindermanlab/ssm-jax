@@ -420,8 +420,8 @@ def gdm_define_true_model_and_data(key):
     true_emission_weights = np.eye(emissions_dim)
 
     # NOTE - can make observations tighter here.
-    # emission_scale_tril = 0.1 * np.eye(emissions_dim)
-    emission_scale_tril = 1.0 * np.eye(emissions_dim)
+    emission_scale_tril = 0.1 * np.eye(emissions_dim)
+    # emission_scale_tril = 1.0 * np.eye(emissions_dim)
 
     # Create the true model.
     key, subkey = jr.split(key)
