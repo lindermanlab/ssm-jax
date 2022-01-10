@@ -288,8 +288,10 @@ def main():
 
         # Decide if we are going to anneal the tilt.
         # This is done by dividing the log tilt value by a temperature.
-        a = 5.0
-        tilt_temperatures = - (1.0 - (a / np.linspace(0.1, a, num=env.config.opt_steps + 1))) + 1.0
+        if env.config.temper > 0.0:
+            tilt_temperatures = - (1.0 - (env.config.temper / np.linspace(0.1, env.config.temper, num=env.config.opt_steps + 1))) + 1.0
+        else:
+            tilt_temperatures = np.ones(env.config.opt_steps + 1,) * 1.0
 
         # --------------------------------------------------------------------------------------------------------------
 

@@ -34,6 +34,8 @@ def lds_get_config():
 
     parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
 
+    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+
     parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
     parser.add_argument('--proposal-structure', default='DIRECT', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
