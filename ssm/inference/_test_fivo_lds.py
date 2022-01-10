@@ -34,10 +34,10 @@ def lds_get_config():
 
     parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
 
-    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--temper', default=4.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
     parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
-    parser.add_argument('--proposal-structure', default='DIRECT', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
 
     parser.add_argument('--num-particles', default=10, type=int)
@@ -208,7 +208,7 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
 class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
 
-    window_length = 3
+    window_length = 2
 
     # We need to define the method for generating the inputs.
     @staticmethod
@@ -262,15 +262,15 @@ def lds_define_tilt(subkey, model, dataset, tilt_structure):
 
     # # Check whether we have a valid number of tilts.
 
-    # Standard tilt.
-    tilt_fn = LdsTilt
-    n_tilts = len(dataset[0]) - 1
-    tilt_inputs = ()
-
-    # # Single window tilt.
-    # tilt_fn = LdsSingleWindowTilt
-    # n_tilts = 1
+    # # Standard tilt.
+    # tilt_fn = LdsTilt
+    # n_tilts = len(dataset[0]) - 1
     # tilt_inputs = ()
+
+    # Single window tilt.
+    tilt_fn = LdsSingleWindowTilt
+    n_tilts = 1
+    tilt_inputs = ()
 
     # Tilt functions take in (dataset, model, particles, t-1).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )

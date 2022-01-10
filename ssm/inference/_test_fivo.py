@@ -289,7 +289,13 @@ def main():
         # Decide if we are going to anneal the tilt.
         # This is done by dividing the log tilt value by a temperature.
         if env.config.temper > 0.0:
-            tilt_temperatures = - (1.0 - (env.config.temper / np.linspace(0.1, env.config.temper, num=env.config.opt_steps + 1))) + 1.0
+            # tilt_temperatures = - (1.0 - (env.config.temper / np.linspace(0.1, env.config.temper, num=env.config.opt_steps + 1))) + 1.0
+
+            a = env.config.temper / 2.0
+            tilt_temperatures = np.square((1.0 - (a / np.linspace(0.1, a, num=env.config.opt_steps + 1)))) + 1.0
+            plt.plot(tilt_temperatures)
+
+            print('\n\nCAUTION: USING TILT TEMPERING. \n\n')
         else:
             tilt_temperatures = np.ones(env.config.opt_steps + 1,) * 1.0
 
@@ -497,6 +503,7 @@ def main():
                     utils.log_to_wandb()
 
                 # Do some printing.
+                print('Tilt temp:', tilt_temperatures[_step])
                 do_print(_step,
                          true_model,
                          opt,
@@ -504,7 +511,6 @@ def main():
                          pred_lml,
                          pred_fivo_bound_to_print,
                          em_log_marginal_likelihood)
-                print('Tilt temp:', tilt_temperatures[_step])
 
         # Do some final validation.
         fivo.final_validation(get_marginals,
