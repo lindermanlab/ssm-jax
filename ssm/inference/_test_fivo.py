@@ -503,6 +503,7 @@ def main():
                          pred_lml,
                          pred_fivo_bound_to_print,
                          em_log_marginal_likelihood)
+		print('Tilt temp:', tilt_temperatures[_step])
 
         # Do some final validation.
         fivo.final_validation(get_marginals,
