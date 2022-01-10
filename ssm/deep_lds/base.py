@@ -15,8 +15,8 @@ from ssm.lds.dynamics import StationaryDynamics
 from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, random_rotation
 
 from ssm.inference.deep_vi import deep_variational_inference
-from ssm.lds_svae.posterior import LDSSVAEPosterior, DKFPosterior
-from ssm.nn_util import build_gaussian_network
+from ssm.deep_lds.posterior import LDSSVAEPosterior, DKFPosterior
+from ssm.nn_util import GaussianNetwork, Bidirectional_RNN
 
 # To keep it really really simple, we don't even to write ANYTHING
 # Except for the fit function
@@ -132,12 +132,12 @@ class DeepLDS(LDS):
 
         if method == "svae":
             posterior = LDSSVAEPosterior.initialize(
-            self, data, covariates=covariates, metadata=metadata)
-            rec_net = build_gaussian_network(D, self.latent_dim)
+                self, data, covariates=covariates, metadata=metadata)
+            rec_net = GaussianNetwork.from_params(self.latent_dim, input_dim=D)
         elif method == "dkf":
             posterior = DKFPosterior.initialize(
-            self, data, covariates=covariates, metadata=metadata)
-            rec_net = Bidirectional_RNN.from_params(self.latent_dim)
+                self, data, covariates=covariates, metadata=metadata)
+            rec_net = Bidirectional_RNN.from_params(self.latent_dim, input_dim=D)
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 

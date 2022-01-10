@@ -22,7 +22,7 @@ def deep_variational_inference(key,
     ):
 
     assert(len(data.shape) == 3)
-    data_dim = data.shape[-1]
+    batch_size, seq_len, data_dim = data.shape
     latent_dim = model.latent_dim
 
     rng1, rng2 = jr.split(key)
@@ -31,9 +31,8 @@ def deep_variational_inference(key,
     def update(key, rec_opt, dec_opt, model, posterior):
         def loss(network_params, posterior):
             rec_params, dec_params = network_params
-            # The rec net works on batched single frames
-            # So here we're vmapping over the time dimension
-            potentials = vmap(rec_net.apply, in_axes=(None, 1), out_axes=1)(rec_params, data)
+            # We need the recognition networks to take care of vmapping
+            potentials = rec_net.apply(rec_params, data)
             # These two methods have auto-batching
             posterior = posterior.update(model, data, potentials, covariates=covariates, metadata=metadata)
             # We have to pass in the params like this
@@ -53,7 +52,7 @@ def deep_variational_inference(key,
         
         return new_rec_opt, new_dec_opt, model, posterior, bound
 
-    x_single = np.ones((data_dim,))
+    x_single = np.ones((seq_len, data_dim))
     z_single = np.ones((latent_dim,))
 
     # Initialize the parameters and optimizers

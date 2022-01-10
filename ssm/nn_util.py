@@ -188,6 +188,87 @@ def build_gaussian_network(input_dim, output_dim,
 
     return PotentialGenerator()
 
+class GaussianNetwork(nn.Module):
+
+    latent_dim : int = None
+    trunk_fn : nn.Module = None
+    head_mean_fn : nn.Module = None
+    head_log_var_fn : nn.Module = None
+
+    @classmethod
+    def from_params(cls, latent_dim, input_dim = None,
+                    trunk_fn=None, head_mean_fn=None, head_log_var_fn=None): 
+
+        trunk_fn = trunk_fn or Identity(input_dim)
+        head_mean_fn = head_mean_fn or nn.Dense(latent_dim)
+        head_log_var_fn = head_log_var_fn or nn.Dense(latent_dim)
+
+        return cls(latent_dim, trunk_fn, head_mean_fn, head_log_var_fn)
+
+    def tree_flatten(self):
+        children = (
+            self.latent_dim, 
+            self.trunk_fn,
+            self.head_mean_fn, 
+            self.head_log_var_fn
+        )
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
+
+    def __call__(self, inputs):
+        """
+        Equivalent to the `.forward` method in PyTorch.  Generates the parameters of an independent
+        multivariate Gaussian distribution as a function of the inputs.
+        Args:
+            inputs:
+        Returns:
+        """
+        J_diag, h = self._generate_distribution_parameters(inputs)
+        return (J_diag, h)
+
+    def _generate_distribution_parameters(self, inputs):
+        """
+        Map over the inputs if there are multiple inputs, otherwise, apply it to a single input.
+        Whether there is a batch dimension is established by whether the whole shape of the input equals the
+        pre-specified input shape.  If they are unequal, assumes that the first dimension is a batch dimension.
+        Args:
+            inputs (ndarray):   Possibly batched set of inputs (if batched, first dimension is batch dimension).
+        Returns:
+            (ndarray):          Possibly batched set of Gaussian parameters (if batched, first dimension is batch
+                                dimension).
+        """
+        if (len(inputs.shape) == 3):
+            # We have both a batch dimension and a time dimension
+            # and we have to vmap over both...!
+            return vmap(vmap(self._call_single, 0), 0)(inputs)
+        elif (len(inputs.shape) == 2):
+            return vmap(self._call_single)(inputs)
+        else:
+            return self._call_single(inputs)
+
+    def _call_single(self, inputs):
+        """
+        Args:
+            inputs (ndarray):   Single input data point (NO batch dimension).
+        Returns:
+            (ndarray):          Single mean and variance VECTORS representing the parameters of a single
+                                independent multivariate normal distribution.
+        """
+        # Flatten the input.
+        inputs_flat = vectorize_pytree(inputs)
+        # Apply the trunk.
+        trunk_output = self.trunk_fn(inputs_flat)
+        # Get the mean.
+        h_flat = self.head_mean_fn(trunk_output)
+        h = h_flat
+        # Get the variance output and reshape it.
+        var_output_flat = self.head_log_var_fn(trunk_output)
+        J_diag = np.exp(var_output_flat)
+        return (J_diag, h)
+
 class Bidirectional_RNN(nn.Module):
     
     latent_dim : int = None
@@ -197,7 +278,7 @@ class Bidirectional_RNN(nn.Module):
     head_log_var_fn : nn.Module = None
 
     @classmethod
-    def from_params(cls, latent_dim, 
+    def from_params(cls, latent_dim, input_dim = None,
                     cell_type=nn.GRUCell,
                     forward_RNN=None, backward_RNN=None, 
                     head_mean_fn=None, head_log_var_fn=None): 
@@ -213,7 +294,13 @@ class Bidirectional_RNN(nn.Module):
         return cls(latent_dim, forward_RNN, backward_RNN, head_mean_fn, head_log_var_fn)
 
     def tree_flatten(self):
-        children = (self.latent_dim, self.forward_RNN, self.backward_RNN, self.head_mean_fn, self.head_log_var_fn)
+        children = (
+            self.latent_dim, 
+            self.forward_RNN, 
+            self.backward_RNN, 
+            self.head_mean_fn, 
+            self.head_log_var_fn
+        )
         aux_data = None
         return children, aux_data
 
@@ -247,6 +334,7 @@ class Bidirectional_RNN(nn.Module):
         if is_batched:
             return vmap(self._call_single, in_axes=0)(inputs)
         else:
+            assert(len(inputs.shape) == 2)
             return self._call_single(inputs)
     
     # Applied the BiRNN to a single sequence of inputs
