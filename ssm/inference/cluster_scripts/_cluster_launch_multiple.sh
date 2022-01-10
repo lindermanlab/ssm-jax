@@ -12,8 +12,9 @@ module load texlive
 
 echo ${SLURM_ARRAY_TASK_ID}
 echo ${GLOB_TAG}-${EXP_TAG}
+echo ${TEMPER}
 which python3.9
 
 pip list
 
-python3.9 _test_fivo.py --model ${MODEL} --seed ${SLURM_ARRAY_TASK_ID} --PLOT 0 --use-sgr ${USE_SGR} --proposal-structure ${PROPOSAL_STRUCTURE} --tilt-structure ${TILT_STRUCTURE} --log-group ${GLOB_TAG}-${EXP_TAG} --temper ${TEMPER}
+python3.9 _test_fivo.py --model ${MODEL} --seed ${SLURM_ARRAY_TASK_ID} --PLOT 0 --use-sgr ${USE_SGR} --proposal-structure ${PROPOSAL_STRUCTURE} --tilt-structure ${TILT_STRUCTURE} --log-group ${GLOB_TAG}-${EXP_TAG} --temper "${TEMPER}"
