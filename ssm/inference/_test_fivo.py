@@ -432,6 +432,7 @@ def main():
                           'pred_fivo_bound': pred_fivo_bound_to_print,
                           'small_fivo_bound': np.mean(np.asarray(val_fivo_bound)),
                           'smoothed_training_loss': smoothed_training_loss,
+                          'tilt_temperature': tilt_temperatures[_step],
 
                           'small_lml': {'mean':         {'em_true': em_log_marginal_likelihood,
                                                          'bpf_true': small_true_bpf_lml,
