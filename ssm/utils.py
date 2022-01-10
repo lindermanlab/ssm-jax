@@ -726,3 +726,25 @@ def log_to_wandb(_dict=None, _ims=None, _epoch=None, _commit=True, USE_WANDB=Tru
         print('Error uploading to WandB: ', err)
 
 
+def sigmoid(x):
+    """
+
+    Args:
+        x:
+
+    Returns:
+
+    """
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def inverse_sigmoid(x):
+    """
+
+    Args:
+        x:
+
+    Returns:
+
+    """
+    return np.log(x / (1 - x))

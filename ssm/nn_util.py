@@ -34,15 +34,20 @@ class MLP(nn.Module):
     features: Sequence[int]
     # kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.glorot_normal
     # bias_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.zeros
+    output_layer_relu: bool = False
 
     # TODO - the initializers havebroken somehow...
 
     @nn.compact
     def __call__(self, x):
         for feat in self.features[:-1]:
-            # x = nn.relu(nn.Dense(feat, kernel_init=self.kernel_init, bias_init=self.bias_init, )(x))
             x = nn.relu(nn.Dense(feat)(x))
-        x = nn.Dense(self.features[-1])(x)
+
+        if self.output_layer_relu:
+            x = nn.relu(nn.Dense(self.features[-1])(x))
+        else:
+            x = nn.Dense(self.features[-1])(x)
+
         return x
 
 

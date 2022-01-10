@@ -80,45 +80,59 @@ class IndependentGaussianTilt:
 
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
-            t_params = params[0]
+            t_params = jax.tree_map(lambda args: args[0], params)  # params[0]
         else:
             t_params = jax.tree_map(lambda args: args[t], params)
 
         # Generate a tilt distribution.
-        tilt_inputs = self._tilt_input_generator(dataset, model, *inputs)
+        tilt_inputs = self._tilt_input_generator(dataset, model, particles, t, *inputs)
         r_dist = self.tilt.apply(t_params, tilt_inputs)
 
         # Now score under that distribution.
-        tilt_outputs = self._tilt_output_generator(dataset, model, *inputs)
+        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, *inputs)
         log_r_val = r_dist.log_prob(tilt_outputs)
 
         return log_r_val
 
-    def _tilt_input_generator(self, _dataset, _model, particles, t, *_inputs):
+    # Define a method for generating thei nputs to the tilt.
+    def _tilt_input_generator(self, dataset, model, particles, t, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be input into the tilt.
 
-        NOTE - this is an abstract method and must be implemented by wherever this is being used.
+        NOTE - because of the conditional independncies introduced by the HMM, there is no dependence
+        on the previous states.
 
-        Args
-            _dataset:
+        NOTE - this function may be overriden in child classes to provide more sophisticated inputs.
 
-            _model:
+        Args:
+            dataset:
+
+            model:
 
             particles:
 
             t:
 
-            *_inputs (tuple):       Tuple of additional inputs.
+            *inputs_:
 
         Returns:
             (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
 
         """
-        raise NotImplementedError()
 
-    def _tilt_output_generator(self, _dataset, _model, _particles, _t, *_inputs):
+        # Just the particles are passed in.
+        tilt_inputs = (particles, )
+
+        is_batched = (model.latent_dim != particles.shape[0])
+        if not is_batched:
+            return nn_util.vectorize_pytree(tilt_inputs)
+        else:
+            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(0, ))
+            return vmapped(*tilt_inputs)
+
+    @staticmethod
+    def _tilt_output_generator(_dataset, _model, _particles, _t, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be scored under into the tilt.

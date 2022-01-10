@@ -10,7 +10,7 @@ from tensorflow_probability.substrates.jax import distributions as tfd
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
-from ssm.lds.models import GaussianLDS
+from ssm.svm.models import UnivariateSVM
 import ssm.nn_util as nn_util
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
@@ -18,7 +18,7 @@ import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 
 
-def lds_get_config():
+def svm_get_config():
     """
 
     Returns:
@@ -27,16 +27,14 @@ def lds_get_config():
 
     # Set up the experiment.
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', default='LDS', type=str)
+    parser.add_argument('--model', default='SVM', type=str)
 
     parser.add_argument('--seed', default=10, type=int)
     parser.add_argument('--log-group', default='debug', type=str)  # {'debug', 'gdm-v1.0'}
 
     parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
 
-    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
-
-    parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
+    parser.add_argument('--free-parameters', default='invsig_phi', type=str)  # CSV.  # {'log_sigma', 'invsig_phi'}
     parser.add_argument('--proposal-structure', default='DIRECT', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
 
@@ -53,20 +51,26 @@ def lds_get_config():
     parser.add_argument('--validation-particles', default=250, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
 
-    parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
-    parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
+    parser.add_argument('--load-path', default=None, type=str)  # './params_svm_tmp.p'
+    parser.add_argument('--save-path', default=None, type=str)  # './params_svm_tmp.p'
 
     parser.add_argument('--PLOT', default=1, type=int)
 
     config = parser.parse_args().__dict__
 
+    # NOTE - we should be able to fork this and use the sample implementation for LDS and SVM.
     # Make sure this one is formatted correctly.
-    config['model'] = 'LDS'
+    if 'LDS' in config['model']:
+        config['model'] = 'LDS'
+    elif 'SVM' in config['model']:
+        config['model'] = 'SVM'
+    else:
+        raise NotImplementedError()
 
     return config
 
 
-def lds_define_test(key, free_parameters, proposal_structure, tilt_structure):
+def svm_define_test(key, free_parameters, proposal_structure, tilt_structure):
     """
 
     Args:
@@ -81,19 +85,19 @@ def lds_define_test(key, free_parameters, proposal_structure, tilt_structure):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset = lds_define_true_model_and_data(subkey)
+    true_model, true_states, dataset = svm_define_true_model_and_data(subkey)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, get_model_params, rebuild_model_fn = lds_define_test_model(subkey, true_model, free_parameters)
+    model, get_model_params, rebuild_model_fn = svm_define_test_model(subkey, true_model, free_parameters)
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = lds_define_proposal(subkey, model, dataset, proposal_structure)
+    proposal, proposal_params, rebuild_prop_fn = svm_define_proposal(subkey, model, dataset, proposal_structure)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = lds_define_tilt(subkey, model, dataset, tilt_structure)
+    tilt, tilt_params, rebuild_tilt_fn = svm_define_tilt(subkey, model, dataset, tilt_structure)
 
     # Return this big pile of stuff.
     ret_model = (true_model, true_states, dataset)
@@ -103,7 +107,7 @@ def lds_define_test(key, free_parameters, proposal_structure, tilt_structure):
     return ret_model, ret_test, ret_prop, ret_tilt
 
 
-class LdsTilt(tilts.IndependentGaussianTilt):
+class SvmTilt(tilts.IndependentGaussianTilt):
     """
 
     """
@@ -162,7 +166,7 @@ class LdsTilt(tilts.IndependentGaussianTilt):
                 return _idx > t  # Pretty sure this should be a <= (since we are scoring _future_ observations).
 
             def _score_window():
-                return np.logical_and(_score_all_future(), (_idx <= t + LdsTilt.window_length))
+                return np.logical_and(_score_all_future(), (_idx <= t + SvmTilt.window_length))
 
             # Decide whether we will score.
             if score_criteria == 'window':
@@ -185,7 +189,7 @@ class LdsTilt(tilts.IndependentGaussianTilt):
     @staticmethod
     def _tilt_output_generator(dataset, model, particles, t, *_inputs):
         """
-        Define the output generator for the lds example.
+        Define the output generator for the svm example.
         Args:
             dataset:
 
@@ -206,7 +210,7 @@ class LdsTilt(tilts.IndependentGaussianTilt):
         return nn_util.vectorize_pytree(tilt_outputs)
 
 
-class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
+class svmSingleWindowTilt(tilts.IndependentGaussianTilt):
 
     window_length = 3
 
@@ -214,7 +218,7 @@ class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
     @staticmethod
     def _tilt_output_generator(dataset, model, particles, t, *_inputs):
         """
-        Define the output generator for the lds example.
+        Define the output generator for the svm example.
         Args:
             dataset:
 
@@ -230,13 +234,13 @@ class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
 
         """
 
-        masked_idx = np.arange(LdsSingleWindowTilt.window_length)
+        masked_idx = np.arange(svmSingleWindowTilt.window_length)
         to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
 
         # Zero out the elements outside of the valid range.
         clipped_dataset = jax.lax.dynamic_slice(dataset,
                                                 (t+1, *tuple(0 * _d for _d in dataset.shape[1:])),
-                                                (LdsSingleWindowTilt.window_length, *dataset.shape[1:]))
+                                                (svmSingleWindowTilt.window_length, *dataset.shape[1:]))
         masked_dataset = clipped_dataset * np.expand_dims(to_insert.astype(np.int32), 1)
 
         # We will pass in whole data into the tilt and then filter out as required.
@@ -244,7 +248,7 @@ class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
         return nn_util.vectorize_pytree(tilt_outputs)
 
 
-def lds_define_tilt(subkey, model, dataset, tilt_structure):
+def svm_define_tilt(subkey, model, dataset, tilt_structure):
     """
 
     Args:
@@ -263,12 +267,12 @@ def lds_define_tilt(subkey, model, dataset, tilt_structure):
     # # Check whether we have a valid number of tilts.
 
     # Standard tilt.
-    tilt_fn = LdsTilt
+    tilt_fn = SvmTilt
     n_tilts = len(dataset[0]) - 1
     tilt_inputs = ()
 
     # # Single window tilt.
-    # tilt_fn = LdsSingleWindowTilt
+    # tilt_fn = svmSingleWindowTilt
     # n_tilts = 1
     # tilt_inputs = ()
 
@@ -305,7 +309,7 @@ def lds_define_tilt(subkey, model, dataset, tilt_structure):
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def lds_define_proposal(subkey, model, dataset, proposal_structure):
+def svm_define_proposal(subkey, model, dataset, proposal_structure):
     """
 
     Args:
@@ -341,7 +345,7 @@ def lds_define_proposal(subkey, model, dataset, proposal_structure):
     n_props = len(dataset[0])
 
     # Define the required method for building the inputs.
-    def lds_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):
+    def svm_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
@@ -368,7 +372,7 @@ def lds_define_proposal(subkey, model, dataset, proposal_structure):
     proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
                                                      stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
                                                      dummy_output=dummy_proposal_output,
-                                                     input_generator=lds_proposal_input_generator,
+                                                     input_generator=svm_proposal_input_generator,
                                                      trunk_fn=trunk_fn,
                                                      head_mean_fn=head_mean_fn,
                                                      head_log_var_fn=head_log_var_fn, )
@@ -381,7 +385,7 @@ def lds_define_proposal(subkey, model, dataset, proposal_structure):
     return proposal, proposal_params, rebuild_prop_fn
 
 
-def lds_get_true_target_marginal(model, data):
+def svm_get_true_target_marginal(model, data):
     """
     Take in a model and some data and return the tfd distribution representing the marginals of true posterior.
     Args:
@@ -405,7 +409,7 @@ def lds_get_true_target_marginal(model, data):
     return pred_em_marginal
 
 
-def lds_define_true_model_and_data(key):
+def svm_define_true_model_and_data(key):
     """
 
     Args:
@@ -414,35 +418,12 @@ def lds_define_true_model_and_data(key):
     Returns:
 
     """
-    latent_dim = 1
-    emissions_dim = 1
     num_trials = 100000
     T = 9  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
-
-    # Set up the transmission and emission weights to be unity.
-    true_dynamics_weights = np.eye(latent_dim)
-    true_emission_weights = np.eye(emissions_dim, latent_dim)
-
-    # NOTE - Set the dynamics scale here.
-    dynamics_scale_tril = 1.0 * np.eye(latent_dim)
-
-    # NOTE - can make observations tighter here.
-    emission_scale_tril = 1.0 * np.eye(emissions_dim)
-
-    # NOTE - change the initial scale here.
-    initial_state_scale_tril = 1.0 * np.eye(latent_dim)
-
+    
     # Create the true model.
     key, subkey = jr.split(key)
-    true_model = GaussianLDS(num_latent_dims=latent_dim,
-                             num_emission_dims=emissions_dim,
-                             seed=subkey,
-                             dynamics_scale_tril=dynamics_scale_tril,
-                             dynamics_weights=true_dynamics_weights,
-                             emission_weights=true_emission_weights,
-                             emission_scale_tril=emission_scale_tril,
-                             initial_state_scale_tril=initial_state_scale_tril
-                             )
+    true_model = UnivariateSVM()
 
     # Sample some data.
     key, subkey = jr.split(key)
@@ -451,7 +432,7 @@ def lds_define_true_model_and_data(key):
     return true_model, true_states, dataset
 
 
-def lds_define_test_model(key, true_model, free_parameters):
+def svm_define_test_model(key, true_model, free_parameters):
     """
 
     Args:
@@ -474,9 +455,7 @@ def lds_define_test_model(key, true_model, free_parameters):
 
         # Generate a model to use.  NOTE - this will generate a new model, and we will
         # overwrite any of the free parameters of interest into the true model.
-        tmp_model = true_model.__class__(num_latent_dims=true_model.latent_dim,
-                                         num_emission_dims=true_model.emissions_shape[0],
-                                         seed=subkey)
+        tmp_model = true_model.__class__()
 
         # Dig out the free parameters.
         init_free_params = get_free_model_params_fn(tmp_model)
@@ -488,7 +467,7 @@ def lds_define_test_model(key, true_model, free_parameters):
         for _k in free_parameters:
             _base = getattr(default_params, _k)
             key, subkey = jr.split(key)
-            new_val = {_k: _base + (10.0 * jr.normal(key=subkey, shape=_base.shape))}
+            new_val = {_k: _base + (1.0 * jr.normal(key=subkey, shape=_base.shape))}
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
         # Build out a new model using these values.
@@ -505,7 +484,7 @@ def lds_define_test_model(key, true_model, free_parameters):
     return default_model, get_free_model_params_fn, rebuild_model_fn
 
 
-def lds_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
+def svm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
                 param_figs):
     """
     NOTE - removed proposal and tilt parameters here as they will be too complex.
@@ -552,12 +531,12 @@ def lds_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_pa
                     plt.tight_layout()
                     plt.pause(0.00001)
 
-                plt.savefig('./lds_param_{}.pdf'.format(_p))
+                plt.savefig('./svm_param_{}.pdf'.format(_p))
 
     return param_figs
 
 
-def lds_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
+def svm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
     """
 
     Args:
@@ -581,11 +560,12 @@ def lds_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
     if opt[0] is not None:
         if len(opt[0].target) > 0:
             # print()
-            print('\tModel')
-            true_bias = true_model.dynamics_bias.flatten()
-            pred_bias = opt[0].target[0].flatten()
-            print('\t\tTrue: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in true_bias]))
-            print('\t\tPred: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in pred_bias]))
+            print('\tModel:')
+            true_str = [_k + ': ' + ' '.join(['{: >5.3f}'.format(_f) for _f in getattr(true_model._parameters, _k).flatten()]) for _k in opt[0].target._fields]
+            pred_str = [_k + ': ' + ' '.join(['{: >5.3f}'.format(_f) for _f in getattr(opt[0].target, _k).flatten()]) for _k in opt[0].target._fields]
+
+            print('\t\tTrue: ' + str(true_str))
+            print('\t\tPred: ' + str(pred_str))
 
     # NOTE - the proposal and tilt are more complex here, so don't show them.
 

@@ -68,12 +68,14 @@ def do_config():
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
         print('No model specified, defaulting to: ')
-        model = 'GDM'
+        model = 'LDS'
 
     if 'LDS' in model:
         from ssm.inference._test_fivo_lds import lds_get_config as get_config
     elif 'GDM' in model:
         from ssm.inference._test_fivo_gdm import gdm_get_config as get_config
+    elif 'SVM' in model:
+        from ssm.inference._test_fivo_svm import svm_get_config as get_config
     else:
         raise NotImplementedError()
 
@@ -146,6 +148,12 @@ def main():
             from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
             from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
 
+        elif 'SVM' in env.config.model:
+            from ssm.inference._test_fivo_svm import svm_do_print as do_print
+            from ssm.inference._test_fivo_svm import svm_define_test as define_test
+            from ssm.inference._test_fivo_svm import svm_do_plot as do_plot
+            from ssm.inference._test_fivo_svm import svm_get_true_target_marginal as get_marginals
+
         else:
             raise NotImplementedError()
 
@@ -207,7 +215,7 @@ def main():
         smc_jit = jax.jit(smc, static_argnums=6)
 
         # Close over constant parameters.
-        do_fivo_sweep_closed = lambda _key, _params, _num_particles, _datasets: \
+        do_fivo_sweep_closed = lambda _key, _params, _num_particles, _datasets, _temperature=1.0: \
             fivo.do_fivo_sweep(_params,
                                _key,
                                rebuild_model_fn,
@@ -215,7 +223,8 @@ def main():
                                rebuild_tilt_fn,
                                _datasets,
                                _num_particles,
-                               **{'use_stop_gradient_resampling': env.config.use_sgr})
+                               **{'use_stop_gradient_resampling': env.config.use_sgr,
+                                  'tilt_temperature': _temperature})
 
         # Jit this badboy.
         do_fivo_sweep_jitted = \
@@ -240,7 +249,7 @@ def main():
                                     dset_to_plot=env.config.dset_to_plot,
                                     init_model=model,
                                     do_print=do_print,
-                                    do_plot=env.config.PLOT)
+                                    do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -250,7 +259,7 @@ def main():
             _sweep_posteriors = smc_jit(_subkey,
                                         true_model,
                                         validation_datasets,
-                                        num_particles=env.config.sweep_test_particles)
+                                        num_particles=env.config.sweep_test_particles, )
             return _sweep_posteriors.log_normalizer
 
         # Wrap another call to fivo for validation.
@@ -270,11 +279,19 @@ def main():
         val_hist = [[], [], []]  # Model, proposal, tilt.
         param_figures = [None, None, None]  # Model, proposal, tilt.
         lml_hist = []
+        smoothed_training_loss = 0.0
 
         # Back up the true parameters.
         true_hist = [[], [], []]  # Model, proposal, tilt.
         true_hist = fivo.log_params(true_hist,
                                     [get_model_free_params(true_model), None, None],)
+
+        # Decide if we are going to anneal the tilt.
+        # This is done by dividing the log tilt value by a temperature.
+        if env.config.temper > 0.0:
+            tilt_temperatures = - (1.0 - (env.config.temper / np.linspace(0.1, env.config.temper, num=env.config.opt_steps + 1))) + 1.0
+        else:
+            tilt_temperatures = np.ones(env.config.opt_steps + 1,) * 1.0
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -292,7 +309,9 @@ def main():
             (pred_fivo_bound, smc_posteriors), grad = do_fivo_sweep_val_and_grad(subkey,
                                                                                  fivo.get_params_from_opt(opt),
                                                                                  env.config.num_particles,
-                                                                                 batched_dataset)
+                                                                                 batched_dataset,
+                                                                                 tilt_temperatures[_step])
+            smoothed_training_loss = 0.1 * pred_fivo_bound + 0.9 * smoothed_training_loss
 
             # Apply the gradient update.
             opt = fivo.apply_gradient(grad, opt, )
@@ -335,8 +354,8 @@ def main():
                                                               true_model,
                                                               subkey,
                                                               do_fivo_sweep_jitted,
-                                                              smc_jit, )
-                                                              # true_bpf_kls=true_bpf_kls)  # Force re-running this.
+                                                              smc_jit,
+                                                              true_bpf_kls=true_bpf_kls)  # Force re-running this.
 
                 # Compare the number of unique particles.
                 key, subkey = jr.split(key)
@@ -346,8 +365,8 @@ def main():
                                                                                  true_model,
                                                                                  subkey,
                                                                                  do_fivo_sweep_jitted,
-                                                                                 smc_jit, )
-                                                                                 # true_bpf_upc=true_bpf_upc)  # Force re-running this.
+                                                                                 smc_jit,
+                                                                                 true_bpf_upc=true_bpf_upc)  # Force re-running this.
 
                 # # Compare the effective sample size.
                 # key, subkey = jr.split(key)
@@ -412,6 +431,7 @@ def main():
                           'pred_lml': pred_lml,
                           'pred_fivo_bound': pred_fivo_bound_to_print,
                           'small_fivo_bound': np.mean(np.asarray(val_fivo_bound)),
+                          'smoothed_training_loss': smoothed_training_loss,
 
                           'small_lml': {'mean':         {'em_true': em_log_marginal_likelihood,
                                                          'bpf_true': small_true_bpf_lml,
@@ -470,8 +490,10 @@ def main():
 
                 # If we are not on the local system, push less frequently (or WandB starts to cry).
                 if not env.config.local_system:
-                    if _step % 10000 == 0:
+                    if (_step % 10000 == 0) or (_step == 1):
                         utils.log_to_wandb()
+                else:
+                    utils.log_to_wandb()
 
                 # Do some printing.
                 do_print(_step,

@@ -440,9 +440,13 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
     initial_lml = 0.0
 
     # Test against EM (which for the LDS is exact).
-    em_posterior = jax.vmap(true_model.e_step)(dataset)
-    em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
-    em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
+    if hasattr(true_model, 'e_step'):
+        em_posterior = jax.vmap(true_model.e_step)(dataset)
+        em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
+        em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
+    else:
+        em_posterior = None
+        em_log_marginal_likelihood = np.nan
 
     # Test BPF in the true model..
     key, subkey = jr.split(key)
@@ -466,14 +470,22 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
     # temp_validation_code(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
     #                      num_particles=10, dset_to_plot=dset_to_plot, init_model=init_model)
 
+    # TODO - remove this block.  just forcing some EM plotting.
+    if em_posterior is not None:
+        sweep_em_mean = em_posterior.mean()[dset_to_plot]
+        sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset_to_plot]
+        sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
+        _plot_single_sweep(sweep_em_statistics, true_states[dset_to_plot],
+                           tag='EM smoothing', preprocessed=True, obs=dataset[dset_to_plot])
+
     # Do some plotting.
     if do_plot:
-        if em_posterior is not None:
-            sweep_em_mean = em_posterior.mean()[dset_to_plot]
-            sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset_to_plot]
-            sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
-            _plot_single_sweep(sweep_em_statistics, true_states[dset_to_plot],
-                               tag='EM smoothing', preprocessed=True, obs=dataset[dset_to_plot])
+        # if em_posterior is not None:
+        #     sweep_em_mean = em_posterior.mean()[dset_to_plot]
+        #     sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset_to_plot]
+        #     sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
+        #     _plot_single_sweep(sweep_em_statistics, true_states[dset_to_plot],
+        #                        tag='EM smoothing', preprocessed=True, obs=dataset[dset_to_plot])
 
         if true_bpf_posterior is not None:
             _plot_single_sweep(true_bpf_posterior[dset_to_plot].filtering_particles,
@@ -504,6 +516,9 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
                                            true_states[dset_to_plot],
                                            tag='Initial SMC Smoothing (' + str(num_particles) + ' particles).',
                                            obs=dataset[dset_to_plot])
+        else:
+            sweep_fig = None
+            filt_fig = None
     else:
         sweep_fig = None
         filt_fig = None
@@ -673,7 +688,7 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
     if marginals is None:
         # TODO - make this more reliable somehow.
         # If there was no analytic marginal available.
-        return np.asarray([np.inf])
+        return np.asarray([np.inf]), np.asarray([np.inf])
 
     # Compare the KLs of the smoothing distributions.
     if true_bpf_kls is None:

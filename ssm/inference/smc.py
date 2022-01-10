@@ -26,6 +26,7 @@ def smc(key,
         num_particles=50,
         resampling_criterion=None,
         resampling_function=None,
+        tilt_temperature=1.0,
         use_stop_gradient_resampling=False,
         use_resampling_gradients=False,
         verbosity=default_verbosity):
@@ -125,7 +126,7 @@ def smc(key,
     # Close over the static arguments.
     single_smc_closed = lambda _k, _d: \
         _single_smc(_k, model, _d, initialization_distribution, proposal, tilt, num_particles,
-                    resampling_criterion, resampling_function, use_stop_gradient_resampling,
+                    resampling_criterion, resampling_function, tilt_temperature, use_stop_gradient_resampling,
                     use_resampling_gradients, verbosity=verbosity)
 
     # If there are three dimensions, it assumes that the dimensions correspond to
@@ -147,6 +148,7 @@ def _single_smc(key,
                 num_particles,
                 resampling_criterion,
                 resampling_function,
+                tilt_temperature,
                 use_stop_gradient_resampling=False,
                 use_resampling_gradients=False,
                 verbosity=default_verbosity):
@@ -259,6 +261,7 @@ def _single_smc(key,
                           num_particles,
                           resampling_criterion,
                           resampling_function,
+                          tilt_temperature,
                           use_stop_gradient_resampling,
                           use_resampling_gradients,
                           verbosity)
@@ -286,6 +289,7 @@ def _smc_forward_pass(key,
                       num_particles,
                       resampling_criterion,
                       resampling_function,
+                      tilt_temperature,
                       use_stop_gradient_resampling=False,
                       use_resampling_gradients=False,
                       verbosity=default_verbosity, ):
@@ -364,7 +368,7 @@ def _smc_forward_pass(key,
     # Resample particles under the zeroth observation.
     initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
     initial_q_log_probability = initial_distribution.log_prob(initial_particles)
-    initial_r_log_probability = tilt(initial_particles, 0)
+    initial_r_log_probability = tilt(initial_particles, 0) / tilt_temperature
 
     # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
     initial_y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
@@ -401,13 +405,13 @@ def _smc_forward_pass(key,
         q_log_probability = q_dist.log_prob(new_particles)
 
         # Assume there is a previous tilt.
-        r_previous = tilt(particles, t-1)
+        r_previous = tilt(particles, t-1) / tilt_temperature
 
         # There is no tilt at the final timestep.
         r_current = jax.lax.cond(t == (len(dataset)-1),
                                  lambda *_args: np.zeros(len(new_particles)),
                                  lambda *_args: tilt(new_particles, t),
-                                 None)
+                                 None) / tilt_temperature
 
         # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
         y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
