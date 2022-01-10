@@ -184,43 +184,9 @@ class GdmTilt(tilts.IndependentGaussianTilt):
 
         return log_r_val
 
-    # Define a method for generating thei nputs to the tilt.
-    def _tilt_input_generator(self, dataset, model, particles, t, *_inputs):
-        """
-        Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
-        can be input into the tilt.
-
-        NOTE - because of the conditional independncies introduced by the HMM, there is no dependence
-        on the previous states.
-
-        Args:
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            *inputs_:
-
-        Returns:
-            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
-
-        """
-
-        # Just the particles are passed in.
-        tilt_inputs = (particles, )
-
-        is_batched = (model.latent_dim != particles.shape[0])
-        if not is_batched:
-            return nn_util.vectorize_pytree(tilt_inputs)
-        else:
-            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(0, ))
-            return vmapped(*tilt_inputs)
-
     # We need to define the method for generating the inputs.
-    def _tilt_output_generator(self, dataset, model, particles, t, *_inputs):
+    @staticmethod
+    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
         """
         Define the output generator for the gdm example.
         Args:

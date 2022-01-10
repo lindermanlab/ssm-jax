@@ -440,9 +440,13 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
     initial_lml = 0.0
 
     # Test against EM (which for the LDS is exact).
-    em_posterior = jax.vmap(true_model.e_step)(dataset)
-    em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
-    em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
+    if hasattr(true_model, 'e_step'):
+        em_posterior = jax.vmap(true_model.e_step)(dataset)
+        em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
+        em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
+    else:
+        em_posterior = None
+        em_log_marginal_likelihood = np.nan
 
     # Test BPF in the true model..
     key, subkey = jr.split(key)
@@ -512,6 +516,9 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
                                            true_states[dset_to_plot],
                                            tag='Initial SMC Smoothing (' + str(num_particles) + ' particles).',
                                            obs=dataset[dset_to_plot])
+        else:
+            sweep_fig = None
+            filt_fig = None
     else:
         sweep_fig = None
         filt_fig = None
@@ -681,7 +688,7 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
     if marginals is None:
         # TODO - make this more reliable somehow.
         # If there was no analytic marginal available.
-        return np.asarray([np.inf])
+        return np.asarray([np.inf]), np.asarray([np.inf])
 
     # Compare the KLs of the smoothing distributions.
     if true_bpf_kls is None:

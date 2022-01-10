@@ -35,15 +35,15 @@ def lds_get_config():
     parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
 
     parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
-    parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-structure', default='DIRECT', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
 
-    parser.add_argument('--num-particles', default=5, type=int)
-    parser.add_argument('--datasets-per-batch', default=32, type=int)
+    parser.add_argument('--num-particles', default=10, type=int)
+    parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.001, type=float)
-    parser.add_argument('--q-lr', default=0.001, type=float)
+    parser.add_argument('--p-lr', default=0.01, type=float)
+    parser.add_argument('--q-lr', default=0.01, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
@@ -101,64 +101,12 @@ def lds_define_test(key, free_parameters, proposal_structure, tilt_structure):
     return ret_model, ret_test, ret_prop, ret_tilt
 
 
-def lds_define_test_model(key, true_model, free_parameters):
-    """
-
-    Args:
-        key:
-        true_model:
-        free_parameters:
-
-    Returns:
-
-    """
-    key, subkey = jr.split(key)
-
-    # Close over the free parameters we have elected to learn.
-    get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, free_parameters)
-
-    if len(free_parameters) > 0:
-
-        # Get the default parameters from the true model.
-        true_params = fivo.get_model_params_fn(true_model)
-
-        # Generate a model to use.  NOTE - this will generate a new model, and we will
-        # overwrite any of the free parameters of interest into the true model.
-        tmp_model = true_model.__class__(num_latent_dims=true_model.latent_dim,
-                                         num_emission_dims=true_model.emissions_shape[0],
-                                         seed=subkey)
-
-        # Dig out the free parameters.
-        init_free_params = get_free_model_params_fn(tmp_model)
-
-        # Overwrite all the params with the new values.
-        default_params = utils.mutate_named_tuple_by_key(true_params, init_free_params)
-
-        # Mutate the free parameters.
-        for _k in free_parameters:
-            _base = getattr(default_params, _k)
-            key, subkey = jr.split(key)
-            new_val = {_k: _base + (10.0 * jr.normal(key=subkey, shape=_base.shape))}
-            default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
-
-        # Build out a new model using these values.
-        default_model = fivo.rebuild_model_fn(default_params, tmp_model)
-
-    else:
-
-        # If there are no free parameters then just use the true model.
-        default_model = dc(true_model)
-
-    # Close over rebuilding the model.
-    rebuild_model_fn = lambda _params: fivo.rebuild_model_fn(_params, default_model)
-
-    return default_model, get_free_model_params_fn, rebuild_model_fn
-
-
 class LdsTilt(tilts.IndependentGaussianTilt):
     """
 
     """
+
+    window_length = 2
 
     def apply(self, params, dataset, model, particles, t, *inputs):
         """
@@ -185,7 +133,6 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
         # Define this for when using the windowed tilt.
         score_criteria = 'window'  # {'all', 'window'}
-        window_length = 2
 
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
@@ -213,7 +160,7 @@ class LdsTilt(tilts.IndependentGaussianTilt):
                 return _idx > t  # Pretty sure this should be a <= (since we are scoring _future_ observations).
 
             def _score_window():
-                return np.logical_and(_score_all_future(), (_idx <= t + window_length))
+                return np.logical_and(_score_all_future(), (_idx <= t + LdsTilt.window_length))
 
             # Decide whether we will score.
             if score_criteria == 'window':
@@ -232,43 +179,9 @@ class LdsTilt(tilts.IndependentGaussianTilt):
 
         return log_r_val  # TODO - To disable tilt:  `* 0.0`
 
-    # Define a method for generating thei nputs to the tilt.
-    def _tilt_input_generator(self, dataset, model, particles, t, *_inputs):
-        """
-        Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
-        can be input into the tilt.
-
-        NOTE - because of the conditional independncies introduced by the HMM, there is no dependence
-        on the previous states.
-
-        Args:
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            *inputs_:
-
-        Returns:
-            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
-
-        """
-
-        # Just the particles are passed in.
-        tilt_inputs = (particles, )
-
-        is_batched = (model.latent_dim != particles.shape[0])
-        if not is_batched:
-            return nn_util.vectorize_pytree(tilt_inputs)
-        else:
-            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(0, ))
-            return vmapped(*tilt_inputs)
-
     # We need to define the method for generating the inputs.
-    def _tilt_output_generator(self, dataset, model, particles, t, *_inputs):
+    @staticmethod
+    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
         """
         Define the output generator for the lds example.
         Args:
@@ -291,6 +204,44 @@ class LdsTilt(tilts.IndependentGaussianTilt):
         return nn_util.vectorize_pytree(tilt_outputs)
 
 
+class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
+
+    window_length = 3
+
+    # We need to define the method for generating the inputs.
+    @staticmethod
+    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
+        """
+        Define the output generator for the lds example.
+        Args:
+            dataset:
+
+            model:
+
+            particles:
+
+            t:
+
+            *inputs_:
+
+        Returns:
+
+        """
+
+        masked_idx = np.arange(LdsSingleWindowTilt.window_length)
+        to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
+
+        # Zero out the elements outside of the valid range.
+        clipped_dataset = jax.lax.dynamic_slice(dataset,
+                                                (t+1, *tuple(0 * _d for _d in dataset.shape[1:])),
+                                                (LdsSingleWindowTilt.window_length, *dataset.shape[1:]))
+        masked_dataset = clipped_dataset * np.expand_dims(to_insert.astype(np.int32), 1)
+
+        # We will pass in whole data into the tilt and then filter out as required.
+        tilt_outputs = (masked_dataset, )
+        return nn_util.vectorize_pytree(tilt_outputs)
+
+
 def lds_define_tilt(subkey, model, dataset, tilt_structure):
     """
 
@@ -307,24 +258,44 @@ def lds_define_tilt(subkey, model, dataset, tilt_structure):
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
-    # Check whether we have a valid number of tilts.
+    # # Check whether we have a valid number of tilts.
+
+    # Standard tilt.
+    tilt_fn = LdsTilt
     n_tilts = len(dataset[0]) - 1
+    tilt_inputs = ()
+
+    # # Single window tilt.
+    # tilt_fn = LdsSingleWindowTilt
+    # n_tilts = 1
+    # tilt_inputs = ()
 
     # Tilt functions take in (dataset, model, particles, t-1).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
 
+    # Generate the inputs.
     stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0)
 
-    dummy_tilt_output = nn_util.vectorize_pytree(dataset[0], )
+    # Generate the outputs.
+    dummy_tilt_output = tilt_fn._tilt_output_generator(dataset[-1], model, dummy_particles, 0, *tilt_inputs)
+
+    # Define any custom link functions.
+    trunk_fn = None
     head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
     head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
 
+    # trunk_fn = nn_util.MLP([6, ], output_layer_relu=True)
+    # head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
+    # head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
+
     # Define the tilts themselves.
-    tilt = LdsTilt(n_tilts=n_tilts,
+    tilt = tilt_fn(n_tilts=n_tilts,
                    tilt_input=stock_tilt_input,
+                   trunk_fn=trunk_fn,
                    head_mean_fn=head_mean_fn,
                    head_log_var_fn=head_log_var_fn)
 
+    # Initialize the network.
     tilt_params = tilt.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
@@ -360,9 +331,9 @@ def lds_define_proposal(subkey, model, dataset, proposal_structure):
     head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
     head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0])
 
-    # trunk_fn = nn_util.MLP([5, 5])
+    # trunk_fn = nn_util.MLP([6, ], output_layer_relu=True)
     # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
-    # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0])
+    # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
     # Check whether we have a valid number of proposals.
     n_props = len(dataset[0])
@@ -476,6 +447,60 @@ def lds_define_true_model_and_data(key):
     true_states, dataset = true_model.sample(key=subkey, num_steps=T+1, num_samples=num_trials)
 
     return true_model, true_states, dataset
+
+
+def lds_define_test_model(key, true_model, free_parameters):
+    """
+
+    Args:
+        key:
+        true_model:
+        free_parameters:
+
+    Returns:
+
+    """
+    key, subkey = jr.split(key)
+
+    # Close over the free parameters we have elected to learn.
+    get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, free_parameters)
+
+    if len(free_parameters) > 0:
+
+        # Get the default parameters from the true model.
+        true_params = fivo.get_model_params_fn(true_model)
+
+        # Generate a model to use.  NOTE - this will generate a new model, and we will
+        # overwrite any of the free parameters of interest into the true model.
+        tmp_model = true_model.__class__(num_latent_dims=true_model.latent_dim,
+                                         num_emission_dims=true_model.emissions_shape[0],
+                                         seed=subkey)
+
+        # Dig out the free parameters.
+        init_free_params = get_free_model_params_fn(tmp_model)
+
+        # Overwrite all the params with the new values.
+        default_params = utils.mutate_named_tuple_by_key(true_params, init_free_params)
+
+        # Mutate the free parameters.
+        for _k in free_parameters:
+            _base = getattr(default_params, _k)
+            key, subkey = jr.split(key)
+            new_val = {_k: _base + (10.0 * jr.normal(key=subkey, shape=_base.shape))}
+            default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
+
+        # Build out a new model using these values.
+        default_model = fivo.rebuild_model_fn(default_params, tmp_model)
+
+    else:
+
+        # If there are no free parameters then just use the true model.
+        default_model = dc(true_model)
+
+    # Close over rebuilding the model.
+    rebuild_model_fn = lambda _params: fivo.rebuild_model_fn(_params, default_model)
+
+    return default_model, get_free_model_params_fn, rebuild_model_fn
 
 
 def lds_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
