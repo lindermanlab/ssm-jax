@@ -1,7 +1,9 @@
 """
 Implementations of various stochastic volatility models.
 """
+import inspect
 
+import jax
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
@@ -10,9 +12,17 @@ from ssm.lds.initial import StandardInitialCondition
 from ssm.lds.dynamics import Dynamics, StationaryDynamics
 from ssm.lds.emissions import Emissions
 import ssm.utils as utils
+from ssm.utils import Verbosity, random_rotation, make_named_tuple, ensure_has_batch_dim, auto_batch
+from ssm.inference.em import em
+from ssm.inference.laplace_em import laplace_em
+from jax.flatten_util import ravel_pytree
+from jax import tree_util, vmap
 
 import tensorflow_probability.substrates.jax as tfp
 tfd = tfp.distributions
+
+from ssm.distributions import MultivariateNormalBlockTridiag
+SVMPosterior = MultivariateNormalBlockTridiag
 
 
 @register_pytree_node_class
@@ -22,12 +32,13 @@ class UnivariateSVM(SSM):
     """
 
     def __init__(self,
-                 log_sigma: float = np.log(1.0),
-                 invsig_phi: float = utils.inverse_sigmoid(0.9),
-                 mu: float = 2.0,
-                 init_mean: float = 0.0,
-                 transition_log_scale_tril_multiplier: float = np.log(1.0),
-                 emission_log_scale_tril_multiplier: float = np.log(1.0)):
+                 log_sigma: float = np.asarray([[np.log(1.0)]]),
+                 invsig_phi: float = np.asarray([utils.inverse_sigmoid(0.9)]),
+                 mu: float = np.asarray([2.0]),
+
+                 init_mean: float = np.asarray([0.0]),
+                 emission_log_scale_tril_multiplier: float = np.asarray([np.log(1.0)]),
+                 seed: jr.PRNGKey=None):
         """
 
         Args:
@@ -35,17 +46,17 @@ class UnivariateSVM(SSM):
             invsig_phi:
             mu:
             init_mean:
+            emission_log_scale_tril_multiplier:
         """
 
         # We are only considering the univariate case.
-        self.num_states = 1
+        self.latent_dim = 1
 
         # Inscribe the parameters.
         self.log_sigma = log_sigma
         self.invsig_phi = invsig_phi
         self.mu = mu
         self.init_mean = init_mean
-        self.transition_log_scale_tril_multiplier = transition_log_scale_tril_multiplier
         self.emission_log_scale_tril_multiplier = emission_log_scale_tril_multiplier
 
         # The initial condition is a Gaussian with a specific variance.
@@ -56,24 +67,31 @@ class UnivariateSVM(SSM):
         # Initialize the SVM transition model.
         # This is a normal distribution with the mean equal to an affine function of current state.
         affine_bias = self.mu * (1.0 - utils.sigmoid(self.invsig_phi))
-        affine_weight = self.utils.sigmoid(self.invsig_phi)
+        affine_weight = utils.sigmoid(self.invsig_phi) * np.eye(self.latent_dim)
         self._dynamics = StationaryDynamics(weights=affine_weight,
                                             bias=affine_bias,
-                                            scale_tril=np.exp(log_sigma))
+                                            scale_tril=np.sqrt(np.exp(self.log_sigma)))
 
         # Initialize the SVM emission distribution.
         self._emissions = SVMEmission(emission_log_scale_tril_multiplier)
 
+        # Grab the parameter values.  This allows us to explicitly re-build the object.
+        self._parameters = make_named_tuple(dict_in=locals(),
+                                            keys=list(inspect.signature(self.__init__)._parameters.keys()),
+                                            name=str(self.__class__.__name__) + 'Tuple')
+
     def tree_flatten(self):
-        children = (self._initial_condition,
-                    self._transitions,
-                    self._emissions)
-        aux_data = self._num_states
+        children = (self.log_sigma,
+                    self.invsig_phi,
+                    self.mu,
+                    self.init_mean,
+                    self.emission_log_scale_tril_multiplier)
+        aux_data = None
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        return cls.__init__(aux_data, *children)
+        return cls(*children)
 
     @property
     def emissions_shape(self):
@@ -134,17 +152,84 @@ class UnivariateSVM(SSM):
         """
         return self._emissions.distribution(state, covariates, metadata)
 
-    def m_step(self, dataset, posteriors):
-        r"""
-        No closed form m-step exists.
+    @ensure_has_batch_dim()
+    def m_step(self,
+               data: np.ndarray,
+               posterior: SVMPosterior,
+               covariates=None,
+               metadata=None,
+               key: jr.PRNGKey=None):
+        """Update the model in a (potentially approximate) M step.
+
+        Updates the model in place.
+
         Args:
-            dataset:
-            posteriors:
+            data (np.ndarray): observed data with shape (B, T, D)
+            posterior (LDSPosterior): LDS posterior object with leaf shapes (B, ...).
+            covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+            key (jr.PRNGKey, optional): random seed. Defaults to None.
+        """
+        # self._initial_condition.m_step(dataset, posteriors)  # TODO initial dist needs prior
+        self._dynamics.m_step(data, posterior)
+        self._emissions.m_step(data, posterior, key=key)
+
+    @ensure_has_batch_dim()
+    def fit(self,
+            data: np.ndarray,
+            covariates=None,
+            metadata=None,
+            method: str="em",
+            key: jr.PRNGKey=None,
+            num_iters: int=100,
+            tol: float=1e-4,
+            verbosity: Verbosity=Verbosity.DEBUG):
+        r"""Fit the GaussianLDS to a dataset using the specified method.
+
+        Note: because the observations are Gaussian, we can perform exact EM for a GaussianEM
+        (i.e. the model is conjugate).
+
+        Args:
+            data (np.ndarray): observed data
+                of shape :math:`(\text{[batch]} , \text{num\_timesteps} , \text{emissions\_dim})`
+            covariates (PyTreeDef, optional): optional covariates with leaf shape (B, T, ...).
+                Defaults to None.
+            metadata (PyTreeDef, optional): optional metadata with leaf shape (B, ...).
+                Defaults to None.
+            method (str, optional): model fit method. Must be one of ["em", "laplace_em"].
+                Defaults to "em".
+            key (jr.PRNGKey, optional): Random seed.
+                Defaults to None.
+            num_iters (int, optional): number of fit iterations.
+                Defaults to 100.
+            tol (float, optional): tolerance in log probability to determine convergence.
+                Defaults to 1e-4.
+            verbosity (Verbosity, optional): print verbosity.
+                Defaults to Verbosity.DEBUG.
+
+        Raises:
+            ValueError: if fit method is not reocgnized
 
         Returns:
-
+            elbos (np.ndarray): elbos at each fit iteration
+            model (LDS): the fitted model
+            posteriors (LDSPosterior): the fitted posteriors
         """
-        raise NotImplementedError
+        model = self
+        kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
+
+        if method == "em":
+            elbos, lds, posteriors = em(model, data, **kwargs)
+        elif method == "laplace_em":
+            if key is None:
+                raise ValueError("Laplace EM requires a PRNGKey. Please provide an rng to fit.")
+            elbos, lds, posteriors = laplace_em(key, model, data, **kwargs)
+        else:
+            raise ValueError(f"Method {method} is not recognized/supported.")
+
+        return elbos, lds, posteriors
 
 
 @register_pytree_node_class
@@ -188,9 +273,9 @@ class SVMEmission(Emissions):
         assert covariates is None, "Covariates are not provisioned under the original SVM."
         assert metadata is None, "Metadata is not provisioned under the original SVM."
 
-        mean = 0.0  # Emission distribution is zero mean.
-        scale = self.emission_log_scale_tril_multiplier * np.sqrt(np.exp(state / 2.0))  # Scale is defined conditioned on state.
-        dist = tfd.Normal(mean, scale)
+        mean = np.zeros_like(self.emission_log_scale_tril_multiplier)  # Emission distribution is zero mean.
+        scale = np.exp(self.emission_log_scale_tril_multiplier) * np.sqrt(np.exp(state / 2.0))  # Scale is defined conditioned on state.
+        dist = tfd.MultivariateNormalDiag(mean, scale)
         return dist
 
     def m_step(self,
@@ -200,8 +285,9 @@ class SVMEmission(Emissions):
                metadata=None,
                num_samples=1,
                key=None):
-        r"""
-        No closed-form m-step exists.
+        """
+        NOTE - this mirrors the LDS->Emissions->PoissionLDS->m_step.
+
         Args:
             data:
             posterior:
@@ -213,7 +299,73 @@ class SVMEmission(Emissions):
         Returns:
 
         """
-        raise NotImplementedError
+        if key is None:
+            raise ValueError("PRNGKey needed for generic m-step")
+
+        # Draw samples of the latent states
+        state_samples = posterior.sample(seed=key, sample_shape=(num_samples,))
+
+        # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
+        # NOTE - AW - changed to ravel `self` instead of `self._distribution`.
+        flat_emissions_distribution, unravel = ravel_pytree(self)
+
+        def _objective(flat_emissions_distribution):
+            # TODO: Consider proximal gradient descent to counter sampling noise
+            emissions_distribution = unravel(flat_emissions_distribution)
+
+            def _lp_single(sample):
+                if covariates is not None:
+                    sample = np.concatenate([sample, covariates], axis=-1)
+                return emissions_distribution.distribution(sample).log_prob(data) / data.size
+
+            return -1 * np.mean(vmap(_lp_single)(state_samples))
+
+        optimize_results = jax.scipy.optimize.minimize(
+            _objective,
+            flat_emissions_distribution,
+            method="BFGS"  # TODO: consider L-BFGS?
+        )
+
+        optimized_distribution = unravel(optimize_results.x)
+
+        # Inscribe the results.
+        self.emission_log_scale_tril_multiplier = optimized_distribution.emission_log_scale_tril_multiplier
+
+
+# p = 0
+#
+# # Initialize our true SVM model
+# true_lds = UnivariateSVM()
+#
+# import warnings
+#
+# num_trials = 5
+# time_bins = 200
+#
+# # catch annoying warnings of tfp Poisson sampling
+# rng = jr.PRNGKey(0)
+# with warnings.catch_warnings():
+#     warnings.filterwarnings('ignore', category=UserWarning)
+#     all_states, all_data = true_lds.sample(key=rng, num_steps=time_bins, num_samples=num_trials)
+#
+#
+# sig_init = np.asarray([[np.log(0.1)]])
+# emission_mult = np.asarray([np.log(0.1)])
+# test_svm = UnivariateSVM(log_sigma=sig_init, emission_log_scale_tril_multiplier=emission_mult)
+#
+# print(test_svm.tree_flatten())
+#
+# rng = jr.PRNGKey(10)
+#
+# elbos, fitted_svm, posteriors = test_svm.fit(all_data, method="laplace_em", key=rng, num_iters=25)
+#
+# # with jax.disable_jit():
+# #     elbos, fitted_svm, posteriors = test_svm.fit(all_data, method="laplace_em", key=rng, num_iters=25)
+#
+# print(elbos)
+# print(fitted_svm.tree_flatten())
+#
+# p = 0
 
 
 # @register_pytree_node_class
@@ -224,14 +376,12 @@ class SVMEmission(Emissions):
 #     def __init__(self,
 #                  log_sigma: float,
 #                  invsig_phi: float,
-#                  mu: float,
-#                  transition_log_scale_tril_multiplier: float) -> None:
+#                  mu: float, ) -> None:
 #         super().__init__()
 #
 #         self.log_sigma = log_sigma
 #         self.invsig_phi = invsig_phi
 #         self.mu = mu
-#         self.transition_log_scale_tril_multiplier = transition_log_scale_tril_multiplier
 #
 #     def tree_flatten(self):
 #         children = (self.log_sigma, self.invsig_phi, self.mu)
@@ -244,7 +394,7 @@ class SVMEmission(Emissions):
 #
 #     @property
 #     def scale(self):
-#         return np.exp(self.transition_log_scale_tril_multiplier)
+#         return np.exp(self.log_sigma)
 #
 #     def distribution(self, state, covariates=None, metadata=None):
 #         r"""
