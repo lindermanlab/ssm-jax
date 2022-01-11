@@ -44,7 +44,7 @@ def lds_get_config():
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
     parser.add_argument('--n-tilts', default=1, type=int)  #
 
-    parser.add_argument('--num-particles', default=10, type=int)
+    parser.add_argument('--num-particles', default=25, type=int)
     parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
@@ -69,7 +69,7 @@ def lds_get_config():
 
     # Force the tilt temperature to zero if we are not using tilts.  this is just bookkeeping, really.
     if config['tilt_structure'] == 'NONE' or config['tilt_structure'] is None:
-        config['temper'] = 1.0
+        config['temper'] = 0.0
 
     return config
 
@@ -304,7 +304,7 @@ def lds_define_tilt(subkey, model, dataset, env):
                    tilt_input=stock_tilt_input,
                    trunk_fn=trunk_fn,
                    head_mean_fn=head_mean_fn,
-                   head_log_var_fn=head_log_var_fn)
+                   head_log_var_fn=head_log_var_fn,)
 
     # Initialize the network.
     tilt_params = tilt.init(subkey)
@@ -426,8 +426,8 @@ def lds_define_true_model_and_data(key):
     Returns:
 
     """
-    latent_dim = 1
-    emissions_dim = 1
+    latent_dim = 2
+    emissions_dim = 3
     num_trials = 100000
     T = 9  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 

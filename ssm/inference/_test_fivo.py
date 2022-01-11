@@ -67,8 +67,8 @@ def do_config():
     try:
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
-        print('No model specified, defaulting to: ')
-        model = 'LDS'
+        model = 'SVM'
+        print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
         from ssm.inference._test_fivo_lds import lds_get_config as get_config
@@ -321,12 +321,15 @@ def main():
                 smoothed_training_loss = 0.1 * pred_fivo_bound + 0.9 * smoothed_training_loss
 
             # Apply the gradient update.
-            opt = fivo.apply_gradient(grad, opt, )
+            if np.isfinite(pred_fivo_bound):
+                opt = fivo.apply_gradient(grad, opt, )
+            else:
+                print('Warning: Skipped step: ', _step, min(smc_posteriors.log_normalizer), pred_fivo_bound)
 
             # ----------------------------------------------------------------------------------------------------------
 
             # Do some validation and give some output.
-            if (_step % 1000 == 0) or (_step == 1):
+            if (_step % 2000 == 0) or (_step == 1):
 
                 # Capture the parameters.
                 param_hist = fivo.log_params(param_hist, cur_params)
@@ -429,6 +432,38 @@ def main():
 
                 # Dump some stuff out to WandB.
                 # NOTE - we don't dump everything here because it hurts WandBs brain.
+                try:
+                    kl_metrics = {'median':          {'bpf_true':    np.nanquantile(true_bpf_kls, 0.5, axis=1),
+                                                      'fivo':        np.nanquantile(pred_smc_kls, 0.5, axis=1), },
+                                  'lq':              {'bpf_true':    np.nanquantile(true_bpf_kls, 0.25, axis=1),
+                                                      'fivo':        np.nanquantile(pred_smc_kls, 0.25, axis=1), },
+                                  'uq':              {'bpf_true':    np.nanquantile(true_bpf_kls, 0.75, axis=1),
+                                                      'fivo':        np.nanquantile(pred_smc_kls, 0.75, axis=1), },
+                                  'mean':            {'bpf_true':    np.nanmean(true_bpf_kls, axis=1),
+                                                      'fivo':        np.nanmean(pred_smc_kls, axis=1), },
+                                  'variance':        {'bpf_true':    np.nanvar(true_bpf_kls, axis=1),
+                                                      'fivo':        np.nanvar(pred_smc_kls, axis=1), },
+                                  'nan':             {'bpf_true':    np.sum(np.isnan(true_bpf_kls), axis=1),
+                                                      'fivo':        np.sum(np.isnan(pred_smc_kls), axis=1), },
+                                  }
+                except:
+                    kl_metrics = None
+
+                try:
+                    upc_metrics = {'median':     {'bpf_true':    np.quantile(true_bpf_upc, 0.5, axis=0),
+                                                  'fivo':        np.quantile(pred_smc_upc, 0.5, axis=0), },
+                                   'lq':         {'bpf_true':    np.quantile(true_bpf_upc, 0.25, axis=0),
+                                                  'fivo':        np.quantile(pred_smc_upc, 0.25, axis=0), },
+                                   'uq':         {'bpf_true':    np.quantile(true_bpf_upc, 0.75, axis=0),
+                                                  'fivo':        np.quantile(pred_smc_upc, 0.75, axis=0), },
+                                   'mean':       {'bpf_true':    np.mean(true_bpf_upc, axis=0),
+                                                  'fivo':        np.mean(pred_smc_upc, axis=0), },
+                                   'variance':   {'bpf_true':    np.var(true_bpf_upc, axis=0),
+                                                  'fivo':        np.var(pred_smc_upc, axis=0), },
+                                  }
+                except:
+                    upc_metrics = None
+
                 to_log = {'step': _step,
                           'params_p_true': true_hist[0][-1],
                           'params_p_pred': param_hist[0][-1],
@@ -447,19 +482,8 @@ def main():
                                         'variance':     {'bpf_true': small_true_bpf_expected_lml_var,
                                                          'fivo': small_fivo_expected_lml_var}},
 
-                          'kl': {'median':          {'bpf_true':    np.nanquantile(true_bpf_kls, 0.5, axis=1),
-                                                     'fivo':        np.nanquantile(pred_smc_kls, 0.5, axis=1), },
-                                 'lq':              {'bpf_true':    np.nanquantile(true_bpf_kls, 0.25, axis=1),
-                                                     'fivo':        np.nanquantile(pred_smc_kls, 0.25, axis=1), },
-                                 'uq':              {'bpf_true':    np.nanquantile(true_bpf_kls, 0.75, axis=1),
-                                                     'fivo':        np.nanquantile(pred_smc_kls, 0.75, axis=1), },
-                                 'mean':            {'bpf_true':    np.nanmean(true_bpf_kls, axis=1),
-                                                     'fivo':        np.nanmean(pred_smc_kls, axis=1), },
-                                 'variance':        {'bpf_true':    np.nanvar(true_bpf_kls, axis=1),
-                                                     'fivo':        np.nanvar(pred_smc_kls, axis=1), },
-                                 'nan':             {'bpf_true':    np.sum(np.isnan(true_bpf_kls), axis=1),
-                                                     'fivo':        np.sum(np.isnan(pred_smc_kls), axis=1), },
-                                  },
+                          'kl': kl_metrics,
+                          'upc': upc_metrics,
 
                           'expected_kl': {'bpf_true':   np.nanmean(true_bpf_kls),
                                           'fivo':       np.nanmean(pred_smc_kls)},
@@ -467,17 +491,6 @@ def main():
                           'expected_upc': {'bpf_true':  np.mean(true_bpf_upc),
                                            'fivo':      np.mean(pred_smc_upc), },
 
-                          'upc': {'median':     {'bpf_true':    np.quantile(true_bpf_upc, 0.5, axis=0),
-                                                 'fivo':        np.quantile(pred_smc_upc, 0.5, axis=0), },
-                                  'lq':         {'bpf_true':    np.quantile(true_bpf_upc, 0.25, axis=0),
-                                                 'fivo':        np.quantile(pred_smc_upc, 0.25, axis=0), },
-                                  'uq':         {'bpf_true':    np.quantile(true_bpf_upc, 0.75, axis=0),
-                                                 'fivo':        np.quantile(pred_smc_upc, 0.75, axis=0), },
-                                  'mean':       {'bpf_true':    np.mean(true_bpf_upc, axis=0),
-                                                 'fivo':        np.mean(pred_smc_upc, axis=0), },
-                                  'variance':   {'bpf_true':    np.var(true_bpf_upc, axis=0),
-                                                 'fivo':        np.var(pred_smc_upc, axis=0), },
-                                  },
 
                           # 'expected_ess': {'bpf_true':          np.mean(true_bpf_ess),
                           #                  'fivo':              np.mean(pred_smc_ess), },
