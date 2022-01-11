@@ -9,23 +9,23 @@ from ssm.utils import auto_batch
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
 
-# No need to register because we are not adding additional data, just methods
-class LDSSVAEPosterior(MultivariateNormalBlockTridiag):
-
+class MVNBlockTridiagPosterior(MultivariateNormalBlockTridiag):
     @classmethod
     def initialize(cls, svae, data, covariates=None, metadata=None):
         # Create a dummy object
+        # Assumes that the data has a batch dimension! (prevents re-jitting)
+        N = data.shape[0]
         T = data.shape[-2]
         D = svae.latent_dim
-        precision_diag_blocks = np.zeros((T, D, D))
-        precision_lower_diag_blocks = np.zeros((T-1, D, D))
-        linear_potential = np.zeros((T, D))
-        log_normalizer = 1
-        filtered_precisions = np.zeros((T, D, D))
-        filtered_linear_potentials = np.zeros((T, D))
-        expected_states = np.zeros((T, D))
-        expected_states_squared = np.zeros((T, D, D))
-        expected_states_next_states = np.zeros((T-1, D, D))
+        precision_diag_blocks = np.zeros((N, T, D, D))
+        precision_lower_diag_blocks = np.zeros((N, T-1, D, D))
+        linear_potential = np.zeros((N, T, D))
+        log_normalizer = np.ones((N,))
+        filtered_precisions = np.zeros((N, T, D, D))
+        filtered_linear_potentials = np.zeros((N, T, D))
+        expected_states = np.zeros((N, T, D))
+        expected_states_squared = np.zeros((N, T, D, D))
+        expected_states_next_states = np.zeros((N, T-1, D, D))
 
         self = cls(precision_diag_blocks,
                  precision_lower_diag_blocks,
@@ -42,6 +42,9 @@ class LDSSVAEPosterior(MultivariateNormalBlockTridiag):
     @property
     def emissions_shape(self):
         return (self.precision_diag_blocks.shape[-1],)
+
+# No need to register because we are not adding additional data, just methods
+class LDSSVAEPosterior(MVNBlockTridiagPosterior):
         
     @auto_batch(batched_args=("data", "potential", "covariates", "metadata", "key"))
     def update(self, lds, data, potential, covariates=None, metadata=None, key=None):
@@ -76,39 +79,8 @@ class LDSSVAEPosterior(MultivariateNormalBlockTridiag):
 
         return LDSSVAEPosterior.infer(J_diag, J_lower_diag, h)
 
-class DKFPosterior(MultivariateNormalBlockTridiag):
+class DKFPosterior(MVNBlockTridiagPosterior):
 
-    @classmethod
-    def initialize(cls, svae, data, covariates=None, metadata=None):
-        # Create a dummy object
-        T = data.shape[-2]
-        D = svae.latent_dim
-        precision_diag_blocks = np.zeros((T, D, D))
-        precision_lower_diag_blocks = np.zeros((T-1, D, D))
-        linear_potential = np.zeros((T, D))
-        log_normalizer = 1
-        filtered_precisions = np.zeros((T, D, D))
-        filtered_linear_potentials = np.zeros((T, D))
-        expected_states = np.zeros((T, D))
-        expected_states_squared = np.zeros((T, D, D))
-        expected_states_next_states = np.zeros((T-1, D, D))
-
-        self = cls(precision_diag_blocks,
-                 precision_lower_diag_blocks,
-                 linear_potential,
-                 log_normalizer,
-                 filtered_precisions,
-                 filtered_linear_potentials,
-                 expected_states,
-                 expected_states_squared,
-                 expected_states_next_states)
-
-        return self
-        
-    @property
-    def emissions_shape(self):
-        return (self.precision_diag_blocks.shape[-1],)
-        
     @auto_batch(batched_args=("data", "potential", "covariates", "metadata", "key"))
     def update(self, lds, data, potential, covariates=None, metadata=None, key=None):
         # From data

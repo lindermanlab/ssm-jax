@@ -426,8 +426,8 @@ def check_pytree_shape_match(obj_a, obj_b, mode="input", sig=None):
         mode (str, optional): "input" or "output". Defaults to "input".
         sig (inspect.FullArgSpec, optional): doesn't support signature yet.
     """
-    shape_a = [x.shape for x in tree_leaves(obj_a)]
-    shape_b = [x.shape for x in tree_leaves(obj_b)]
+    shape_a = [np.shape(x) for x in tree_leaves(obj_a)]
+    shape_b = [np.shape(x) for x in tree_leaves(obj_b)]
     idxs = test_and_find_inequality(
         shape_a, shape_b, check_name="PyTree Leaf Shape", mode=mode, sig=None
     )
@@ -440,8 +440,8 @@ def check_pytree_weak_type_match(obj_a, obj_b, mode="input", sig=None):
     """Checks whether pytrees A and B have the same weak_typing.
     Used for debugging re-jit problems (see debug_rejit decorator).
     """
-    shape_a = [x.weak_type for x in tree_leaves(obj_a)]
-    shape_b = [x.weak_type for x in tree_leaves(obj_b)]
+    shape_a = [np.asarray(x).weak_type for x in tree_leaves(obj_a)]
+    shape_b = [np.asarray(x).weak_type for x in tree_leaves(obj_b)]
     idxs = test_and_find_inequality(
         shape_a, shape_b, check_name="Pytree Leaf Device Array Weak Type", mode=mode, sig=None
     )
@@ -454,8 +454,8 @@ def check_pytree_dtype_match(obj_a, obj_b, mode="input", sig=None):
     """Checks whether pytrees A and B have the same dtype.
     Used for debugging re-jit problems (see debug_rejit decorator).
     """
-    shape_a = [x.dtype for x in tree_leaves(obj_a)]
-    shape_b = [x.dtype for x in tree_leaves(obj_b)]
+    shape_a = [np.asarray(x).dtype for x in tree_leaves(obj_a)]
+    shape_b = [np.asarray(x).dtype for x in tree_leaves(obj_b)]
     idxs = test_and_find_inequality(
         shape_a, shape_b, check_name="Pytree Leaf Device Array dtype", mode=mode, sig=None
     )
