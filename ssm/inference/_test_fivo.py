@@ -288,10 +288,9 @@ def main():
         if env.config.temper > 0.0:
             temper_param = env.config.temper
 
-            tilt_temperatures = - (1.0 - (temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1))) + 1.0
+            # tilt_temperatures = - (1.0 - (temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1))) + 1.0
 
-            # tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1)))) + 1.0
-            # plt.plot(tilt_temperatures)
+            tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1)))) + 1.0
 
             print('\n\nCAUTION: USING TILT TEMPERING. \n\n')
         else:
@@ -315,7 +314,11 @@ def main():
                                                                                  env.config.num_particles,
                                                                                  batched_dataset,
                                                                                  tilt_temperatures[_step])
-            smoothed_training_loss = 0.1 * pred_fivo_bound + 0.9 * smoothed_training_loss
+
+            if smoothed_training_loss == 0.0:
+                smoothed_training_loss = pred_fivo_bound
+            else:
+                smoothed_training_loss = 0.1 * pred_fivo_bound + 0.9 * smoothed_training_loss
 
             # Apply the gradient update.
             opt = fivo.apply_gradient(grad, opt, )

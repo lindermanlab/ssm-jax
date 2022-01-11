@@ -41,15 +41,15 @@ def lds_get_config():
     parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--n-props', default=1, type=int)  #
 
-    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
     parser.add_argument('--n-tilts', default=1, type=int)  #
 
     parser.add_argument('--num-particles', default=10, type=int)
     parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.01, type=float)
-    parser.add_argument('--q-lr', default=0.01, type=float)
+    parser.add_argument('--p-lr', default=0.001, type=float)
+    parser.add_argument('--q-lr', default=0.001, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
