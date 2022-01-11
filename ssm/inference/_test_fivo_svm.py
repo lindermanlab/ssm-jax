@@ -347,12 +347,7 @@ def svm_define_proposal(subkey, model, dataset, env):
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
     # Check whether we have a valid number of proposals.
-    if env.config.n_props != 1 or env.config.proposal_structure == 'DIRECT':
-        n_props = len(dataset[0])
-        print('Setting n_props to ', n_props, ' proposal functions because n_props=1 or DIRECT.')
-    else:
-        n_props = 1
-        print('Defaulting p_props to ', n_props, ' proposal functions.')
+    n_props = len(dataset[0])
 
     # Define the required method for building the inputs.
     def svm_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):

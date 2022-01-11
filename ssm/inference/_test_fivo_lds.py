@@ -39,10 +39,10 @@ def lds_get_config():
     parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
 
     parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--n-props', default=1, type=int)  #
+    parser.add_argument('--proposal-type', default='PERSTEP', type=int)  # {'PERSTEP'}.
 
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--n-tilts', default=1, type=int)  #
+    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEP'}.
 
     parser.add_argument('--num-particles', default=25, type=int)
     parser.add_argument('--datasets-per-batch', default=16, type=int)
@@ -109,38 +109,15 @@ def lds_define_test(key, env):
     return ret_model, ret_test, ret_prop, ret_tilt
 
 
-class LdsTilt(tilts.IndependentGaussianTilt):
+class LdsPerStepTilt(tilts.IndependentGaussianTilt):
     """
 
     """
-
-    window_length = 2
 
     def apply(self, params, dataset, model, particles, t, *inputs):
         """
 
-        Args:
-            params (FrozenDict):    FrozenDict of the parameters of the tilt.
-
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            inputs (tuple):         Tuple of additional inputs to the tilt in SMC.
-
-            data:
-
-        Returns:
-            (Float): Tilt log value.
-
         """
-
-        # Define this for when using the windowed tilt.
-        score_criteria = 'window'  # {'all', 'window'}
 
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
@@ -167,52 +144,16 @@ class LdsTilt(tilts.IndependentGaussianTilt):
             def _score_all_future():
                 return _idx > t  # Pretty sure this should be a <= (since we are scoring _future_ observations).
 
-            def _score_window():
-                return np.logical_and(_score_all_future(), (_idx <= t + LdsTilt.window_length))
-
-            # Decide whether we will score.
-            if score_criteria == 'window':
-                _score = _score_window()
-            elif score_criteria == 'all':
-                _score = _score_all_future()
-            else:
-                raise NotImplementedError()
-
-            return jax.lax.cond(_score,
+            return jax.lax.cond(_score_all_future(),
                                 lambda *args: _dist.log_prob(np.asarray([_out])),
                                 lambda *args: np.zeros(means.shape[1]),
                                 None)
 
         log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
-
-        return log_r_val  # TODO - To disable tilt:  `* 0.0`
-
-    # We need to define the method for generating the inputs.
-    @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
-        """
-        Define the output generator for the lds example.
-        Args:
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            *inputs_:
-
-        Returns:
-
-        """
-
-        # We will pass in whole data into the tilt and then filter out as required.
-        tilt_outputs = (dataset, )
-        return nn_util.vectorize_pytree(tilt_outputs)
+        return log_r_val
 
 
-class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
+class LdsWindowTilt(tilts.IndependentGaussianTilt):
 
     window_length = 2
 
@@ -220,29 +161,16 @@ class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
     @staticmethod
     def _tilt_output_generator(dataset, model, particles, t, *_inputs):
         """
-        Define the output generator for the lds example.
-        Args:
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            *inputs_:
-
-        Returns:
 
         """
 
-        masked_idx = np.arange(LdsSingleWindowTilt.window_length)
+        masked_idx = np.arange(LdsWindowTilt.window_length)
         to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
 
         # Zero out the elements outside of the valid range.
         clipped_dataset = jax.lax.dynamic_slice(dataset,
                                                 (t+1, *tuple(0 * _d for _d in dataset.shape[1:])),
-                                                (LdsSingleWindowTilt.window_length, *dataset.shape[1:]))
+                                                (LdsWindowTilt.window_length, *dataset.shape[1:]))
         masked_dataset = clipped_dataset * np.expand_dims(to_insert.astype(np.int32), 1)
 
         # We will pass in whole data into the tilt and then filter out as required.
@@ -266,19 +194,19 @@ def lds_define_tilt(subkey, model, dataset, env):
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
-    # # Check whether we have a valid number of tilts.
-
-    # # Standard tilt.
-    # tilt_fn = LdsTilt
-    # n_tilts = len(dataset[0]) - 1
-    # tilt_inputs = ()
-
-    # Single window tilt.
-    tilt_fn = LdsSingleWindowTilt
-    if env.config.n_tilts == 1:
+    # configure the tilt.
+    if env.config.tilt_type == 'PERSTEP':
+        tilt_fn = LdsPerStepTilt
+        n_tilts = len(dataset[0]) - 1
+    elif env.config.tilt_type == 'PERSTEPWINDOW':
+        tilt_fn = LdsWindowTilt
+        n_tilts = len(dataset[0]) - 1
+    elif env.config.tilt_type == 'SINGLEWINDOW':
+        tilt_fn = LdsWindowTilt
         n_tilts = 1
     else:
-        n_tilts = len(dataset[0]) - 1
+        raise NotImplementedError()
+
     tilt_inputs = ()
 
     # Tilt functions take in (dataset, model, particles, t-1).
@@ -347,10 +275,7 @@ def lds_define_proposal(subkey, model, dataset, env):
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
     # Check whether we have a valid number of proposals.
-    if env.config.n_props == 1:
-        n_props = 1
-    else:
-        n_props = len(dataset[0])
+    n_props = len(dataset[0])
 
     # Define the required method for building the inputs.
     def lds_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):

@@ -147,7 +147,9 @@ class IndependentGaussianTilt:
             (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
 
         """
-        raise NotImplementedError()
+        # We will pass in whole data into the tilt and then filter out as required.
+        tilt_outputs = (_dataset, )
+        return nn_util.vectorize_pytree(tilt_outputs)
 
 
 def rebuild_tilt(tilt, tilt_structure):
