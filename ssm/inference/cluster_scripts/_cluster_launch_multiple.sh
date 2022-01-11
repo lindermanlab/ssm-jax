@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=gdm-1-sig0.1
+#SBATCH --job-name=lds
 #SBATCH --nodes=1 --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=04:59:59
