@@ -36,21 +36,26 @@ def lds_get_config():
 
     parser.add_argument('--temper', default=4.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
-    parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
+    parser.add_argument('--free-parameters', default='dynamics_bias,dynamics_weights', type=str)  # CSV.  # 'dynamics_bias'
 
     parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='PERSTEP', type=int)  # {'PERSTEP'}.
+    parser.add_argument('--proposal-type', default='PERSTEP', type=str)  # {'PERSTEP', }.
 
     parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEP'}.
 
-    parser.add_argument('--num-particles', default=25, type=int)
-    parser.add_argument('--datasets-per-batch', default=16, type=int)
+    parser.add_argument('--num-particles', default=4, type=int)
+    parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--p-lr', default=0.001, type=float)
     parser.add_argument('--q-lr', default=0.001, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
+
+    parser.add_argument('--T', default=9, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+    parser.add_argument('--latent-dim', default=2, type=int)
+    parser.add_argument('--emissions-dim', default=3, type=int)
+    parser.add_argument('--num-trials', default=100000, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=100, type=int)
@@ -342,7 +347,7 @@ def lds_get_true_target_marginal(model, data):
     return pred_em_marginal
 
 
-def lds_define_true_model_and_data(key):
+def lds_define_true_model_and_data(key, env):
     """
 
     Args:
@@ -351,23 +356,30 @@ def lds_define_true_model_and_data(key):
     Returns:
 
     """
-    latent_dim = 2
-    emissions_dim = 3
-    num_trials = 100000
-    T = 9  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
-    # Set up the transmission and emission weights to be unity.
-    true_dynamics_weights = np.eye(latent_dim)
-    true_emission_weights = np.eye(emissions_dim, latent_dim)
+    dynamics_scale_tril = None
+    true_dynamics_weights = None
+    true_emission_weights = None
+    emission_scale_tril = None
+    initial_state_scale_tril = None
 
-    # NOTE - Set the dynamics scale here.
-    dynamics_scale_tril = 1.0 * np.eye(latent_dim)
+    latent_dim = env.config.latent_dim
+    emissions_dim = env.config.emissions_dim
+    num_trials = env.config.num_trials
+    T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
-    # NOTE - can make observations tighter here.
-    emission_scale_tril = 1.0 * np.eye(emissions_dim)
-
-    # NOTE - change the initial scale here.
-    initial_state_scale_tril = 1.0 * np.eye(latent_dim)
+    # # Set up the transmission and emission weights to be unity.
+    # true_dynamics_weights = np.eye(latent_dim)
+    # true_emission_weights = np.eye(emissions_dim, latent_dim)
+    #
+    # # NOTE - Set the dynamics scale here.
+    # dynamics_scale_tril = 1.0 * np.eye(latent_dim)
+    #
+    # # NOTE - can make observations tighter here.
+    # emission_scale_tril = 1.0 * np.eye(emissions_dim)
+    #
+    # # NOTE - change the initial scale here.
+    # initial_state_scale_tril = 1.0 * np.eye(latent_dim)
 
     # Create the true model.
     key, subkey = jr.split(key)
@@ -425,7 +437,7 @@ def lds_define_test_model(key, true_model, free_parameters):
         for _k in free_parameters:
             _base = getattr(default_params, _k)
             key, subkey = jr.split(key)
-            new_val = {_k: _base + (10.0 * jr.normal(key=subkey, shape=_base.shape))}
+            new_val = {_k: _base + (2.0 * jr.normal(key=subkey, shape=_base.shape))}
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
         # Build out a new model using these values.
@@ -509,20 +521,22 @@ def lds_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
     Returns:
 
     """
-    _str = 'Step: {: >5d},  True Neg-LML: {: >8.3f},  Pred Neg-LML: {: >8.3f},  Pred FIVO bound {: >8.3f}'.\
+    _str = 'Step: {:> 5d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred FIVO bound {:> 8.3f}'.\
         format(_step, true_lml, pred_lml, pred_fivo_bound)
     if em_log_marginal_likelihood is not None:
-        _str += '  EM Neg-LML: {: >8.3f}'.format(em_log_marginal_likelihood)
+        _str += '  EM Neg-LML: {:> 8.3f}'.format(em_log_marginal_likelihood)
 
     print(_str)
     if opt[0] is not None:
         if len(opt[0].target) > 0:
             # print()
             print('\tModel')
-            true_bias = true_model.dynamics_bias.flatten()
-            pred_bias = opt[0].target[0].flatten()
-            print('\t\tTrue: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in true_bias]))
-            print('\t\tPred: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in pred_bias]))
+
+            true_str = [_k + ': ' + ' '.join(['{:> 5.3f}'.format(_f) for _f in getattr(true_model._parameters, _k).flatten()]) for _k in opt[0].target._fields]
+            pred_str = [_k + ': ' + ' '.join(['{:> 5.3f}'.format(_f) for _f in getattr(opt[0].target, _k).flatten()]) for _k in opt[0].target._fields]
+
+            print('\t\tTrue: ' + str(true_str))
+            print('\t\tPred: ' + str(pred_str))
 
     # NOTE - the proposal and tilt are more complex here, so don't show them.
 

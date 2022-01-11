@@ -329,7 +329,9 @@ def main():
             # ----------------------------------------------------------------------------------------------------------
 
             # Do some validation and give some output.
-            if (_step % 2000 == 0) or (_step == 1):
+            val_interval = 2500
+            plot_interval = 2500
+            if (_step % val_interval == 0) or (_step == 1):
 
                 # Capture the parameters.
                 param_hist = fivo.log_params(param_hist, cur_params)
@@ -391,7 +393,7 @@ def main():
                 #                                               true_bpf_ess=true_bpf_ess)
 
                 # Do some plotting if we are plotting.
-                if env.config.PLOT and (_step % 2000 == 0):
+                if env.config.PLOT and (_step % plot_interval == 0):
 
                     # # Do some plotting.
                     # sweep_fig_filter = _plot_single_sweep(

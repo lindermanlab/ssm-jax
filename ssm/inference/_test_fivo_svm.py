@@ -561,10 +561,10 @@ def svm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
     Returns:
 
     """
-    _str = 'Step: {: >5d},  True Neg-LML: {: >8.3f},  Pred Neg-LML: {: >8.3f},  Pred FIVO bound {: >8.3f}'.\
+    _str = 'Step: {:> 5d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred FIVO bound {:> 8.3f}'.\
         format(_step, true_lml, pred_lml, pred_fivo_bound)
     if em_log_marginal_likelihood is not None:
-        _str += '  EM Neg-LML: {: >8.3f}'.format(em_log_marginal_likelihood)
+        _str += '  EM Neg-LML: {:> 8.3f}'.format(em_log_marginal_likelihood)
 
     print(_str)
     if opt[0] is not None:
