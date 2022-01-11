@@ -38,18 +38,18 @@ def deep_variational_inference(key,
             model.emissions_network.update_params(dec_params)
             elbo_key = jr.split(key, data.shape[0])
             bound = model.elbo(elbo_key, data, posterior, covariates=covariates, metadata=metadata)
-            return -np.mean(bound, axis=0), (model, posterior)
+            return -np.sum(bound, axis=0), (model, posterior)
         
         results = \
             jax.value_and_grad(lambda params: loss(params, posterior), has_aux=True)((rec_opt.target, dec_opt.target))
-        (bound, (model, posterior)), (rec_grad, dec_grad) = results
+        (neg_bound, (model, posterior)), (rec_grad, dec_grad) = results
 
         # Update the model!
         model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
         new_rec_opt = rec_opt.apply_gradient(rec_grad)
         new_dec_opt = dec_opt.apply_gradient(dec_grad)
         
-        return new_rec_opt, new_dec_opt, model, posterior, bound
+        return new_rec_opt, new_dec_opt, model, posterior, -neg_bound
 
     x_single = np.ones((seq_len, data_dim))
     z_single = np.ones((latent_dim,))

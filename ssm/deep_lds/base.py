@@ -118,31 +118,35 @@ class DeepLDS(LDS):
             method: str="svae",
             num_iters: int=100,
             tol: float=1e-4,
-            verbosity: Verbosity=Verbosity.DEBUG
-            # Should have an option of providing a recognition net architecture 
+            verbosity: Verbosity=Verbosity.DEBUG,
+            recognition_model_class=None, 
+            learning_rate=1e-3
             ):
         """
         Notably, returns the rec net as well as the model
         """
         # Just initialize the posterior since the model will be
         # updated on the first m-step.
-        
-        # TODO: figure out the proper assumptions of data shape!
         N, T, D = data.shape
 
         if method == "svae":
-            posterior = LDSSVAEPosterior.initialize(
-                self, data, covariates=covariates, metadata=metadata)
-            rec_net = GaussianNetwork.from_params(self.latent_dim, input_dim=D)
+            posterior_class = LDSSVAEPosterior
+            default_recognition_model_class = GaussianNetwork
         elif method == "dkf":
-            posterior = DKFPosterior.initialize(
-                self, data, covariates=covariates, metadata=metadata)
-            rec_net = Bidirectional_RNN.from_params(self.latent_dim, input_dim=D)
+            posterior_class = DKFPosterior
+            default_recognition_model_class = Bidirectional_RNN.from_params
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
+        posterior = posterior_class.initialize(
+                self, data, covariates=covariates, metadata=metadata)
+        rec_net = (recognition_model_class or default_recognition_model_class)\
+            .from_params(self.latent_dim, input_dim=D)
+
         bounds, model, posterior = deep_variational_inference(
-                key, self, data, rec_net, posterior, covariates=covariates, metadata=metadata,
-                num_iters=num_iters, tol=tol, verbosity=verbosity)
+                key, self, data, rec_net, posterior, 
+                covariates=covariates, metadata=metadata,
+                num_iters=num_iters, learning_rate=learning_rate,
+                tol=tol, verbosity=verbosity)
 
         return bounds, model, posterior
