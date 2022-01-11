@@ -37,8 +37,12 @@ def lds_get_config():
     parser.add_argument('--temper', default=4.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
     parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
+
     parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--n-props', default=1, type=int)  #
+
+    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--n-tilts', default=1, type=int)  #
 
     parser.add_argument('--num-particles', default=10, type=int)
     parser.add_argument('--datasets-per-batch', default=16, type=int)
@@ -63,17 +67,19 @@ def lds_get_config():
     # Make sure this one is formatted correctly.
     config['model'] = 'LDS'
 
+    # Force the tilt temperature to zero if we are not using tilts.  this is just bookkeeping, really.
+    if config['tilt_structure'] == 'NONE' or config['tilt_structure'] is None:
+        config['temper'] = 1.0
+
     return config
 
 
-def lds_define_test(key, free_parameters, proposal_structure, tilt_structure):
+def lds_define_test(key, env):
     """
 
     Args:
         key:
-        free_parameters:
-        proposal_structure:
-        tilt_structure:
+        env:
 
     Returns:
 
@@ -85,15 +91,15 @@ def lds_define_test(key, free_parameters, proposal_structure, tilt_structure):
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, get_model_params, rebuild_model_fn = lds_define_test_model(subkey, true_model, free_parameters)
+    model, get_model_params, rebuild_model_fn = lds_define_test_model(subkey, true_model, env.config.free_parameters)
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = lds_define_proposal(subkey, model, dataset, proposal_structure)
+    proposal, proposal_params, rebuild_prop_fn = lds_define_proposal(subkey, model, dataset, env)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = lds_define_tilt(subkey, model, dataset, tilt_structure)
+    tilt, tilt_params, rebuild_tilt_fn = lds_define_tilt(subkey, model, dataset, env)
 
     # Return this big pile of stuff.
     ret_model = (true_model, true_states, dataset)
@@ -244,7 +250,7 @@ class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
         return nn_util.vectorize_pytree(tilt_outputs)
 
 
-def lds_define_tilt(subkey, model, dataset, tilt_structure):
+def lds_define_tilt(subkey, model, dataset, env):
     """
 
     Args:
@@ -256,7 +262,7 @@ def lds_define_tilt(subkey, model, dataset, tilt_structure):
 
     """
 
-    if (tilt_structure is None) or (tilt_structure == 'NONE'):
+    if (env.config.tilt_structure is None) or (env.config.tilt_structure == 'NONE'):
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
@@ -269,7 +275,10 @@ def lds_define_tilt(subkey, model, dataset, tilt_structure):
 
     # Single window tilt.
     tilt_fn = LdsSingleWindowTilt
-    n_tilts = 1
+    if env.config.n_tilts == 1:
+        n_tilts = 1
+    else:
+        n_tilts = len(dataset[0]) - 1
     tilt_inputs = ()
 
     # Tilt functions take in (dataset, model, particles, t-1).
@@ -301,11 +310,11 @@ def lds_define_tilt(subkey, model, dataset, tilt_structure):
     tilt_params = tilt.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, tilt_structure)
+    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env.config.tilt_structure)
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def lds_define_proposal(subkey, model, dataset, proposal_structure):
+def lds_define_proposal(subkey, model, dataset, env):
     """
 
     Args:
@@ -318,7 +327,7 @@ def lds_define_proposal(subkey, model, dataset, proposal_structure):
 
     """
 
-    if (proposal_structure is None) or (proposal_structure == 'BOOTSTRAP'):
+    if (env.config.proposal_structure is None) or (env.config.proposal_structure == 'BOOTSTRAP'):
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
@@ -338,7 +347,10 @@ def lds_define_proposal(subkey, model, dataset, proposal_structure):
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
     # Check whether we have a valid number of proposals.
-    n_props = len(dataset[0])
+    if env.config.n_props == 1:
+        n_props = 1
+    else:
+        n_props = len(dataset[0])
 
     # Define the required method for building the inputs.
     def lds_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):
@@ -377,7 +389,7 @@ def lds_define_proposal(subkey, model, dataset, proposal_structure):
     proposal_params = proposal.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_prop_fn = proposals.rebuild_proposal(proposal, proposal_structure)
+    rebuild_prop_fn = proposals.rebuild_proposal(proposal, env.config.proposal_structure)
     return proposal, proposal_params, rebuild_prop_fn
 
 

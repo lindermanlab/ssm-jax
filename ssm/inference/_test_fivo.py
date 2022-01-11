@@ -176,10 +176,7 @@ def main():
 
         # Define the experiment.
         key, subkey = jr.split(key)
-        ret_vals = define_test(subkey,
-                               env.config.free_parameters,
-                               env.config.proposal_structure,
-                               env.config.tilt_structure)
+        ret_vals = define_test(subkey, env)
 
         # Unpack that big mess of stuff.
         true_model, true_states, dataset = ret_vals[0]                  # Unpack true model.
@@ -289,11 +286,12 @@ def main():
         # Decide if we are going to anneal the tilt.
         # This is done by dividing the log tilt value by a temperature.
         if env.config.temper > 0.0:
-            # tilt_temperatures = - (1.0 - (env.config.temper / np.linspace(0.1, env.config.temper, num=env.config.opt_steps + 1))) + 1.0
+            temper_param = env.config.temper
 
-            a = env.config.temper / 2.0
-            tilt_temperatures = np.square((1.0 - (a / np.linspace(0.1, a, num=env.config.opt_steps + 1)))) + 1.0
-            plt.plot(tilt_temperatures)
+            tilt_temperatures = - (1.0 - (temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1))) + 1.0
+
+            # tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1)))) + 1.0
+            # plt.plot(tilt_temperatures)
 
             print('\n\nCAUTION: USING TILT TEMPERING. \n\n')
         else:
@@ -503,7 +501,6 @@ def main():
                     utils.log_to_wandb()
 
                 # Do some printing.
-                print('Tilt temp:', tilt_temperatures[_step])
                 do_print(_step,
                          true_model,
                          opt,
