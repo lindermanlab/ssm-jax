@@ -1,7 +1,9 @@
 #!/bin/bash
 
-glob_tag='LDS-v1-4-0'
+glob_tag='LDS-large-v1-0-0'
 model='LDS'
+latent_dim=5
+emission_dim=10
 
 # # BPF-SGR
 exp_tag='bpf-sgr'
@@ -9,8 +11,6 @@ use_sgr=1
 proposal_structure='BOOTSTRAP'
 tilt_structure='NONE'
 temper=0.0
-latent_dim=1
-emission_dim=1
 sbatch --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},TILT_STRUCTURE=${tilt_structure},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim} cluster_scripts/_cluster_launch_multiple.sh
 
 # FIVO
@@ -19,8 +19,6 @@ use_sgr=0
 proposal_structure='RESQ'
 tilt_structure='NONE'
 temper=0.0
-latent_dim=1
-emission_dim=1
 sbatch --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},TILT_STRUCTURE=${tilt_structure},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim} cluster_scripts/_cluster_launch_multiple.sh
 
 # FIVO-AUX-SGR
@@ -29,8 +27,6 @@ use_sgr=1
 proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
-latent_dim=1
-emission_dim=1
 sbatch --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},TILT_STRUCTURE=${tilt_structure},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim} cluster_scripts/_cluster_launch_multiple.sh
 
 # FIVO-AUX-SGR-TEMPERED
@@ -39,7 +35,5 @@ use_sgr=1
 proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=4.0
-latent_dim=1
-emission_dim=1
 sbatch --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},TILT_STRUCTURE=${tilt_structure},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim} cluster_scripts/_cluster_launch_multiple.sh
 
