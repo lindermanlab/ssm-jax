@@ -46,6 +46,11 @@ def gdm_get_config():
     parser.add_argument('--q-lr', default=0.001, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
 
+    parser.add_argument('--T', default=9, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+    parser.add_argument('--latent-dim', default=1, type=int)
+    parser.add_argument('--emissions-dim', default=1, type=int)
+    parser.add_argument('--num-trials', default=100000, type=int)
+
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=1000, type=int)
     parser.add_argument('--validation-particles', default=250, type=int)
@@ -60,6 +65,10 @@ def gdm_get_config():
 
     # Make sure this one is formatted correctly.
     config['model'] = 'GDM'
+
+    # Do some checking.
+    assert config['latent-dim'] == 1
+    assert config['emissions-dim'] == 1
 
     return config
 

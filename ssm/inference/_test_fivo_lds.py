@@ -42,7 +42,7 @@ def lds_get_config():
     parser.add_argument('--proposal-type', default='PERSTEP', type=str)  # {'PERSTEP', }.
 
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEP'}.
+    parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEPWINDOW', 'PERSTEP'}.
 
     parser.add_argument('--num-particles', default=4, type=int)
     parser.add_argument('--datasets-per-batch', default=8, type=int)
