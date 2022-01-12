@@ -92,11 +92,11 @@ def svm_define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset = svm_define_true_model_and_data(subkey)
+    true_model, true_states, dataset = svm_define_true_model_and_data(subkey, env)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, get_model_params, rebuild_model_fn = svm_define_test_model(subkey, true_model, env.config.free_parameters)
+    model, get_model_params, rebuild_model_fn = svm_define_test_model(subkey, true_model, env)
 
     # Define the proposal.
     key, subkey = jr.split(key)
@@ -271,19 +271,22 @@ def svm_define_tilt(subkey, model, dataset, env):
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
-    # # Check whether we have a valid number of tilts.
-
-    # # Standard tilt.
-    # tilt_fn = SvmTilt
-    # n_tilts = len(dataset[0]) - 1
-    # tilt_inputs = ()
-
-    # Single window tilt.
-    tilt_fn = SvmSingleWindowTilt
-    if env.config.n_tilts == 1:
-        n_tilts = 1
-    else:
+    # configure the tilt.
+    if env.config.tilt_type == 'PERSTEP':
+        tilt_fn = tilts.IGPerStepTilt
         n_tilts = len(dataset[0]) - 1
+
+    elif env.config.tilt_type == 'PERSTEPWINDOW':
+        tilt_fn = tilts.IGWindowTilt
+        n_tilts = len(dataset[0]) - 1
+
+    elif env.config.tilt_type == 'SINGLEWINDOW':
+        tilt_fn = tilts.IGWindowTilt
+        n_tilts = 1
+
+    else:
+        raise NotImplementedError()
+
     tilt_inputs = ()
 
     # Tilt functions take in (dataset, model, particles, t-1).
@@ -397,7 +400,7 @@ def svm_define_proposal(subkey, model, dataset, env):
 
 def svm_get_true_target_marginal(model, data):
     """
-    Take in a model and some data and return the tfd distribution representing the marginals of true posterior.
+    SVM doesn't yet have an EM solution implemented.
     Args:
         model:
         data:
@@ -405,25 +408,15 @@ def svm_get_true_target_marginal(model, data):
     Returns:
 
     """
-
-    try:
-        pred_em_posterior = jax.vmap(model.e_step)(data)
-
-        marginal_mean = pred_em_posterior.mean().squeeze()
-        marginal_std = np.sqrt(pred_em_posterior.covariance().squeeze())
-
-        pred_em_marginal = tfd.MultivariateNormalDiag(marginal_mean, marginal_std)
-    except:
-        pred_em_marginal = None
-
-    return pred_em_marginal
+    return None
 
 
-def svm_define_true_model_and_data(key):
+def svm_define_true_model_and_data(key, env):
     """
 
     Args:
         key:
+        env:
 
     Returns:
 
@@ -444,7 +437,7 @@ def svm_define_true_model_and_data(key):
     return true_model, true_states, dataset
 
 
-def svm_define_test_model(key, true_model, free_parameters):
+def svm_define_test_model(key, true_model, env):
     """
 
     Args:
@@ -458,9 +451,9 @@ def svm_define_test_model(key, true_model, free_parameters):
     key, subkey = jr.split(key)
 
     # Close over the free parameters we have elected to learn.
-    get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, free_parameters)
+    get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, env.config.free_parameters)
 
-    if len(free_parameters) > 0:
+    if len(env.config.free_parameters) > 0:
 
         # Get the default parameters from the true model.
         true_params = fivo.get_model_params_fn(true_model)
@@ -478,7 +471,7 @@ def svm_define_test_model(key, true_model, free_parameters):
         default_params = utils.mutate_named_tuple_by_key(true_params, init_free_params)
 
         # Mutate the free parameters.
-        for _k in free_parameters:
+        for _k in env.config.free_parameters:
             # TODO - This needs to be made model-specific.
             _base = getattr(default_params, _k)
             key, subkey = jr.split(key)

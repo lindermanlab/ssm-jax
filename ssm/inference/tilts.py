@@ -21,12 +21,15 @@ class IndependentGaussianTilt:
     """
 
     def __init__(self, n_tilts, tilt_input,
-                 trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
+                 trunk_fn=None, head_mean_fn=None, head_log_var_fn=None, window_length=None):
 
         # Work out the number of tilts.
         assert (n_tilts == 1) or (n_tilts == len(tilt_input[0]) - 1), \
             'Can only use a single tilt or as many tilt as there are transitions.'
         self.n_tilts = n_tilts
+
+        # This property can be overwritten by child classes.
+        self.window_length = window_length
 
         # Re-build the full input that will be used to condition the tilt.
         self._dummy_processed_input = self._tilt_input_generator(*tilt_input)
@@ -174,3 +177,72 @@ def rebuild_tilt(tilt, tilt_structure):
         return _tilt
 
     return _rebuild_tilt
+
+
+class IGPerStepTilt(IndependentGaussianTilt):
+    """
+
+    """
+
+    def apply(self, params, dataset, model, particles, t, *inputs):
+        """
+
+        """
+
+        # Pull out the time and the appropriate tilt.
+        if self.n_tilts == 1:
+            t_params = jax.tree_map(lambda args: args[0], params)
+        else:
+            t_params = jax.tree_map(lambda args: args[t], params)
+
+        # Generate a tilt distribution.
+        tilt_inputs = self._tilt_input_generator(dataset, model, particles, t, *inputs)
+        r_dist = self.tilt.apply(t_params, tilt_inputs)
+
+        # Now score under that distribution.
+        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, *inputs)
+
+        # There may be NaNs here, so we need to pull this apart.
+        means = r_dist.mean().T
+        sds = r_dist.variance().T
+
+        # Sweep over the vector and return zeros where appropriate.
+        def _eval(_idx, _mu, _sd, _out):
+            _dist = tfd.MultivariateNormalDiag(loc=np.expand_dims(_mu, -1), scale_diag=np.sqrt(np.expand_dims(_sd, -1)))
+
+            # Define the difference scoring criteria.
+            def _score_all_future():
+                return _idx > t  # Pretty sure this should be a <= (since we are scoring _future_ observations).
+
+            return jax.lax.cond(_score_all_future(),
+                                lambda *args: _dist.log_prob(np.asarray([_out])),
+                                lambda *args: np.zeros(means.shape[1]),
+                                None)
+
+        log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
+        return log_r_val
+
+
+class IGWindowTilt(IndependentGaussianTilt):
+
+    window_length = 2
+
+    # We need to define the method for generating the inputs.
+    @staticmethod
+    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
+        """
+
+        """
+
+        masked_idx = np.arange(IGWindowTilt.window_length)
+        to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
+
+        # Zero out the elements outside of the valid range.
+        clipped_dataset = jax.lax.dynamic_slice(dataset,
+                                                (t+1, *tuple(0 * _d for _d in dataset.shape[1:])),
+                                                (IGWindowTilt.window_length, *dataset.shape[1:]))
+        masked_dataset = clipped_dataset * np.expand_dims(to_insert.astype(np.int32), 1)
+
+        # We will pass in whole data into the tilt and then filter out as required.
+        tilt_outputs = (masked_dataset, )
+        return nn_util.vectorize_pytree(tilt_outputs)

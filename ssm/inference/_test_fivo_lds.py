@@ -96,7 +96,7 @@ def lds_define_test(key, env):
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, get_model_params, rebuild_model_fn = lds_define_test_model(subkey, true_model, env.config.free_parameters)
+    model, get_model_params, rebuild_model_fn = lds_define_test_model(subkey, true_model, env)
 
     # Define the proposal.
     key, subkey = jr.split(key)
@@ -112,75 +112,6 @@ def lds_define_test(key, env):
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
     return ret_model, ret_test, ret_prop, ret_tilt
-
-
-class LdsPerStepTilt(tilts.IndependentGaussianTilt):
-    """
-
-    """
-
-    def apply(self, params, dataset, model, particles, t, *inputs):
-        """
-
-        """
-
-        # Pull out the time and the appropriate tilt.
-        if self.n_tilts == 1:
-            t_params = jax.tree_map(lambda args: args[0], params)
-        else:
-            t_params = jax.tree_map(lambda args: args[t], params)
-
-        # Generate a tilt distribution.
-        tilt_inputs = self._tilt_input_generator(dataset, model, particles, t, *inputs)
-        r_dist = self.tilt.apply(t_params, tilt_inputs)
-
-        # Now score under that distribution.
-        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, *inputs)
-
-        # There may be NaNs here, so we need to pull this apart.
-        means = r_dist.mean().T
-        sds = r_dist.variance().T
-
-        # Sweep over the vector and return zeros where appropriate.
-        def _eval(_idx, _mu, _sd, _out):
-            _dist = tfd.MultivariateNormalDiag(loc=np.expand_dims(_mu, -1), scale_diag=np.sqrt(np.expand_dims(_sd, -1)))
-
-            # Define the difference scoring criteria.
-            def _score_all_future():
-                return _idx > t  # Pretty sure this should be a <= (since we are scoring _future_ observations).
-
-            return jax.lax.cond(_score_all_future(),
-                                lambda *args: _dist.log_prob(np.asarray([_out])),
-                                lambda *args: np.zeros(means.shape[1]),
-                                None)
-
-        log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
-        return log_r_val
-
-
-class LdsWindowTilt(tilts.IndependentGaussianTilt):
-
-    window_length = 2
-
-    # We need to define the method for generating the inputs.
-    @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
-        """
-
-        """
-
-        masked_idx = np.arange(LdsWindowTilt.window_length)
-        to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
-
-        # Zero out the elements outside of the valid range.
-        clipped_dataset = jax.lax.dynamic_slice(dataset,
-                                                (t+1, *tuple(0 * _d for _d in dataset.shape[1:])),
-                                                (LdsWindowTilt.window_length, *dataset.shape[1:]))
-        masked_dataset = clipped_dataset * np.expand_dims(to_insert.astype(np.int32), 1)
-
-        # We will pass in whole data into the tilt and then filter out as required.
-        tilt_outputs = (masked_dataset, )
-        return nn_util.vectorize_pytree(tilt_outputs)
 
 
 def lds_define_tilt(subkey, model, dataset, env):
@@ -201,14 +132,17 @@ def lds_define_tilt(subkey, model, dataset, env):
 
     # configure the tilt.
     if env.config.tilt_type == 'PERSTEP':
-        tilt_fn = LdsPerStepTilt
+        tilt_fn = tilts.IGPerStepTilt
         n_tilts = len(dataset[0]) - 1
+
     elif env.config.tilt_type == 'PERSTEPWINDOW':
-        tilt_fn = LdsWindowTilt
+        tilt_fn = tilts.IGWindowTilt
         n_tilts = len(dataset[0]) - 1
+
     elif env.config.tilt_type == 'SINGLEWINDOW':
-        tilt_fn = LdsWindowTilt
+        tilt_fn = tilts.IGWindowTilt
         n_tilts = 1
+
     else:
         raise NotImplementedError()
 
@@ -402,7 +336,7 @@ def lds_define_true_model_and_data(key, env):
     return true_model, true_states, dataset
 
 
-def lds_define_test_model(key, true_model, free_parameters):
+def lds_define_test_model(key, true_model, env):
     """
 
     Args:
@@ -416,9 +350,9 @@ def lds_define_test_model(key, true_model, free_parameters):
     key, subkey = jr.split(key)
 
     # Close over the free parameters we have elected to learn.
-    get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, free_parameters)
+    get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, env.config.free_parameters)
 
-    if len(free_parameters) > 0:
+    if len(env.config.free_parameters) > 0:
 
         # Get the default parameters from the true model.
         true_params = fivo.get_model_params_fn(true_model)
@@ -436,7 +370,7 @@ def lds_define_test_model(key, true_model, free_parameters):
         default_params = utils.mutate_named_tuple_by_key(true_params, init_free_params)
 
         # Mutate the free parameters.
-        for _k in free_parameters:
+        for _k in env.config.free_parameters:
             _base = getattr(default_params, _k)
             key, subkey = jr.split(key)
             new_val = {_k: _base + (2.0 * jr.normal(key=subkey, shape=_base.shape))}

@@ -83,19 +83,19 @@ def gdm_define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset = gdm_define_true_model_and_data(subkey)
+    true_model, true_states, dataset = gdm_define_true_model_and_data(subkey, env)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, get_model_params, rebuild_model_fn = gdm_define_test_model(subkey, true_model, env.config.free_parameters)
+    model, get_model_params, rebuild_model_fn = gdm_define_test_model(subkey, true_model, env)
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = gdm_define_proposal(subkey, model, dataset, env.config.proposal_structure)
+    proposal, proposal_params, rebuild_prop_fn = gdm_define_proposal(subkey, model, dataset, env)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, dataset, env.config.tilt_structure)
+    tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, dataset, env)
 
     # Return this big pile of stuff.
     ret_model = (true_model, true_states, dataset)
@@ -103,56 +103,6 @@ def gdm_define_test(key, env):
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
     return ret_model, ret_test, ret_prop, ret_tilt
-
-
-def gdm_define_test_model(key, true_model, free_parameters):
-    """
-
-    :param subkey:
-    :param true_model:
-    :return:
-    """
-    key, subkey = jr.split(key)
-
-    # Close over the free parameters we have elected to learn.
-    get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, free_parameters)
-
-    if len(free_parameters) > 0:
-
-        # Get the default parameters from the true model.
-        true_params = fivo.get_model_params_fn(true_model)
-
-        # Generate a model to use.  NOTE - this will generate a new model, and we will
-        # overwrite any of the free parameters of interest into the true model.
-        tmp_model = true_model.__class__(num_latent_dims=true_model.latent_dim,
-                                         num_emission_dims=true_model.emissions_shape[0],
-                                         seed=subkey)
-
-        # Dig out the free parameters.
-        init_free_params = get_free_model_params_fn(tmp_model)
-
-        # Overwrite all the params with the new values.
-        default_params = utils.mutate_named_tuple_by_key(true_params, init_free_params)
-
-        # Mutate the free parameters.
-        for _k in free_parameters:
-            _base = getattr(default_params, _k)
-            key, subkey = jr.split(key)
-            new_val = {_k: _base + (10.0 * jr.normal(key=subkey, shape=_base.shape))}
-            default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
-
-        # Build out a new model using these values.
-        default_model = fivo.rebuild_model_fn(default_params, tmp_model)
-
-    else:
-
-        # If there are no free parameters then just use the true model.
-        default_model = dc(true_model)
-
-    # Close over rebuilding the model.
-    rebuild_model_fn = lambda _params: fivo.rebuild_model_fn(_params, default_model)
-
-    return default_model, get_free_model_params_fn, rebuild_model_fn
 
 
 class GdmTilt(tilts.IndependentGaussianTilt):
@@ -387,8 +337,12 @@ def gdm_get_true_target_marginal(model, data):
 def gdm_define_true_model_and_data(key, env):
     """
 
-    :param key:
-    :return:
+    Args:
+        key:
+        env:
+
+    Returns:
+
     """
     latent_dim = env.config.latent_dim
     emissions_dim = env.config.emissions_dim
@@ -424,6 +378,60 @@ def gdm_define_true_model_and_data(key, env):
     dataset = dataset.at[:, :-1].set(np.nan)
 
     return true_model, true_states, dataset
+
+
+def gdm_define_test_model(key, true_model, env):
+    """
+
+    Args:
+        key:
+        true_model:
+        env:
+
+    Returns:
+
+    """
+    key, subkey = jr.split(key)
+
+    # Close over the free parameters we have elected to learn.
+    get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, env.config.free_parameters)
+
+    if len(env.config.free_parameters) > 0:
+
+        # Get the default parameters from the true model.
+        true_params = fivo.get_model_params_fn(true_model)
+
+        # Generate a model to use.  NOTE - this will generate a new model, and we will
+        # overwrite any of the free parameters of interest into the true model.
+        tmp_model = true_model.__class__(num_latent_dims=true_model.latent_dim,
+                                         num_emission_dims=true_model.emissions_shape[0],
+                                         seed=subkey)
+
+        # Dig out the free parameters.
+        init_free_params = get_free_model_params_fn(tmp_model)
+
+        # Overwrite all the params with the new values.
+        default_params = utils.mutate_named_tuple_by_key(true_params, init_free_params)
+
+        # Mutate the free parameters.
+        for _k in env.config.free_parameters:
+            _base = getattr(default_params, _k)
+            key, subkey = jr.split(key)
+            new_val = {_k: _base + (10.0 * jr.normal(key=subkey, shape=_base.shape))}
+            default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
+
+        # Build out a new model using these values.
+        default_model = fivo.rebuild_model_fn(default_params, tmp_model)
+
+    else:
+
+        # If there are no free parameters then just use the true model.
+        default_model = dc(true_model)
+
+    # Close over rebuilding the model.
+    rebuild_model_fn = lambda _params: fivo.rebuild_model_fn(_params, default_model)
+
+    return default_model, get_free_model_params_fn, rebuild_model_fn
 
 
 def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params, param_figs):
