@@ -155,30 +155,6 @@ class IndependentGaussianTilt:
         return nn_util.vectorize_pytree(tilt_outputs)
 
 
-def rebuild_tilt(tilt, tilt_structure):
-    """
-    """
-
-    def _rebuild_tilt(_param_vals, _dataset, _model):
-        # If there is no tilt, then there is no structure to define.
-        if tilt is None:
-            return lambda *_: 0.0
-
-        # We fork depending on the tilt type.
-        # tilt takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
-        if tilt_structure == 'DIRECT':
-
-            def _tilt(_particles, _t):
-                r_log_val = tilt.apply(_param_vals, _dataset, _model, _particles, _t)
-                return r_log_val
-        else:
-            raise NotImplementedError()
-
-        return _tilt
-
-    return _rebuild_tilt
-
-
 class IGPerStepTilt(IndependentGaussianTilt):
     """
 
@@ -246,3 +222,27 @@ class IGWindowTilt(IndependentGaussianTilt):
         # We will pass in whole data into the tilt and then filter out as required.
         tilt_outputs = (masked_dataset, )
         return nn_util.vectorize_pytree(tilt_outputs)
+
+
+def rebuild_tilt(tilt, tilt_structure):
+    """
+    """
+
+    def _rebuild_tilt(_param_vals, _dataset, _model):
+        # If there is no tilt, then there is no structure to define.
+        if tilt is None:
+            return lambda *_: 0.0
+
+        # We fork depending on the tilt type.
+        # tilt takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
+        if tilt_structure == 'DIRECT':
+
+            def _tilt(_particles, _t):
+                r_log_val = tilt.apply(_param_vals, _dataset, _model, _particles, _t)
+                return r_log_val
+        else:
+            raise NotImplementedError()
+
+        return _tilt
+
+    return _rebuild_tilt

@@ -24,6 +24,20 @@ from ssm.inference.smc import smc
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
 
+# Define the standard plotting colours.
+color_names = [
+    "tab:blue",
+    "tab:orange",
+    "tab:green",
+    "tab:red",
+    "tab:purple",
+    "tab:brown",
+    "tab:pink",
+    "tab:gray",
+    "tab:olive",
+    "tab:cyan"
+] * 10
+
 
 def do_fivo_sweep(_param_vals,
                   _key,
@@ -858,17 +872,20 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
         plt.suptitle('Tag: ' + str(tag) + ', ' + str(num_particles) + ' particles.')
 
         for _i, _p in enumerate(final_val_posterior_bpf_true[_dset_idx].weighted_smoothing_particles):
-            ax[0].plot(_p, linewidth=0.1, c='b', label='Smoothing particles (BPF)' if _i == 0 else None)
+            for __i, __p in enumerate(_p.T):
+                ax[0].plot(__p, linewidth=0.1, c=color_names[__i], label='Smoothing particles (BPF)' if ((__i == 0) and (_i == 0)) else None)
         ax[0].grid(True)
         ax[0].set_title('BPF in true model')
 
         for _i, _p in enumerate(final_val_posterior_fivo_aux[_dset_idx].weighted_smoothing_particles):
-            ax[1].plot(_p, linewidth=0.1, c='b', label='Smoothing particles (FIVO)' if _i == 0 else None)
+            for __i, __p in enumerate(_p.T):
+                ax[1].plot(__p, linewidth=0.1, c=color_names[__i], label='Smoothing particles (FIVO)' if ((__i == 0) and (_i == 0)) else None)
         ax[1].grid(True)
 
-        # Plot the observed data.
-        ax[0].plot(dataset[_dset_idx], linewidth=1.0, c='k', linestyle=':', label='Observed data')
-        ax[1].plot(dataset[_dset_idx], linewidth=1.0, c='k', linestyle=':', label='Observed data')
+        # # Plot the observed data.
+        # for _i, _p in enumerate(dataset[_dset_idx].T):
+        #     ax[0].plot(_p, linewidth=1.0, c=color_names[_i], linestyle=':', label='Observed data' if _i == 0 else None)
+        #     ax[1].plot(_p, linewidth=1.0, c=color_names[_i], linestyle=':', label='Observed data' if _i == 0 else None)
 
         if (get_params_from_opt(opt)[1] is not None) and (get_params_from_opt(opt)[2] is not None):
             ax[1].set_title('SMC-AUX with learned pqr.')
@@ -884,8 +901,9 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
             _tag = 'p'
 
         if true_states is not None:
-            ax[0].plot(true_states[_dset_idx], linewidth=1.0, c='k', linestyle='--', label='True states')
-            ax[1].plot(true_states[_dset_idx], linewidth=1.0, c='k', linestyle='--', label='True states')
+            for _i, _p in enumerate(true_states[_dset_idx].T):
+                ax[0].plot(_p, linewidth=1.0, c=color_names[_i], linestyle='--', label='True states' if _i == 0 else None)
+                ax[1].plot(_p, linewidth=1.0, c=color_names[_i], linestyle='--', label='True states' if _i == 0 else None)
 
         ax[1].legend()
 
