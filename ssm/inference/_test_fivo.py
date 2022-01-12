@@ -67,7 +67,7 @@ def do_config():
     try:
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
-        model = 'SVM'
+        model = 'LDS'
         print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
@@ -87,7 +87,7 @@ def do_config():
     if config['free_parameters'] is None or config['free_parameters'] == '':
         config['free_parameters'] = ()
     else:
-        config['free_parameters'] = tuple(config['free_parameters'].split(','))
+        config['free_parameters'] = tuple(config['free_parameters'].replace(' ', '').split(','))
 
     # Do some type conversions.
     config['use_sgr'] = bool(config['use_sgr'])
@@ -393,7 +393,7 @@ def main():
                 #                                               true_bpf_ess=true_bpf_ess)
 
                 # Do some plotting if we are plotting.
-                if env.config.PLOT and (_step % plot_interval == 0):
+                if env.config.PLOT and ((_step % plot_interval == 0) or (_step == 1)):
 
                     # # Do some plotting.
                     # sweep_fig_filter = _plot_single_sweep(
