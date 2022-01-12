@@ -73,8 +73,8 @@ def gdm_get_config():
     config['model'] = 'GDM'
 
     # Do some checking.
-    assert config['latent-dim'] == 1
-    assert config['emissions-dim'] == 1
+    assert config['latent_dim'] == 1
+    assert config['emissions_dim'] == 1
 
     return config
 
