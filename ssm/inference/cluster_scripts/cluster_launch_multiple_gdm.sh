@@ -1,7 +1,7 @@
 #!/bin/bash
 
 glob_tag='GDM-cr-v5-0-0'
-model='LDS'
+model='GDM'
 temper=0.0
 proposal_type='PERSTEP'
 tilt_type='DIRECT'

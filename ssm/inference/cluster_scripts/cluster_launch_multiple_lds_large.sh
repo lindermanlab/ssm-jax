@@ -2,6 +2,8 @@
 
 glob_tag='LDS-large-v1-0-0'
 model='LDS'
+proposal_type='PERSTEP'
+tilt_type='SINGLEWINDOW'
 latent_dim=5
 emission_dim=10
 
