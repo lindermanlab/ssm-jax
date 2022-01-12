@@ -79,7 +79,7 @@ def gdm_get_config():
     return config
 
 
-def gdm_define_test(key, free_parameters, proposal_structure, tilt_structure):
+def gdm_define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
@@ -87,15 +87,15 @@ def gdm_define_test(key, free_parameters, proposal_structure, tilt_structure):
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, get_model_params, rebuild_model_fn = gdm_define_test_model(subkey, true_model, free_parameters)
+    model, get_model_params, rebuild_model_fn = gdm_define_test_model(subkey, true_model, env.config.free_parameters)
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = gdm_define_proposal(subkey, model, dataset, proposal_structure)
+    proposal, proposal_params, rebuild_prop_fn = gdm_define_proposal(subkey, model, dataset, env.config.proposal_structure)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, dataset, tilt_structure)
+    tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, dataset, env.config.tilt_structure)
 
     # Return this big pile of stuff.
     ret_model = (true_model, true_states, dataset)
@@ -223,7 +223,7 @@ class GdmTilt(tilts.IndependentGaussianTilt):
         return nn_util.vectorize_pytree(tilt_inputs)
 
 
-def gdm_define_tilt(subkey, model, dataset, tilt_structure):
+def gdm_define_tilt(subkey, model, dataset, env):
     """
 
     Args:
@@ -235,7 +235,7 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
 
     """
 
-    if (tilt_structure is None) or (tilt_structure == 'NONE'):
+    if (env.config.tilt_structure is None) or (env.config.tilt_structure == 'NONE'):
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
@@ -265,11 +265,11 @@ def gdm_define_tilt(subkey, model, dataset, tilt_structure):
     tilt_params = tilt.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, tilt_structure)
+    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env.config.tilt_structure)
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def gdm_define_proposal(subkey, model, dataset, proposal_structure):
+def gdm_define_proposal(subkey, model, dataset, env):
     """
 
     :param subkey:
@@ -278,7 +278,7 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     :return:
     """
 
-    if (proposal_structure is None) or (proposal_structure == 'BOOTSTRAP'):
+    if (env.config.proposal_structure is None) or (env.config.proposal_structure == 'BOOTSTRAP'):
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
@@ -341,7 +341,7 @@ def gdm_define_proposal(subkey, model, dataset, proposal_structure):
     proposal_params = proposal.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_prop_fn = proposals.rebuild_proposal(proposal, proposal_structure)
+    rebuild_prop_fn = proposals.rebuild_proposal(proposal, env.config.proposal_structure)
     return proposal, proposal_params, rebuild_prop_fn
 
 
@@ -384,16 +384,16 @@ def gdm_get_true_target_marginal(model, data):
     return dist
 
 
-def gdm_define_true_model_and_data(key):
+def gdm_define_true_model_and_data(key, env):
     """
 
     :param key:
     :return:
     """
-    latent_dim = 1
-    emissions_dim = 1
-    num_trials = 100000
-    T = 9  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+    latent_dim = env.config.latent_dim
+    emissions_dim = env.config.emissions_dim
+    num_trials = env.config.num_trials
+    T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
     # Create a more reasonable emission scale.
     dynamics_scale_tril = 1.0 * np.eye(latent_dim)
@@ -401,8 +401,8 @@ def gdm_define_true_model_and_data(key):
     true_emission_weights = np.eye(emissions_dim)
 
     # NOTE - can make observations tighter here.
-    emission_scale_tril = 0.1 * np.eye(emissions_dim)
-    # emission_scale_tril = 1.0 * np.eye(emissions_dim)
+    # emission_scale_tril = 0.1 * np.eye(emissions_dim)
+    emission_scale_tril = 1.0 * np.eye(emissions_dim)
 
     # Create the true model.
     key, subkey = jr.split(key)
@@ -426,8 +426,7 @@ def gdm_define_true_model_and_data(key):
     return true_model, true_states, dataset
 
 
-def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
-                param_figs):
+def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params, param_figs):
 
     fsize = (12, 8)
     idx_to_str = lambda _idx: ['Model (p): ', 'Proposal (q): ', 'Tilt (r): '][_idx]
