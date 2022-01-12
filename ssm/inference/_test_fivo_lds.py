@@ -41,20 +41,20 @@ def lds_get_config():
     parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--proposal-type', default='PERSTEP', type=str)  # {'PERSTEP', }.
 
-    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='PERSTEPWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEPWINDOW', 'PERSTEP'}.
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEPWINDOW', 'PERSTEP'}.
 
     parser.add_argument('--num-particles', default=4, type=int)
-    parser.add_argument('--datasets-per-batch', default=32, type=int)
+    parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--p-lr', default=0.001, type=float)
     parser.add_argument('--q-lr', default=0.001, type=float)
-    parser.add_argument('--r-lr', default=0.0001, type=float)
+    parser.add_argument('--r-lr', default=0.001, type=float)
 
     parser.add_argument('--T', default=19, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
-    parser.add_argument('--latent-dim', default=5, type=int)
-    parser.add_argument('--emissions-dim', default=5, type=int)
+    parser.add_argument('--latent-dim', default=1, type=int)
+    parser.add_argument('--emissions-dim', default=1, type=int)
     parser.add_argument('--num-trials', default=100000, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
@@ -292,10 +292,10 @@ def lds_define_true_model_and_data(key, env):
     """
 
     # dynamics_scale_tril = None
+    # emission_scale_tril = None
+    # initial_state_scale_tril = None
     true_dynamics_weights = None
     true_emission_weights = None
-    emission_scale_tril = None
-    initial_state_scale_tril = None
 
     latent_dim = env.config.latent_dim
     emissions_dim = env.config.emissions_dim
@@ -306,17 +306,17 @@ def lds_define_true_model_and_data(key, env):
     # This needs to be done for all models because it is defined poorly inside the model.
     dynamics_scale_tril = 1.0 * np.eye(latent_dim)
 
+    # NOTE - can make observations tighter here.
+    emission_scale_tril = 1.0 * np.eye(emissions_dim)
+
+    # NOTE - change the initial scale here.
+    initial_state_scale_tril = 1.0 * np.eye(latent_dim)
+
     # If we are in the 1-D case, then we need to define a boring LDS.
     if latent_dim == 1:
         # Set up the transmission and emission weights to be unity.
         true_dynamics_weights = np.eye(latent_dim)
         true_emission_weights = np.eye(emissions_dim, latent_dim)
-
-        # NOTE - can make observations tighter here.
-        emission_scale_tril = 1.0 * np.eye(emissions_dim)
-
-        # NOTE - change the initial scale here.
-        initial_state_scale_tril = 1.0 * np.eye(latent_dim)
 
     # Create the true model.
     key, subkey = jr.split(key)
