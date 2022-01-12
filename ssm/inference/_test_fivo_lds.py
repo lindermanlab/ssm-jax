@@ -34,23 +34,28 @@ def lds_get_config():
 
     parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
 
-    parser.add_argument('--temper', default=4.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
-    parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # 'dynamics_bias'
+    parser.add_argument('--free-parameters', default='dynamics_bias,dynamics_weights', type=str)  # CSV.  # 'dynamics_bias'
 
     parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--n-props', default=1, type=int)  #
+    parser.add_argument('--proposal-type', default='PERSTEP', type=str)  # {'PERSTEP', }.
 
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--n-tilts', default=1, type=int)  #
+    parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEP'}.
 
-    parser.add_argument('--num-particles', default=10, type=int)
-    parser.add_argument('--datasets-per-batch', default=16, type=int)
+    parser.add_argument('--num-particles', default=4, type=int)
+    parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.001, type=float)
-    parser.add_argument('--q-lr', default=0.001, type=float)
+    parser.add_argument('--p-lr', default=0.01, type=float)
+    parser.add_argument('--q-lr', default=0.01, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
+
+    parser.add_argument('--T', default=9, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+    parser.add_argument('--latent-dim', default=1, type=int)
+    parser.add_argument('--emissions-dim', default=1, type=int)
+    parser.add_argument('--num-trials', default=100000, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=100, type=int)
@@ -69,7 +74,7 @@ def lds_get_config():
 
     # Force the tilt temperature to zero if we are not using tilts.  this is just bookkeeping, really.
     if config['tilt_structure'] == 'NONE' or config['tilt_structure'] is None:
-        config['temper'] = 1.0
+        config['temper'] = 0.0
 
     return config
 
@@ -87,7 +92,7 @@ def lds_define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset = lds_define_true_model_and_data(subkey)
+    true_model, true_states, dataset = lds_define_true_model_and_data(subkey, env)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
@@ -109,38 +114,15 @@ def lds_define_test(key, env):
     return ret_model, ret_test, ret_prop, ret_tilt
 
 
-class LdsTilt(tilts.IndependentGaussianTilt):
+class LdsPerStepTilt(tilts.IndependentGaussianTilt):
     """
 
     """
-
-    window_length = 2
 
     def apply(self, params, dataset, model, particles, t, *inputs):
         """
 
-        Args:
-            params (FrozenDict):    FrozenDict of the parameters of the tilt.
-
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            inputs (tuple):         Tuple of additional inputs to the tilt in SMC.
-
-            data:
-
-        Returns:
-            (Float): Tilt log value.
-
         """
-
-        # Define this for when using the windowed tilt.
-        score_criteria = 'window'  # {'all', 'window'}
 
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
@@ -167,52 +149,16 @@ class LdsTilt(tilts.IndependentGaussianTilt):
             def _score_all_future():
                 return _idx > t  # Pretty sure this should be a <= (since we are scoring _future_ observations).
 
-            def _score_window():
-                return np.logical_and(_score_all_future(), (_idx <= t + LdsTilt.window_length))
-
-            # Decide whether we will score.
-            if score_criteria == 'window':
-                _score = _score_window()
-            elif score_criteria == 'all':
-                _score = _score_all_future()
-            else:
-                raise NotImplementedError()
-
-            return jax.lax.cond(_score,
+            return jax.lax.cond(_score_all_future(),
                                 lambda *args: _dist.log_prob(np.asarray([_out])),
                                 lambda *args: np.zeros(means.shape[1]),
                                 None)
 
         log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
-
-        return log_r_val  # TODO - To disable tilt:  `* 0.0`
-
-    # We need to define the method for generating the inputs.
-    @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
-        """
-        Define the output generator for the lds example.
-        Args:
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            *inputs_:
-
-        Returns:
-
-        """
-
-        # We will pass in whole data into the tilt and then filter out as required.
-        tilt_outputs = (dataset, )
-        return nn_util.vectorize_pytree(tilt_outputs)
+        return log_r_val
 
 
-class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
+class LdsWindowTilt(tilts.IndependentGaussianTilt):
 
     window_length = 2
 
@@ -220,29 +166,16 @@ class LdsSingleWindowTilt(tilts.IndependentGaussianTilt):
     @staticmethod
     def _tilt_output_generator(dataset, model, particles, t, *_inputs):
         """
-        Define the output generator for the lds example.
-        Args:
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            *inputs_:
-
-        Returns:
 
         """
 
-        masked_idx = np.arange(LdsSingleWindowTilt.window_length)
+        masked_idx = np.arange(LdsWindowTilt.window_length)
         to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
 
         # Zero out the elements outside of the valid range.
         clipped_dataset = jax.lax.dynamic_slice(dataset,
                                                 (t+1, *tuple(0 * _d for _d in dataset.shape[1:])),
-                                                (LdsSingleWindowTilt.window_length, *dataset.shape[1:]))
+                                                (LdsWindowTilt.window_length, *dataset.shape[1:]))
         masked_dataset = clipped_dataset * np.expand_dims(to_insert.astype(np.int32), 1)
 
         # We will pass in whole data into the tilt and then filter out as required.
@@ -266,19 +199,19 @@ def lds_define_tilt(subkey, model, dataset, env):
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
-    # # Check whether we have a valid number of tilts.
-
-    # # Standard tilt.
-    # tilt_fn = LdsTilt
-    # n_tilts = len(dataset[0]) - 1
-    # tilt_inputs = ()
-
-    # Single window tilt.
-    tilt_fn = LdsSingleWindowTilt
-    if env.config.n_tilts == 1:
+    # configure the tilt.
+    if env.config.tilt_type == 'PERSTEP':
+        tilt_fn = LdsPerStepTilt
+        n_tilts = len(dataset[0]) - 1
+    elif env.config.tilt_type == 'PERSTEPWINDOW':
+        tilt_fn = LdsWindowTilt
+        n_tilts = len(dataset[0]) - 1
+    elif env.config.tilt_type == 'SINGLEWINDOW':
+        tilt_fn = LdsWindowTilt
         n_tilts = 1
     else:
-        n_tilts = len(dataset[0]) - 1
+        raise NotImplementedError()
+
     tilt_inputs = ()
 
     # Tilt functions take in (dataset, model, particles, t-1).
@@ -304,7 +237,7 @@ def lds_define_tilt(subkey, model, dataset, env):
                    tilt_input=stock_tilt_input,
                    trunk_fn=trunk_fn,
                    head_mean_fn=head_mean_fn,
-                   head_log_var_fn=head_log_var_fn)
+                   head_log_var_fn=head_log_var_fn,)
 
     # Initialize the network.
     tilt_params = tilt.init(subkey)
@@ -347,10 +280,7 @@ def lds_define_proposal(subkey, model, dataset, env):
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
     # Check whether we have a valid number of proposals.
-    if env.config.n_props == 1:
-        n_props = 1
-    else:
-        n_props = len(dataset[0])
+    n_props = len(dataset[0])
 
     # Define the required method for building the inputs.
     def lds_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):
@@ -417,7 +347,7 @@ def lds_get_true_target_marginal(model, data):
     return pred_em_marginal
 
 
-def lds_define_true_model_and_data(key):
+def lds_define_true_model_and_data(key, env):
     """
 
     Args:
@@ -426,23 +356,32 @@ def lds_define_true_model_and_data(key):
     Returns:
 
     """
-    latent_dim = 1
-    emissions_dim = 1
-    num_trials = 100000
-    T = 9  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
-    # Set up the transmission and emission weights to be unity.
-    true_dynamics_weights = np.eye(latent_dim)
-    true_emission_weights = np.eye(emissions_dim, latent_dim)
+    dynamics_scale_tril = None
+    true_dynamics_weights = None
+    true_emission_weights = None
+    emission_scale_tril = None
+    initial_state_scale_tril = None
 
-    # NOTE - Set the dynamics scale here.
-    dynamics_scale_tril = 1.0 * np.eye(latent_dim)
+    latent_dim = env.config.latent_dim
+    emissions_dim = env.config.emissions_dim
+    num_trials = env.config.num_trials
+    T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
-    # NOTE - can make observations tighter here.
-    emission_scale_tril = 1.0 * np.eye(emissions_dim)
+    # If we are in the 1-D case, then we need to define a boring LDS.
+    if latent_dim == 1:
+        # Set up the transmission and emission weights to be unity.
+        true_dynamics_weights = np.eye(latent_dim)
+        true_emission_weights = np.eye(emissions_dim, latent_dim)
 
-    # NOTE - change the initial scale here.
-    initial_state_scale_tril = 1.0 * np.eye(latent_dim)
+        # NOTE - Set the dynamics scale here.
+        dynamics_scale_tril = 1.0 * np.eye(latent_dim)
+
+        # NOTE - can make observations tighter here.
+        emission_scale_tril = 1.0 * np.eye(emissions_dim)
+
+        # NOTE - change the initial scale here.
+        initial_state_scale_tril = 1.0 * np.eye(latent_dim)
 
     # Create the true model.
     key, subkey = jr.split(key)
@@ -500,7 +439,7 @@ def lds_define_test_model(key, true_model, free_parameters):
         for _k in free_parameters:
             _base = getattr(default_params, _k)
             key, subkey = jr.split(key)
-            new_val = {_k: _base + (10.0 * jr.normal(key=subkey, shape=_base.shape))}
+            new_val = {_k: _base + (2.0 * jr.normal(key=subkey, shape=_base.shape))}
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
         # Build out a new model using these values.
@@ -584,20 +523,22 @@ def lds_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
     Returns:
 
     """
-    _str = 'Step: {: >5d},  True Neg-LML: {: >8.3f},  Pred Neg-LML: {: >8.3f},  Pred FIVO bound {: >8.3f}'.\
+    _str = 'Step: {:> 5d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred FIVO bound {:> 8.3f}'.\
         format(_step, true_lml, pred_lml, pred_fivo_bound)
     if em_log_marginal_likelihood is not None:
-        _str += '  EM Neg-LML: {: >8.3f}'.format(em_log_marginal_likelihood)
+        _str += '  EM Neg-LML: {:> 8.3f}'.format(em_log_marginal_likelihood)
 
     print(_str)
     if opt[0] is not None:
         if len(opt[0].target) > 0:
             # print()
             print('\tModel')
-            true_bias = true_model.dynamics_bias.flatten()
-            pred_bias = opt[0].target[0].flatten()
-            print('\t\tTrue: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in true_bias]))
-            print('\t\tPred: dynamics bias:     ', '  '.join(['{: >9.3f}'.format(_s) for _s in pred_bias]))
+
+            true_str = [_k + ': ' + ' '.join(['{:> 5.3f}'.format(_f) for _f in getattr(true_model._parameters, _k).flatten()]) for _k in opt[0].target._fields]
+            pred_str = [_k + ': ' + ' '.join(['{:> 5.3f}'.format(_f) for _f in getattr(opt[0].target, _k).flatten()]) for _k in opt[0].target._fields]
+
+            print('\t\tTrue: ' + str(true_str))
+            print('\t\tPred: ' + str(pred_str))
 
     # NOTE - the proposal and tilt are more complex here, so don't show them.
 

@@ -28,40 +28,47 @@ SVMPosterior = MultivariateNormalBlockTridiag
 @register_pytree_node_class
 class UnivariateSVM(SSM):
     """
-    Follows the definition and nomenclature in Scibor & Wood 2021.
+    Follows the definition and nomenclature in Naesseth et al 2017.
     """
 
     def __init__(self,
-                 log_sigma: float = np.asarray([[np.log(1.0)]]),
-                 invsig_phi: float = np.asarray([utils.inverse_sigmoid(0.9)]),
-                 mu: float = np.asarray([2.0]),
+                 num_latent_dims: int = 1,
+                 num_emission_dims: int = 1,
 
-                 init_mean: float = np.asarray([0.0]),
-                 emission_log_scale_tril_multiplier: float = np.asarray([np.log(1.0)]),
-                 seed: jr.PRNGKey=None):
+                 mu: float = np.asarray([2.0]),
+                 invsig_phi: float = np.asarray([utils.inverse_sigmoid(0.9)]),
+                 log_Q: float = np.asarray([[np.log(1.0)]]),
+                 log_beta: float = np.asarray([np.log(1.0)]),
+
+                 seed: jr.PRNGKey = None):
         """
 
         Args:
-            log_sigma:
-            invsig_phi:
+            num_latent_dims:
+            num_emission_dims:
             mu:
-            init_mean:
-            emission_log_scale_tril_multiplier:
+            invsig_phi:
+            log_Q:
+            log_beta:
+            seed:
         """
 
         # We are only considering the univariate case.
-        self.latent_dim = 1
+        self.latent_dim = num_latent_dims
+        self.emission_dims = num_emission_dims
+
+        assert self.latent_dim == 1, "Only defined for univariate case."
+        assert self.emission_dims == 1, "Only defined for univariate case."
 
         # Inscribe the parameters.
-        self.log_sigma = log_sigma
+        self.log_Q = log_Q
         self.invsig_phi = invsig_phi
         self.mu = mu
-        self.init_mean = init_mean
-        self.emission_log_scale_tril_multiplier = emission_log_scale_tril_multiplier
+        self.log_beta = log_beta
 
         # The initial condition is a Gaussian with a specific variance.
-        initial_scale_tril = np.sqrt(np.square(np.exp(log_sigma))) / (1 - np.square(utils.sigmoid(invsig_phi)))
-        self._initial_condition = StandardInitialCondition(initial_mean=init_mean,
+        initial_scale_tril = np.sqrt(np.square(np.exp(log_Q))) / (1 - np.square(utils.sigmoid(invsig_phi)))
+        self._initial_condition = StandardInitialCondition(initial_mean=self.mu,
                                                            initial_scale_tril=initial_scale_tril, )
 
         # Initialize the SVM transition model.
@@ -70,10 +77,10 @@ class UnivariateSVM(SSM):
         affine_weight = utils.sigmoid(self.invsig_phi) * np.eye(self.latent_dim)
         self._dynamics = StationaryDynamics(weights=affine_weight,
                                             bias=affine_bias,
-                                            scale_tril=np.sqrt(np.exp(self.log_sigma)))
+                                            scale_tril=np.sqrt(np.exp(self.log_Q)))
 
         # Initialize the SVM emission distribution.
-        self._emissions = SVMEmission(emission_log_scale_tril_multiplier)
+        self._emissions = SVMEmission(log_beta)
 
         # Grab the parameter values.  This allows us to explicitly re-build the object.
         self._parameters = make_named_tuple(dict_in=locals(),
@@ -81,17 +88,16 @@ class UnivariateSVM(SSM):
                                             name=str(self.__class__.__name__) + 'Tuple')
 
     def tree_flatten(self):
-        children = (self.log_sigma,
+        children = (self.mu,
                     self.invsig_phi,
-                    self.mu,
-                    self.init_mean,
-                    self.emission_log_scale_tril_multiplier)
-        aux_data = None
+                    self.log_Q,
+                    self.log_beta)
+        aux_data = (self.latent_dim, self.emission_dims)
         return children, aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        return cls(*children)
+        return cls(*aux_data, *children)
 
     @property
     def emissions_shape(self):
@@ -240,17 +246,17 @@ class SVMEmission(Emissions):
     """
 
     def __init__(self,
-                 emission_log_scale_tril_multiplier: float = np.log(1.0)):
+                 log_beta: float = np.log(1.0)):
         r"""
 
         Args:
-            emission_log_scale_tril_multiplier (float):
+            log_beta (float):
                 Multiplier for the scale (changes the variance of the `\epsilon` noise R.V.).
         """
-        self.emission_log_scale_tril_multiplier = emission_log_scale_tril_multiplier
+        self.log_beta = log_beta
 
     def tree_flatten(self):
-        children = (self.emission_log_scale_tril_multiplier, )
+        children = (self.log_beta, )
         aux_data = None
         return children, aux_data
 
@@ -273,8 +279,8 @@ class SVMEmission(Emissions):
         assert covariates is None, "Covariates are not provisioned under the original SVM."
         assert metadata is None, "Metadata is not provisioned under the original SVM."
 
-        mean = np.zeros_like(self.emission_log_scale_tril_multiplier)  # Emission distribution is zero mean.
-        scale = np.exp(self.emission_log_scale_tril_multiplier) * np.sqrt(np.exp(state / 2.0))  # Scale is defined conditioned on state.
+        mean = np.zeros_like(self.log_beta)  # Emission distribution is zero mean.
+        scale = np.exp(self.log_beta) * np.sqrt(np.exp(state / 2.0))  # Scale is defined conditioned on state.
         dist = tfd.MultivariateNormalDiag(mean, scale)
         return dist
 
@@ -329,7 +335,7 @@ class SVMEmission(Emissions):
         optimized_distribution = unravel(optimize_results.x)
 
         # Inscribe the results.
-        self.emission_log_scale_tril_multiplier = optimized_distribution.emission_log_scale_tril_multiplier
+        self.log_beta = optimized_distribution.log_beta
 
 
 # p = 0
@@ -351,7 +357,7 @@ class SVMEmission(Emissions):
 #
 # sig_init = np.asarray([[np.log(0.1)]])
 # emission_mult = np.asarray([np.log(0.1)])
-# test_svm = UnivariateSVM(log_sigma=sig_init, emission_log_scale_tril_multiplier=emission_mult)
+# test_svm = UnivariateSVM(log_Q=sig_init, log_beta=emission_mult)
 #
 # print(test_svm.tree_flatten())
 #
@@ -374,17 +380,17 @@ class SVMEmission(Emissions):
 #     Basic dynamics model for LDS.
 #     """
 #     def __init__(self,
-#                  log_sigma: float,
+#                  log_Q: float,
 #                  invsig_phi: float,
 #                  mu: float, ) -> None:
 #         super().__init__()
 #
-#         self.log_sigma = log_sigma
+#         self.log_Q = log_Q
 #         self.invsig_phi = invsig_phi
 #         self.mu = mu
 #
 #     def tree_flatten(self):
-#         children = (self.log_sigma, self.invsig_phi, self.mu)
+#         children = (self.log_Q, self.invsig_phi, self.mu)
 #         aux_data = None
 #         return children, aux_data
 #
@@ -394,7 +400,7 @@ class SVMEmission(Emissions):
 #
 #     @property
 #     def scale(self):
-#         return np.exp(self.log_sigma)
+#         return np.exp(self.log_Q)
 #
 #     def distribution(self, state, covariates=None, metadata=None):
 #         r"""
@@ -418,7 +424,7 @@ class SVMEmission(Emissions):
 #         mean = decay + autoregressive
 #
 #         # The scale of the process is constant.
-#         scale = np.exp(self.log_sigma)
+#         scale = np.exp(self.log_Q)
 #
 #         # Build the distribution.
 #         dist = tfd.Normal(mean, scale)

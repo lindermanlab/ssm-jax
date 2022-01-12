@@ -857,18 +857,18 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
         fig, ax = plt.subplots(2, 1, sharex=True, sharey=True, squeeze=True, figsize=(8, 8), tight_layout=True)
         plt.suptitle('Tag: ' + str(tag) + ', ' + str(num_particles) + ' particles.')
 
-        for _p in final_val_posterior_bpf_true[_dset_idx].weighted_smoothing_particles:
-            ax[0].plot(_p, linewidth=0.1, c='b')
+        for _i, _p in enumerate(final_val_posterior_bpf_true[_dset_idx].weighted_smoothing_particles):
+            ax[0].plot(_p, linewidth=0.1, c='b', label='Smoothing particles (BPF)' if _i == 0 else None)
         ax[0].grid(True)
         ax[0].set_title('BPF in true model')
 
-        for _p in final_val_posterior_fivo_aux[_dset_idx].weighted_smoothing_particles:
-            ax[1].plot(_p, linewidth=0.1, c='b')
+        for _i, _p in enumerate(final_val_posterior_fivo_aux[_dset_idx].weighted_smoothing_particles):
+            ax[1].plot(_p, linewidth=0.1, c='b', label='Smoothing particles (FIVO)' if _i == 0 else None)
         ax[1].grid(True)
 
         # Plot the observed data.
-        ax[0].plot(dataset[_dset_idx], linewidth=1.0, c='k', linestyle='--')
-        ax[1].plot(dataset[_dset_idx], linewidth=1.0, c='k', linestyle='--')
+        ax[0].plot(dataset[_dset_idx], linewidth=1.0, c='k', linestyle=':', label='Observed data')
+        ax[1].plot(dataset[_dset_idx], linewidth=1.0, c='k', linestyle=':', label='Observed data')
 
         if (get_params_from_opt(opt)[1] is not None) and (get_params_from_opt(opt)[2] is not None):
             ax[1].set_title('SMC-AUX with learned pqr.')
@@ -884,8 +884,10 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
             _tag = 'p'
 
         if true_states is not None:
-            ax[0].plot(true_states[_dset_idx], linewidth=1.0, c='k', linestyle=':')
-            ax[1].plot(true_states[_dset_idx], linewidth=1.0, c='k', linestyle=':')
+            ax[0].plot(true_states[_dset_idx], linewidth=1.0, c='k', linestyle='--', label='True states')
+            ax[1].plot(true_states[_dset_idx], linewidth=1.0, c='k', linestyle='--', label='True states')
+
+        ax[1].legend()
 
         plt.pause(0.01)
         plt.savefig('./figs/tmp_sweep_{}_{}.pdf'.format(_tag, _dset_idx))
