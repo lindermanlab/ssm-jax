@@ -34,9 +34,15 @@ def gdm_get_config():
 
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
+    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+
     parser.add_argument('--free-parameters', default='dynamics_bias', type=str)              # CSV.  # 'dynamics_bias'
+
     parser.add_argument('--proposal-structure', default='DIRECT', type=str)       # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-type', default='PERSTEP', type=str)  # {'PERSTEP', }.
+
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEPWINDOW', 'PERSTEP'}.
 
     parser.add_argument('--num-particles', default=5, type=int)
     parser.add_argument('--datasets-per-batch', default=64, type=int)

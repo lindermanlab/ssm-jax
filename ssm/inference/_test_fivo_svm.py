@@ -67,8 +67,6 @@ def svm_get_config():
 
     parser.add_argument('--PLOT', default=1, type=int)
 
-    parser.add_argument('--PLOT', default=1, type=int)
-
     config = parser.parse_args().__dict__
 
     # Make sure this one is formatted correctly.
