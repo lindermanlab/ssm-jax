@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=lds
+#SBATCH --job-name=default
 #SBATCH --nodes=1 --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=04:59:59
