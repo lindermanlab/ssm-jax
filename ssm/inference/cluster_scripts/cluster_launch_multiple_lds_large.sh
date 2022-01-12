@@ -5,7 +5,7 @@ model='LDS'
 proposal_type='PERSTEP'
 tilt_type='SINGLEWINDOW'
 latent_dim=5
-emission_dim=10
+emissions_dim=10
 
 # # BPF-SGR
 exp_tag='bpf-sgr'
