@@ -44,7 +44,7 @@ def svm_get_config():
     parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEP'}.
 
-    parser.add_argument('--num-particles', default=8, type=int)
+    parser.add_argument('--num-particles', default=64, type=int)
     parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
