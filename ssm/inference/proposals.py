@@ -56,7 +56,7 @@ class IndependentGaussianProposal:
         # Re-build the full input that will be provided.
         q_state = None
         full_input = (*stock_proposal_input_without_q_state, q_state)
-        self._dummy_processed_input = self._proposal_input_generator(*full_input)
+        self._dummy_processed_input = self._proposal_input_generator(*full_input)[0]
         output_dim = nn_util.vectorize_pytree(dummy_output).shape[0]
 
         # Build out the function approximator.

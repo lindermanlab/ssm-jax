@@ -127,7 +127,9 @@ class IndependentGaussianTilt:
         # Just the particles are passed in.
         tilt_inputs = (particles, )
 
-        is_batched = (model.latent_dim != particles.shape[0])
+        model_latent_shape = (model.latent_dim, )
+
+        is_batched = (model_latent_shape != particles.shape)  # TODO - note - removed the [0] from _particles.shape.
         if not is_batched:
             return nn_util.vectorize_pytree(tilt_inputs)
         else:

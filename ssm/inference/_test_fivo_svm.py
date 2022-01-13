@@ -343,7 +343,7 @@ def svm_define_proposal(subkey, model, dataset, env):
     # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
     dummy_p_dist = model.dynamics_distribution(dummy_particles)
-    stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles[0], 0, dummy_p_dist)
+    stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles, 0, dummy_p_dist)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     trunk_fn = None
@@ -374,7 +374,9 @@ def svm_define_proposal(subkey, model, dataset, env):
         # This proposal gets the entire dataset and the current particles.
         _proposal_inputs = (_dataset, _particles)
 
-        _is_batched = (_model.latent_dim != _particles.shape[0])
+        _model_latent_shape = (_model.latent_dim, )
+
+        _is_batched = (_model_latent_shape != _particles.shape)  # TODO - note - removed the [0] from _particles.shape.
         if not _is_batched:
             return nn_util.vectorize_pytree(_proposal_inputs)
         else:

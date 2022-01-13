@@ -53,8 +53,8 @@ def lds_get_config():
     parser.add_argument('--r-lr', default=0.001, type=float)
 
     parser.add_argument('--T', default=19, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
-    parser.add_argument('--latent-dim', default=1, type=int)
-    parser.add_argument('--emissions-dim', default=1, type=int)
+    parser.add_argument('--latent-dim', default=10, type=int)
+    parser.add_argument('--emissions-dim', default=5, type=int)
     parser.add_argument('--num-trials', default=100000, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
@@ -202,7 +202,7 @@ def lds_define_proposal(subkey, model, dataset, env):
     # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
     dummy_p_dist = model.dynamics_distribution(dummy_particles)
-    stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles[0], 0, dummy_p_dist)
+    stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles, 0, dummy_p_dist)  # TODO - note - removed [0] from dummy_particles.
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     trunk_fn = None
@@ -233,7 +233,9 @@ def lds_define_proposal(subkey, model, dataset, env):
         # This proposal gets the entire dataset and the current particles.
         _proposal_inputs = (_dataset, _particles)
 
-        _is_batched = (_model.latent_dim != _particles.shape[0])
+        _model_latent_shape = (_model.latent_dim, )
+
+        _is_batched = (_model_latent_shape != _particles.shape)  # TODO - note - removed the [0] from _particles.shape.
         if not _is_batched:
             return nn_util.vectorize_pytree(_proposal_inputs)
         else:

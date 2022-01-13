@@ -135,7 +135,10 @@ class IndependentGaussianGenerator(nn.Module):
         # If the shape is equal to the input dimensions then there is no batch dimension
         # and we can call the forward function as is.  Otherwise we need to do a vmap
         # over the batch dimension.
-        is_batched = (flatten_util.ravel_pytree(inputs[0])[0].shape[0] == self.input_flat_dim)
+        if len(inputs.shape) == 0:
+            is_batched = False
+        else:
+            is_batched = (flatten_util.ravel_pytree(inputs)[0].shape[0] != self.input_flat_dim)
 
         if is_batched:
             return vmap(self._call_single)(inputs)

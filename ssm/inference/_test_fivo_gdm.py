@@ -222,10 +222,14 @@ def gdm_define_tilt(subkey, model, dataset, env):
 def gdm_define_proposal(subkey, model, dataset, env):
     """
 
-    :param subkey:
-    :param model:
-    :param dataset:
-    :return:
+    Args:
+        subkey:
+        model:
+        dataset:
+        env:
+
+    Returns:
+
     """
 
     if (env.config.proposal_structure is None) or (env.config.proposal_structure == 'BOOTSTRAP'):
@@ -236,7 +240,7 @@ def gdm_define_proposal(subkey, model, dataset, env):
     # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
     dummy_p_dist = model.dynamics_distribution(dummy_particles)
-    stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles[0], 0, dummy_p_dist)
+    stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles, 0, dummy_p_dist)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # Define a more conservative initialization.
@@ -253,7 +257,7 @@ def gdm_define_proposal(subkey, model, dataset, env):
     n_props = len(dataset[0])
 
     # Define the required method for building the inputs.
-    def gdm_proposal_input_generator(*_inputs):
+    def gdm_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
@@ -267,17 +271,17 @@ def gdm_define_proposal(subkey, model, dataset, env):
 
         """
 
-        dataset, _, particles, t, _, _ = _inputs  # NOTE - this part of q can't actually use model or p_dist.
+        _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset[0], index=len(dataset)-1, axis=0, keepdims=False),
+                            _particles)
 
-        proposal_inputs = (jax.lax.dynamic_index_in_dim(_inputs[0], index=len(dataset)-1, axis=0, keepdims=False),
-                           _inputs[2])
+        _model_latent_shape = (_model.latent_dim, )
 
-        is_batched = (_inputs[1].latent_dim != particles.shape[0])
-        if not is_batched:
-            return nn_util.vectorize_pytree(proposal_inputs)
+        _is_batched = (_model_latent_shape != _particles.shape)  # TODO - note - removed the [0] from _particles.shape.
+        if not _is_batched:
+            return nn_util.vectorize_pytree(_proposal_inputs)
         else:
             vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return vmapped(*proposal_inputs)
+            return vmapped(*_proposal_inputs)
 
     # Define the proposal itself.
     proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
