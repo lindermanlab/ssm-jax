@@ -38,13 +38,13 @@ def svm_get_config():
 
     parser.add_argument('--free-parameters', default='mu', type=str)  # CSV.  # {'log_Q', 'mu'}.
 
-    parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-structure', default='BOOTSTRAP', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--proposal-type', default='PERSTEP', type=str)  # {'PERSTEP', }.
 
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEP'}.
 
-    parser.add_argument('--num-particles', default=4, type=int)
+    parser.add_argument('--num-particles', default=8, type=int)
     parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
@@ -52,7 +52,7 @@ def svm_get_config():
     parser.add_argument('--q-lr', default=0.01, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
 
-    parser.add_argument('--T', default=49, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+    parser.add_argument('--T', default=19, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=1, type=int)
     parser.add_argument('--emissions-dim', default=1, type=int)
     parser.add_argument('--num-trials', default=100000, type=int)
@@ -423,10 +423,11 @@ def svm_define_true_model_and_data(key, env):
     Returns:
 
     """
-    latent_dim = 1
-    emissions_dim = 1
-    num_trials = 100000
-    T = 49  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+
+    latent_dim = env.config.latent_dim
+    emissions_dim = env.config.emissions_dim
+    num_trials = env.config.num_trials
+    T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
     # Create the true model.
     key, subkey = jr.split(key)

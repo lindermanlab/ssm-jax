@@ -35,7 +35,7 @@ class UnivariateSVM(SSM):
                  num_latent_dims: int = 1,
                  num_emission_dims: int = 1,
 
-                 mu: float = np.asarray([2.0]),
+                 mu: float = np.asarray([0.0]),
                  invsig_phi: float = np.asarray([utils.inverse_sigmoid(0.9)]),
                  log_Q: float = np.asarray([[np.log(1.0)]]),
                  log_beta: float = np.asarray([np.log(1.0)]),
@@ -67,9 +67,9 @@ class UnivariateSVM(SSM):
         self.log_beta = log_beta
 
         # The initial condition is a Gaussian with a specific variance.
-        initial_scale_tril = np.sqrt(np.square(np.exp(log_Q))) / (1 - np.square(utils.sigmoid(invsig_phi)))
+        # initial_scale_tril = np.sqrt(np.square(np.exp(log_Q))) / (1 - np.square(utils.sigmoid(invsig_phi)))
         self._initial_condition = StandardInitialCondition(initial_mean=self.mu,
-                                                           initial_scale_tril=initial_scale_tril, )
+                                                           initial_scale_tril=np.sqrt(np.exp(self.log_Q)), )
 
         # Initialize the SVM transition model.
         # This is a normal distribution with the mean equal to an affine function of current state.

@@ -67,7 +67,7 @@ def do_config():
     try:
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
-        model = 'LDS'
+        model = 'SVM'
         print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
