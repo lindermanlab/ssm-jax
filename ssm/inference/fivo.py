@@ -383,25 +383,25 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
     init_smc_posterior = None
     initial_lml = 0.0
 
-    # Test against EM (which for the LDS is exact).
-    if hasattr(true_model, 'e_step'):
-        em_posterior = jax.vmap(true_model.e_step)(dataset)
-        em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
-        em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
-    else:
-        em_posterior = None
-        em_log_marginal_likelihood = np.nan
-
-    # Test BPF in the true model..
-    key, subkey = jr.split(key)
-    true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles)
-    true_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
-
-    if init_model is not None:
-        # Test BPF in the initial model..
-        key, subkey = jr.split(key)
-        init_bpf_posterior = _smc_jit(subkey, init_model, dataset, num_particles=num_particles)
-        initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
+    # # Test against EM (which for the LDS is exact).
+    # if hasattr(true_model, 'e_step'):
+    #     em_posterior = jax.vmap(true_model.e_step)(dataset)
+    #     em_log_marginal_likelihood = true_model.marginal_likelihood(dataset, posterior=em_posterior)
+    #     em_log_marginal_likelihood = - utils.lexp(em_log_marginal_likelihood)
+    # else:
+    #     em_posterior = None
+    #     em_log_marginal_likelihood = np.nan
+    #
+    # # Test BPF in the true model..
+    # key, subkey = jr.split(key)
+    # true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles)
+    # true_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
+    #
+    # if init_model is not None:
+    #     # Test BPF in the initial model..
+    #     key, subkey = jr.split(key)
+    #     init_bpf_posterior = _smc_jit(subkey, init_model, dataset, num_particles=num_particles)
+    #     initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
 
     # Test SMC in the initial model.
     key, subkey = jr.split(key)

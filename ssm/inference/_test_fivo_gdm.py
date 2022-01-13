@@ -42,7 +42,7 @@ def gdm_get_config():
     parser.add_argument('--proposal-type', default='PERSTEP', type=str)  # {'PERSTEP', }.
 
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEPWINDOW', 'PERSTEP'}.
+    parser.add_argument('--tilt-type', default='PERSTEP', type=str)  # {'SINGLEWINDOW', 'PERSTEPWINDOW', 'PERSTEP'}.
 
     parser.add_argument('--num-particles', default=5, type=int)
     parser.add_argument('--datasets-per-batch', default=64, type=int)
@@ -271,7 +271,7 @@ def gdm_define_proposal(subkey, model, dataset, env):
 
         """
 
-        _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset[0], index=len(dataset)-1, axis=0, keepdims=False),
+        _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset, index=len(dataset)-1, axis=0, keepdims=False),
                             _particles)
 
         _model_latent_shape = (_model.latent_dim, )
