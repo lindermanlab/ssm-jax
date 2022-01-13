@@ -1,6 +1,6 @@
 #!/bin/bash
 
-glob_tag='LDS-v1-5-0'
+glob_tag='LDS-v1-6-0'
 model='LDS'
 proposal_type='PERSTEP'
 tilt_type='SINGLEWINDOW'
