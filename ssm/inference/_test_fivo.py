@@ -37,7 +37,7 @@ default_verbosity = Verbosity.DEBUG
 # config.update("jax_debug_nans", True)
 
 # Disable jit for inspection.
-DISABLE_JIT = True
+DISABLE_JIT = False
 
 # Import and configure WandB.
 try:
@@ -67,7 +67,7 @@ def do_config():
     try:
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
-        model = 'GDM'
+        model = 'LDS'
         print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
