@@ -45,7 +45,7 @@ def gdm_get_config():
     parser.add_argument('--tilt-type', default='PERSTEP', type=str)  # {'SINGLEWINDOW', 'PERSTEPWINDOW', 'PERSTEP'}.
 
     parser.add_argument('--num-particles', default=5, type=int)
-    parser.add_argument('--datasets-per-batch', default=64, type=int)
+    parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--p-lr', default=0.001, type=float)
@@ -434,7 +434,7 @@ def gdm_define_test_model(key, true_model, env):
         for _k in env.config.free_parameters:
             _base = getattr(default_params, _k)
             key, subkey = jr.split(key)
-            new_val = {_k: _base + (10.0 * jr.normal(key=subkey, shape=_base.shape))}
+            new_val = {_k: _base + (1.0 * jr.normal(key=subkey, shape=_base.shape))}  # TODO - re-add 10.0*
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
         # Build out a new model using these values.

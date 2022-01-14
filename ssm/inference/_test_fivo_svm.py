@@ -39,26 +39,27 @@ def svm_get_config():
     parser.add_argument('--free-parameters', default='mu', type=str)  # CSV.  # {'log_Q', 'mu'}.
 
     parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='PERSTEP_SINGLEOBS', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--proposal-type', default='PERSTEP_ALLOBS', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
 
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='PERSTEP_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
 
-    parser.add_argument('--num-particles', default=16, type=int)
-    parser.add_argument('--datasets-per-batch', default=16, type=int)
+    parser.add_argument('--num-particles', default=8, type=int)
+    parser.add_argument('--datasets-per-batch', default=4, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--p-lr', default=0.001, type=float)
-    parser.add_argument('--q-lr', default=0.0001, type=float)
-    parser.add_argument('--r-lr', default=0.0001, type=float)
+    parser.add_argument('--q-lr', default=0.001, type=float)
+    parser.add_argument('--r-lr', default=0.001, type=float)
 
     parser.add_argument('--T', default=49, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=1, type=int)
     parser.add_argument('--emissions-dim', default=1, type=int)
-    parser.add_argument('--num-trials', default=100000, type=int)
 
+    parser.add_argument('--num-trials', default=10000, type=int)  # NOTE - try with a single trial.
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=100, type=int)
+
     parser.add_argument('--validation-particles', default=250, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
 

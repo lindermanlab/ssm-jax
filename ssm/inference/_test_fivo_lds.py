@@ -38,17 +38,17 @@ def lds_get_config():
 
     parser.add_argument('--free-parameters', default='dynamics_weights', type=str)  # CSV.  # {'dynamics_bias', 'dynamics_weights'}.
 
-    parser.add_argument('--proposal-structure', default='BOOTSTRAP', type=str)  # {None/'NONE'/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='PERSTEP_SINGLEOBS', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-type', default='PERSTEP_ALLOBS', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}
 
-    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='PERSTEP_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
 
     parser.add_argument('--num-particles', default=8, type=int)
     parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.01, type=float)
+    parser.add_argument('--p-lr', default=0.001, type=float)
     parser.add_argument('--q-lr', default=0.001, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
 

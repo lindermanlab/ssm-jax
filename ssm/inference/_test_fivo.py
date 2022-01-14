@@ -172,7 +172,7 @@ def main():
         # Set up the first key
         key = jr.PRNGKey(env.config.seed)
 
-        # --------------------------------------------------------------------------------------------------------------
+        # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Define the experiment.
         key, subkey = jr.split(key)
@@ -184,6 +184,9 @@ def main():
         proposal, proposal_params, rebuild_prop_fn = ret_vals[2]        # Unpack proposal.
         tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                # Unpack tilt.
 
+        if len(dataset.shape) == 2:
+            print('WARNING: Expanding dataset dim.')
+            dataset = np.expand_dims(dataset, 0)
         validation_datasets = dataset[:env.config.num_val_datasets]
 
         # In here we can re-build models from saves if we want to.
@@ -197,7 +200,7 @@ def main():
         except:
             pass
 
-        # --------------------------------------------------------------------------------------------------------------
+        # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Build up the optimizer.
         opt = fivo.define_optimizer(p_params=get_model_free_params(model),
@@ -231,7 +234,7 @@ def main():
         do_fivo_sweep_val_and_grad = \
             jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
 
-        # --------------------------------------------------------------------------------------------------------------
+        # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Test the initial models.
         key, subkey = jr.split(key)
@@ -248,7 +251,7 @@ def main():
                                     do_print=do_print,
                                     do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
 
-        # --------------------------------------------------------------------------------------------------------------
+        # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Wrap another call to fivo for validation.
         @jax.jit
@@ -296,7 +299,34 @@ def main():
         else:
             tilt_temperatures = np.ones(env.config.opt_steps + 1,) * 1.0
 
-        # --------------------------------------------------------------------------------------------------------------
+        # --------------------------------------------------------------------------------------------------------------------------------------------
+
+        # Set up a buffer for doing an alternate VI loop.
+        VI_USE_VI_GRAD = True and (opt[2] is not None)
+        VI_BUFFER_LENGTH = 10 * env.config.datasets_per_batch * env.config.num_particles
+        VI_MINIBATCH_SIZE = 16
+        VI_EPOCHS = 1
+
+        # Use this update frequency to roughly match that in FIVO-AUX.
+        VI_FREQUENCY = int(VI_EPOCHS * np.floor(VI_BUFFER_LENGTH / VI_MINIBATCH_SIZE))
+
+        # Define defaults.
+        VI_STATE_BUFFER = []
+        VI_OBS_BUFFER = []
+
+        if VI_USE_VI_GRAD:
+            print()
+            print('VI HYPERPARAMETERS:')
+            print('\tVI_BUFFER_LENGTH:', VI_BUFFER_LENGTH)
+            print('\tVI_MINIBATCH_SIZE:', VI_MINIBATCH_SIZE)
+            print('\tVI_EPOCHS:', VI_EPOCHS)
+            print('\tVI_FREQUENCY:', VI_FREQUENCY)
+            print('\tVI_USE_VI_GRAD:', VI_USE_VI_GRAD)
+            print()
+
+            do_vi_tilt_update_jit = jax.jit(fivo.do_vi_tilt_update, static_argnums=(1, 3, 4, 8, 9))
+
+        # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Main training loop.
         for _step in range(1, env.config.opt_steps + 1):
@@ -315,18 +345,52 @@ def main():
                                                                                  batched_dataset,
                                                                                  tilt_temperatures[_step])
 
+            # Quickly calculate a smoothed training loss for quick and dirty plotting.
             if smoothed_training_loss == 0.0:
                 smoothed_training_loss = pred_fivo_bound
             else:
                 smoothed_training_loss = 0.1 * pred_fivo_bound + 0.9 * smoothed_training_loss
 
+            # ----------------------------------------------------------------------------------------------------------------------------------------
+
+            # Add the most recent sweep to the buffer.
+            if (len(VI_STATE_BUFFER) * env.config.datasets_per_batch * env.config.num_particles) >= VI_BUFFER_LENGTH:
+                VI_BUFFER_FULL = True
+                del VI_STATE_BUFFER[0]
+                del VI_OBS_BUFFER[0]
+            else:
+                VI_BUFFER_FULL = False
+            VI_STATE_BUFFER.append(smc_posteriors.weighted_particles[0])
+            VI_OBS_BUFFER.append(batched_dataset)
+
             # Apply the gradient update.
             if np.isfinite(pred_fivo_bound):
-                opt = fivo.apply_gradient(grad, opt, )
+                if not VI_USE_VI_GRAD:
+                    opt = fivo.apply_gradient(grad, opt, )
+                else:
+                    # Apply the gradient to the model and proposal
+                    _opt = fivo.apply_gradient(grad, tuple((opt[0], opt[1])), )
+                    opt = tuple((*_opt, opt[2]))  # Recapitulate the full optimizer.
             else:
                 print('Warning: Skipped step: ', _step, min(smc_posteriors.log_normalizer), pred_fivo_bound)
 
-            # ----------------------------------------------------------------------------------------------------------
+            # If we are using the VI tilt gradient and it is a VI epoch, do that step.
+            if VI_USE_VI_GRAD and (opt[2] is not None) and VI_BUFFER_FULL:
+                if _step % VI_FREQUENCY == 0 or _step == 1:
+                    key, subkey = jr.split(key)
+                    _vi_opt, final_vi_elbo, vi_gradient_steps = do_vi_tilt_update_jit(subkey,
+                                                                                      env,
+                                                                                      fivo.get_params_from_opt(opt),
+                                                                                      rebuild_model_fn,
+                                                                                      rebuild_tilt_fn,
+                                                                                      VI_STATE_BUFFER,
+                                                                                      VI_OBS_BUFFER,
+                                                                                      opt[2],
+                                                                                      _epochs=VI_EPOCHS,
+                                                                                      _sgd_batch_size=VI_MINIBATCH_SIZE)
+                    opt = tuple((opt[0], opt[1], _vi_opt))  # Recapitulate the full optimizer.
+
+            # ----------------------------------------------------------------------------------------------------------------------------------------
 
             # Do some validation and give some output.
             val_interval = 2500
@@ -519,6 +583,12 @@ def main():
                     utils.log_to_wandb()
 
                 # Do some printing.
+                try:
+                    if VI_USE_VI_GRAD:
+                        print("VI: Step {:>5d}:  Final VI ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
+                              format(_step, final_vi_elbo, vi_gradient_steps, VI_FREQUENCY))
+                except:
+                    pass
                 do_print(_step,
                          true_model,
                          opt,
