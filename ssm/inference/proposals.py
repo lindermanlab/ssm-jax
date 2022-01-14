@@ -42,16 +42,13 @@ class IndependentGaussianProposal:
 
     """
 
-    def __init__(self, n_proposals, stock_proposal_input_without_q_state, dummy_output, input_generator,
+    def __init__(self, n_proposals, stock_proposal_input_without_q_state, dummy_output,
                  trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
 
         # Work out the number of proposals.
         assert (n_proposals == 1) or (n_proposals == len(stock_proposal_input_without_q_state[0])), \
             'Can only use a single proposal or as many proposals as there are states.'
         self.n_proposals = n_proposals
-
-        # Inscribe the input generator.
-        self._proposal_input_generator = input_generator
 
         # Re-build the full input that will be provided.
         q_state = None
@@ -138,27 +135,83 @@ class IndependentGaussianProposal:
 
         return q_dist, None
 
-    @staticmethod
-    def _proposal_input_generator(_dataset, _model, *_inputs):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
 
-        NOTE - this is an abstract method and must be redefined wherever it is used.
-
         Args:
-            _dataset:
 
-            _model:
-
-            *_inputs (tuple):       Tuple of standard inputs to the proposal in SMC:
-                                    (dataset, model, particles, time, p_dist)
 
         Returns:
             (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
 
         """
-        raise NotImplementedError()
+
+        # This proposal gets the entire dataset and the current particles.
+        _proposal_inputs = (_dataset, _particles)
+
+        _model_latent_shape = (_model.latent_dim, )
+
+        _is_batched = (_model_latent_shape != _particles.shape)
+        if not _is_batched:
+            return nn_util.vectorize_pytree(_proposal_inputs)
+        else:
+            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
+            return _vmapped(*_proposal_inputs)
+
+
+class IGPerStepProposal(IndependentGaussianProposal):
+    """
+
+    """
+
+    # Define the required method for building the inputs.
+    def lds_proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
+        """
+        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
+        can be input into the proposal.
+
+        Args:
+
+
+        Returns:
+            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
+
+        """
+
+        # This proposal gets the entire dataset and the current particles.
+        _proposal_inputs = (_dataset, _particles)
+
+        _model_latent_shape = (_model.latent_dim, )
+
+        _is_batched = (_model_latent_shape != _particles.shape)
+        if not _is_batched:
+            return nn_util.vectorize_pytree(_proposal_inputs)
+        else:
+            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
+            return _vmapped(*_proposal_inputs)
+
+
+class IGSingleObsProposal(IndependentGaussianProposal):
+
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
+        """
+
+        """
+
+        # This proposal gets the single datapoint and the current particles.
+        _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset, _t), _particles)
+
+        _model_latent_shape = (_model.latent_dim, )
+
+        _is_batched = (_model_latent_shape != _particles.shape)
+        if not _is_batched:
+            return nn_util.vectorize_pytree(_proposal_inputs)
+        else:
+            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
+            return _vmapped(*_proposal_inputs)
+
 
 
 def rebuild_proposal(proposal, proposal_structure):
