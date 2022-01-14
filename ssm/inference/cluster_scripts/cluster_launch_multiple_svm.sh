@@ -1,9 +1,9 @@
 #!/bin/bash
 
-glob_tag='SVM-v0-0-0'
+glob_tag='SVM-v1-0-0'
 model='SVM'
-proposal_type='PERSTEP_SINGLEOBS'
-tilt_type='PERSTEP_WINDOW'
+proposal_type='PERSTEP_ALLOBS'
+tilt_type='SINGLE_WINDOW'
 latent_dim=1
 emissions_dim=1
 
