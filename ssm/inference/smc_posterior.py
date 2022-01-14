@@ -139,7 +139,10 @@ class SMCPosterior(tfd.Distribution):
         raise NotImplementedError("Len on this object is so ambiguous we disable it.")
 
     def __getitem__(self, item):  # TODO - had to change this here, not sure why i didnt have to change it elsewhere.
-        assert len(self.log_normalizer.shape) > 0, "Cannot directly index inside single posterior."
+        if len(self.log_normalizer.shape) == 0:
+            return self
+
+        # assert len(self.log_normalizer.shape) > 0, "Cannot directly index inside single posterior."
         return SMCPosterior(**jax.tree_map(lambda args: args[item] if isinstance(args, Iterable) else args, self._parameters))
 
     def tree_flatten(self):

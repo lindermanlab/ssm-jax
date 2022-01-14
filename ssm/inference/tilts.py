@@ -238,8 +238,12 @@ def rebuild_tilt(tilt, tilt_structure):
         # tilt takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
         if tilt_structure == 'DIRECT':
 
-            def _tilt(_particles, _t):
-                r_log_val = tilt.apply(_param_vals, _dataset, _model, _particles, _t)
+            def _tilt(_particles, _t, __dataset=None):
+
+                if __dataset is None:
+                    __dataset = _dataset
+
+                r_log_val = tilt.apply(_param_vals, __dataset, _model, _particles, _t)
                 return r_log_val
         else:
             raise NotImplementedError()

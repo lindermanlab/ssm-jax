@@ -562,6 +562,12 @@ def lexp(_lmls, _axis=0):
         - (ndarray):
 
     """
+    if len(_lmls.shape) == 0:
+        return _lmls
+
+    if _axis >= len(_lmls.shape):
+        return _lmls
+
     _lml = spsp.logsumexp(_lmls, axis=_axis) - np.log(_lmls.shape[_axis])
     return _lml
 

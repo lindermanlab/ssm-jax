@@ -79,8 +79,10 @@ def do_fivo_sweep(_param_vals,
         - Tuple: (FIVO-compatible negative log likelihood evaluation, SMCPosterior objects representing sweeps).
     """
 
+    tmp_model = _rebuild_model(_param_vals[0])
+
     # NOTE - this is a bit sloppy, need to work out if the data is batched in a more reliable way.
-    if len(_datasets) == 1:
+    if _datasets.shape[1:] == tmp_model.emissions_shape:
         _smc_posteriors = _do_single_fivo_sweep(_param_vals,
                                                 _key,
                                                 _rebuild_model,
@@ -618,7 +620,7 @@ def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_s
         for _sweep in _particles:
             _unique_particle_counts_at_t = []
             for _t in range(_sweep.shape[1]):
-                _unique_particle_counts_at_t.append(len(np.unique(_sweep[:, _t, :], axis=0, return_counts=True)[1]))
+                _unique_particle_counts_at_t.append(len(np.unique(_sweep[..., _t, :], axis=0, return_counts=True)[1]))
             unique_particle_counts.append(_unique_particle_counts_at_t)
         return np.asarray(unique_particle_counts)
 

@@ -40,6 +40,10 @@ class UnivariateSVM(SSM):
                  log_Q: float = np.asarray([[np.log(1.0)]]),
                  log_beta: float = np.asarray([np.log(1.0)]),
 
+                 initial_condition = None,
+                 dynamics = None,
+                 emissions = None,
+
                  seed: jr.PRNGKey = None):
         """
 
@@ -68,19 +72,28 @@ class UnivariateSVM(SSM):
 
         # The initial condition is a Gaussian with a specific variance.
         # initial_scale_tril = np.sqrt(np.square(np.exp(log_Q))) / (1 - np.square(utils.sigmoid(invsig_phi)))
-        self._initial_condition = StandardInitialCondition(initial_mean=self.mu,
-                                                           initial_scale_tril=np.sqrt(np.exp(self.log_Q)), )
+        if initial_condition is None:
+            self._initial_condition = StandardInitialCondition(initial_mean=self.mu,
+                                                               initial_scale_tril=np.sqrt(np.exp(self.log_Q)), )
+        else:
+            self._initial_condition = initial_condition
 
         # Initialize the SVM transition model.
         # This is a normal distribution with the mean equal to an affine function of current state.
-        affine_bias = self.mu * (1.0 - utils.sigmoid(self.invsig_phi))
-        affine_weight = utils.sigmoid(self.invsig_phi) * np.eye(self.latent_dim)
-        self._dynamics = StationaryDynamics(weights=affine_weight,
-                                            bias=affine_bias,
-                                            scale_tril=np.sqrt(np.exp(self.log_Q)))
+        if dynamics is None:
+            affine_bias = self.mu * (1.0 - utils.sigmoid(self.invsig_phi))
+            affine_weight = utils.sigmoid(self.invsig_phi) * np.eye(self.latent_dim)
+            self._dynamics = StationaryDynamics(weights=affine_weight,
+                                                bias=affine_bias,
+                                                scale_tril=np.sqrt(np.exp(self.log_Q)))
+        else:
+            self._dynamics = dynamics
 
         # Initialize the SVM emission distribution.
-        self._emissions = SVMEmission(log_beta)
+        if emissions is None:
+            self._emissions = SVMEmission(log_beta)
+        else:
+            self._emissions = emissions
 
         # Grab the parameter values.  This allows us to explicitly re-build the object.
         self._parameters = make_named_tuple(dict_in=locals(),
@@ -91,7 +104,10 @@ class UnivariateSVM(SSM):
         children = (self.mu,
                     self.invsig_phi,
                     self.log_Q,
-                    self.log_beta)
+                    self.log_beta,)
+                    # self._initial_condition,
+                    # self._dynamics,
+                    # self._emissions)
         aux_data = (self.latent_dim, self.emission_dims)
         return children, aux_data
 
