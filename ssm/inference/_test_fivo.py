@@ -67,7 +67,7 @@ def do_config():
     try:
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
-        model = 'LDS'
+        model = 'SVM'
         print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
@@ -302,7 +302,7 @@ def main():
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Set up a buffer for doing an alternate VI loop.
-        VI_USE_VI_GRAD = True and opt[2].target is not None
+        VI_USE_VI_GRAD = True and (opt[2] is not None)
         VI_BUFFER_LENGTH = 10 * env.config.datasets_per_batch * env.config.num_particles
         VI_MINIBATCH_SIZE = 16
         VI_EPOCHS = 1
