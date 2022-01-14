@@ -144,14 +144,14 @@ class GdmTilt(tilts.IndependentGaussianTilt):
         # r_dist = tfd.MultivariateNormalDiag(loc=tilt_inputs, scale_diag=np.sqrt(r_dist.variance()))
 
         # Now score under that distribution.
-        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, *inputs)
+        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, self.tilt_window_length, *inputs)
         log_r_val = r_dist.log_prob(tilt_outputs)
 
         return log_r_val
 
     # We need to define the method for generating the inputs.
     @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
+    def _tilt_output_generator(dataset, model, particles, t, _tilt_window_length, *_inputs):
         """
         Define the output generator for the gdm example.
         Args:
@@ -189,13 +189,18 @@ def gdm_define_tilt(subkey, model, dataset, env):
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
+    # Do some validation.
+    assert env.config.tilt_structure == 'DIRECT', "GDM only admits DIRECT proposals functions."
+
     # Check whether we have a valid number of tilts.
     n_tilts = len(dataset[0]) - 1
+    tilt_window_length = None
+    tilt_fn = GdmTilt
 
     # Tilt functions take in (dataset, model, particles, t-1).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
-    stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0)
-    dummy_tilt_output = nn_util.vectorize_pytree(dataset[0][-1], )
+    stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0, tilt_window_length)
+    dummy_tilt_output = tilt_fn._tilt_output_generator(*stock_tilt_input)
 
     # Define a more conservative initialization.
     w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
@@ -207,7 +212,7 @@ def gdm_define_tilt(subkey, model, dataset, env):
     head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0], bias_init=b_init)
 
     # Define the tilt itself.
-    tilt = GdmTilt(n_tilts=n_tilts,
+    tilt = tilt_fn(n_tilts=n_tilts,
                    tilt_input=stock_tilt_input,
                    head_mean_fn=head_mean_fn,
                    head_log_var_fn=head_log_var_fn)
@@ -217,6 +222,39 @@ def gdm_define_tilt(subkey, model, dataset, env):
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
     rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env.config.tilt_structure)
     return tilt, tilt_params, rebuild_tilt_fn
+
+
+class GdmProposal(proposals.IndependentGaussianProposal):
+    """
+
+    """
+
+    # Define the required method for building the inputs.
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
+        """
+        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
+        can be input into the proposal.
+
+        Args:
+            *_inputs (tuple):       Tuple of standard inputs to the proposal in SMC:
+                                    (dataset, model, particles, time, p_dist)
+
+        Returns:
+            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
+
+        """
+
+        _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset, index=len(_dataset)-1, axis=0, keepdims=False),
+                            _particles)
+
+        _model_latent_shape = (_model.latent_dim, )
+
+        _is_batched = (_model_latent_shape != _particles.shape)
+        if not _is_batched:
+            return nn_util.vectorize_pytree(_proposal_inputs)
+        else:
+            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
+            return vmapped(*_proposal_inputs)
 
 
 def gdm_define_proposal(subkey, model, dataset, env):
@@ -232,9 +270,12 @@ def gdm_define_proposal(subkey, model, dataset, env):
 
     """
 
-    if (env.config.proposal_structure is None) or (env.config.proposal_structure == 'BOOTSTRAP'):
+    if env.config.proposal_structure in [None, 'NONE', 'BOOTSTRAP']:
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
+
+    # Do some validation.
+    assert env.config.proposal_structure == 'DIRECT', "GDM only admits DIRECT tilt functions."
 
     # Define the proposal that we will use.
     # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state).
@@ -256,40 +297,12 @@ def gdm_define_proposal(subkey, model, dataset, env):
     # Check whether we have a valid number of proposals.
     n_props = len(dataset[0])
 
-    # Define the required method for building the inputs.
-    def gdm_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):
-        """
-        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
-        can be input into the proposal.
-
-        Args:
-            *_inputs (tuple):       Tuple of standard inputs to the proposal in SMC:
-                                    (dataset, model, particles, time, p_dist)
-
-        Returns:
-            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
-
-        """
-
-        _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset, index=len(dataset)-1, axis=0, keepdims=False),
-                            _particles)
-
-        _model_latent_shape = (_model.latent_dim, )
-
-        _is_batched = (_model_latent_shape != _particles.shape)  # TODO - note - removed the [0] from _particles.shape.
-        if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
-        else:
-            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return vmapped(*_proposal_inputs)
-
     # Define the proposal itself.
-    proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
-                                                     stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
-                                                     dummy_output=dummy_proposal_output,
-                                                     input_generator=gdm_proposal_input_generator,
-                                                     head_mean_fn=head_mean_fn,
-                                                     head_log_var_fn=head_log_var_fn, )
+    proposal = GdmProposal(n_proposals=n_props,
+                           stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
+                           dummy_output=dummy_proposal_output,
+                           head_mean_fn=head_mean_fn,
+                           head_log_var_fn=head_log_var_fn, )
 
     # Initialize the network.
     proposal_params = proposal.init(subkey)

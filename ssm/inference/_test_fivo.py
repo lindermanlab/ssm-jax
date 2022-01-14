@@ -264,8 +264,8 @@ def main():
         def _single_fivo_eval_small(_subkey, _params):
             _val_fivo_bound, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
                                                                       _params,
-                                                                      _num_particles=env.config.sweep_test_particles,
-                                                                      _datasets=validation_datasets)
+                                                                      _datasets=validation_datasets,
+                                                                      _num_particles=env.config.sweep_test_particles,)
             return _sweep_posteriors.log_normalizer, _val_fivo_bound
 
         single_bpf_true_eval_small_vmap = jax.vmap(_single_bpf_true_eval_small)

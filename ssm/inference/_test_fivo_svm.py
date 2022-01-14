@@ -34,25 +34,25 @@ def svm_get_config():
 
     parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
 
-    parser.add_argument('--temper', default=4.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--temper', default=0.5, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
     parser.add_argument('--free-parameters', default='mu', type=str)  # CSV.  # {'log_Q', 'mu'}.
 
-    parser.add_argument('--proposal-structure', default='BOOTSTRAP', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='PERSTEP', type=str)  # {'PERSTEP', }.
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-type', default='PERSTEP_SINGLEOBS', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
 
-    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEP'}.
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-type', default='PERSTEP_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
 
-    parser.add_argument('--num-particles', default=64, type=int)
-    parser.add_argument('--datasets-per-batch', default=8, type=int)
+    parser.add_argument('--num-particles', default=16, type=int)
+    parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.01, type=float)
-    parser.add_argument('--q-lr', default=0.01, type=float)
-    parser.add_argument('--r-lr', default=0.001, type=float)
+    parser.add_argument('--p-lr', default=0.001, type=float)
+    parser.add_argument('--q-lr', default=0.0001, type=float)
+    parser.add_argument('--r-lr', default=0.0001, type=float)
 
-    parser.add_argument('--T', default=19, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+    parser.add_argument('--T', default=49, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=1, type=int)
     parser.add_argument('--emissions-dim', default=1, type=int)
     parser.add_argument('--num-trials', default=100000, type=int)
@@ -114,147 +114,6 @@ def svm_define_test(key, env):
     return ret_model, ret_test, ret_prop, ret_tilt
 
 
-class SvmTilt(tilts.IndependentGaussianTilt):
-    """
-
-    """
-
-    window_length = 2
-
-    def apply(self, params, dataset, model, particles, t, *inputs):
-        """
-
-        Args:
-            params (FrozenDict):    FrozenDict of the parameters of the tilt.
-
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            inputs (tuple):         Tuple of additional inputs to the tilt in SMC.
-
-            data:
-
-        Returns:
-            (Float): Tilt log value.
-
-        """
-
-        # Define this for when using the windowed tilt.
-        score_criteria = 'window'  # {'all', 'window'}
-
-        # Pull out the time and the appropriate tilt.
-        if self.n_tilts == 1:
-            t_params = jax.tree_map(lambda args: args[0], params)
-        else:
-            t_params = jax.tree_map(lambda args: args[t], params)
-
-        # Generate a tilt distribution.
-        tilt_inputs = self._tilt_input_generator(dataset, model, particles, t, *inputs)
-        r_dist = self.tilt.apply(t_params, tilt_inputs)
-
-        # Now score under that distribution.
-        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, *inputs)
-
-        # There may be NaNs here, so we need to pull this apart.
-        means = r_dist.mean().T
-        sds = r_dist.variance().T
-
-        # Sweep over the vector and return zeros where appropriate.
-        def _eval(_idx, _mu, _sd, _out):
-            _dist = tfd.MultivariateNormalDiag(loc=np.expand_dims(_mu, -1), scale_diag=np.sqrt(np.expand_dims(_sd, -1)))
-
-            # Define the difference scoring criteria.
-            def _score_all_future():
-                return _idx > t  # Pretty sure this should be a <= (since we are scoring _future_ observations).
-
-            def _score_window():
-                return np.logical_and(_score_all_future(), (_idx <= t + SvmTilt.window_length))
-
-            # Decide whether we will score.
-            if score_criteria == 'window':
-                _score = _score_window()
-            elif score_criteria == 'all':
-                _score = _score_all_future()
-            else:
-                raise NotImplementedError()
-
-            return jax.lax.cond(_score,
-                                lambda *args: _dist.log_prob(np.asarray([_out])),
-                                lambda *args: np.zeros(means.shape[1]),
-                                None)
-
-        log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
-
-        return log_r_val  # TODO - To disable tilt:  `* 0.0`
-
-    # We need to define the method for generating the inputs.
-    @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
-        """
-        Define the output generator for the svm example.
-        Args:
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            *inputs_:
-
-        Returns:
-
-        """
-
-        # We will pass in whole data into the tilt and then filter out as required.
-        tilt_outputs = (dataset, )
-        return nn_util.vectorize_pytree(tilt_outputs)
-
-
-class SvmSingleWindowTilt(tilts.IndependentGaussianTilt):
-
-    window_length = 2
-
-    # We need to define the method for generating the inputs.
-    @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
-        """
-        Define the output generator for the svm example.
-        Args:
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            *inputs_:
-
-        Returns:
-
-        """
-
-        masked_idx = np.arange(SvmSingleWindowTilt.window_length)
-        to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
-
-        # Zero out the elements outside of the valid range.
-        clipped_dataset = jax.lax.dynamic_slice(dataset,
-                                                (t+1, *tuple(0 * _d for _d in dataset.shape[1:])),
-                                                (SvmSingleWindowTilt.window_length, *dataset.shape[1:]))
-        masked_dataset = clipped_dataset * np.expand_dims(to_insert.astype(np.int32), 1)
-
-        # We will pass in whole data into the tilt and then filter out as required.
-        tilt_outputs = (masked_dataset, )
-        return nn_util.vectorize_pytree(tilt_outputs)
-
-
 def svm_define_tilt(subkey, model, dataset, env):
     """
 
@@ -262,6 +121,7 @@ def svm_define_tilt(subkey, model, dataset, env):
         subkey:
         model:
         dataset:
+        env:
 
     Returns:
 
@@ -272,17 +132,20 @@ def svm_define_tilt(subkey, model, dataset, env):
         return None, None, _empty_rebuild
 
     # configure the tilt.
-    if env.config.tilt_type == 'PERSTEP':
+    if env.config.tilt_type == 'PERSTEP_ALLOBS':
         tilt_fn = tilts.IGPerStepTilt
         n_tilts = len(dataset[0]) - 1
+        tilt_window_length = None
 
-    elif env.config.tilt_type == 'PERSTEPWINDOW':
+    elif env.config.tilt_type == 'PERSTEP_WINDOW':
         tilt_fn = tilts.IGWindowTilt
         n_tilts = len(dataset[0]) - 1
+        tilt_window_length = 5
 
-    elif env.config.tilt_type == 'SINGLEWINDOW':
+    elif env.config.tilt_type == 'SINGLE_WINDOW':
         tilt_fn = tilts.IGWindowTilt
         n_tilts = 1
+        tilt_window_length = 5
 
     else:
         raise NotImplementedError()
@@ -293,19 +156,19 @@ def svm_define_tilt(subkey, model, dataset, env):
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
 
     # Generate the inputs.
-    stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0)
+    stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0, tilt_window_length, *tilt_inputs)
 
     # Generate the outputs.
-    dummy_tilt_output = tilt_fn._tilt_output_generator(dataset[-1], model, dummy_particles, 0, *tilt_inputs)
+    dummy_tilt_output = tilt_fn._tilt_output_generator(*stock_tilt_input)
 
-    # Define any custom link functions.
-    trunk_fn = None
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
-    head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
-
-    # trunk_fn = nn_util.MLP([6, ], output_layer_relu=True)
+    # # Define any custom link functions.
+    # trunk_fn = None
     # head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
-    # head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
+    # head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
+
+    trunk_fn = nn_util.MLP([5, ], output_layer_relu=True)
+    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
+    head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
     # Define the tilts themselves.
     tilt = tilt_fn(n_tilts=n_tilts,
@@ -317,7 +180,7 @@ def svm_define_tilt(subkey, model, dataset, env):
     # Initialize the network.
     tilt_params = tilt.init(subkey)
 
-    # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
+    # Return a function that we can call with just the parameters as an argument to return a new closed tilt.
     rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env.config.tilt_structure)
     return tilt, tilt_params, rebuild_tilt_fn
 
@@ -329,13 +192,13 @@ def svm_define_proposal(subkey, model, dataset, env):
         subkey:
         model:
         dataset:
-        proposal_structure:
+        env:
 
     Returns:
 
     """
 
-    if (env.config.proposal_structure is None) or (env.config.proposal_structure == 'BOOTSTRAP'):
+    if env.config.proposal_structure in [None, 'NONE', 'BOOTSTRAP']:
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
@@ -346,51 +209,55 @@ def svm_define_proposal(subkey, model, dataset, env):
     stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles, 0, dummy_p_dist)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
+    # If we are using RESQ, define a kernel that basically does nothing to begin with.
+    if env.config.proposal_structure == 'RESQ':
+        kernel_init = lambda *args: nn.initializers.lecun_normal()(*args) * 0.1
+    else:
+        kernel_init = None
+
     trunk_fn = None
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01,)
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=kernel_init)
     head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=nn.initializers.zeros)
 
     # trunk_fn = nn_util.MLP([6, ], output_layer_relu=True)
     # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
-    # Check whether we have a valid number of proposals.
-    n_props = len(dataset[0])
+    # configure the tilt.
+    if env.config.proposal_type == 'PERSTEP_ALLOBS':
+        proposal_cls = proposals.IndependentGaussianProposal
+        n_props = len(dataset[0])
+        proposal_window_length = None
 
-    # Define the required method for building the inputs.
-    def svm_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):
-        """
-        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
-        can be input into the proposal.
+    elif env.config.proposal_type == 'PERSTEP_SINGLEOBS':
+        proposal_cls = proposals.IGSingleObsProposal
+        n_props = len(dataset[0])
+        proposal_window_length = None
 
-        Args:
+    elif env.config.proposal_type == 'SINGLE_SINGLEOBS':
+        proposal_cls = proposals.IGSingleObsProposal
+        n_props = 1
+        proposal_window_length = None
 
+        # TODO - test this.
+        raise NotImplementedError()
 
-        Returns:
-            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
+    elif env.config.proposal_type == 'PERSTEP_WINDOW':
+        raise NotImplementedError()
 
-        """
+    elif env.config.proposal_type == 'SINGLE_WINDOW':
+        raise NotImplementedError()
 
-        # This proposal gets the entire dataset and the current particles.
-        _proposal_inputs = (_dataset, _particles)
-
-        _model_latent_shape = (_model.latent_dim, )
-
-        _is_batched = (_model_latent_shape != _particles.shape)  # TODO - note - removed the [0] from _particles.shape.
-        if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
-        else:
-            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return _vmapped(*_proposal_inputs)
+    else:
+        raise NotImplementedError()
 
     # Define the proposal itself.
-    proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
-                                                     stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
-                                                     dummy_output=dummy_proposal_output,
-                                                     input_generator=svm_proposal_input_generator,
-                                                     trunk_fn=trunk_fn,
-                                                     head_mean_fn=head_mean_fn,
-                                                     head_log_var_fn=head_log_var_fn, )
+    proposal = proposal_cls(n_proposals=n_props,
+                            stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
+                            dummy_output=dummy_proposal_output,
+                            trunk_fn=trunk_fn,
+                            head_mean_fn=head_mean_fn,
+                            head_log_var_fn=head_log_var_fn, )
 
     # Initialize the network.
     proposal_params = proposal.init(subkey)
@@ -475,10 +342,12 @@ def svm_define_test_model(key, true_model, env):
 
         # Mutate the free parameters.
         for _k in env.config.free_parameters:
-            # TODO - This needs to be made model-specific.
             _base = getattr(default_params, _k)
             key, subkey = jr.split(key)
+
+            # TODO - This needs to be made model-specific.
             new_val = {_k: _base + (0.000 * jr.normal(key=subkey, shape=_base.shape))}
+
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
         # Build out a new model using these values.

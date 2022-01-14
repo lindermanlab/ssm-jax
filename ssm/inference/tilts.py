@@ -21,7 +21,7 @@ class IndependentGaussianTilt:
     """
 
     def __init__(self, n_tilts, tilt_input,
-                 trunk_fn=None, head_mean_fn=None, head_log_var_fn=None, window_length=None):
+                 trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
 
         # Work out the number of tilts.
         assert (n_tilts == 1) or (n_tilts == len(tilt_input[0]) - 1), \
@@ -29,14 +29,13 @@ class IndependentGaussianTilt:
         self.n_tilts = n_tilts
 
         # This property can be overwritten by child classes.
-        self.window_length = window_length
+        self.tilt_window_length = tilt_input[4]
 
         # Re-build the full input that will be used to condition the tilt.
         self._dummy_processed_input = self._tilt_input_generator(*tilt_input)
 
         # Re-build the output that we will score under the tilt.
         dummy_output = self._tilt_output_generator(*tilt_input)
-        output_dim = dummy_output.shape[0]
 
         # Build out the function approximator.
         self.tilt = IndependentGaussianGenerator.from_params(self._dummy_processed_input,
@@ -92,7 +91,7 @@ class IndependentGaussianTilt:
         r_dist = self.tilt.apply(t_params, tilt_inputs)
 
         # Now score under that distribution.
-        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, *inputs)
+        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, self.tilt_window_length, *inputs)
         log_r_val = r_dist.log_prob(tilt_outputs)
 
         return log_r_val
@@ -137,7 +136,7 @@ class IndependentGaussianTilt:
             return vmapped(*tilt_inputs)
 
     @staticmethod
-    def _tilt_output_generator(_dataset, _model, _particles, _t, *_inputs):
+    def _tilt_output_generator(_dataset, _model, _particles, _t, _tilt_window_length, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be scored under into the tilt.
@@ -178,7 +177,7 @@ class IGPerStepTilt(IndependentGaussianTilt):
         r_dist = self.tilt.apply(t_params, tilt_inputs)
 
         # Now score under that distribution.
-        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, *inputs)
+        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, self.tilt_window_length, *inputs)
 
         # There may be NaNs here, so we need to pull this apart.
         means = r_dist.mean().T
@@ -203,22 +202,22 @@ class IGPerStepTilt(IndependentGaussianTilt):
 
 class IGWindowTilt(IndependentGaussianTilt):
 
-    window_length = 2
+    # window_length = 2
 
     # We need to define the method for generating the inputs.
     @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, *_inputs):
+    def _tilt_output_generator(dataset, model, particles, t, _tilt_window_length, *_inputs):
         """
 
         """
 
-        masked_idx = np.arange(IGWindowTilt.window_length)
+        masked_idx = np.arange(_tilt_window_length)
         to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
 
         # Zero out the elements outside of the valid range.
         clipped_dataset = jax.lax.dynamic_slice(dataset,
                                                 (t+1, *tuple(0 * _d for _d in dataset.shape[1:])),
-                                                (IGWindowTilt.window_length, *dataset.shape[1:]))
+                                                (_tilt_window_length, *dataset.shape[1:]))
         masked_dataset = clipped_dataset * np.expand_dims(to_insert.astype(np.int32), 1)
 
         # We will pass in whole data into the tilt and then filter out as required.

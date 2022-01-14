@@ -36,25 +36,25 @@ def lds_get_config():
 
     parser.add_argument('--temper', default=5.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
-    parser.add_argument('--free-parameters', default='', type=str)  # CSV.  # {'dynamics_bias', 'dynamics_weights'}.
+    parser.add_argument('--free-parameters', default='dynamics_weights', type=str)  # CSV.  # {'dynamics_bias', 'dynamics_weights'}.
 
-    parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='PERSTEP', type=str)  # {'PERSTEP', }.
+    parser.add_argument('--proposal-structure', default='BOOTSTRAP', type=str)  # {None/'NONE'/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-type', default='PERSTEP_SINGLEOBS', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}
 
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='SINGLEWINDOW', type=str)  # {'SINGLEWINDOW', 'PERSTEPWINDOW', 'PERSTEP'}.
+    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-type', default='PERSTEP_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
 
-    parser.add_argument('--num-particles', default=4, type=int)
-    parser.add_argument('--datasets-per-batch', default=8, type=int)
+    parser.add_argument('--num-particles', default=8, type=int)
+    parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.001, type=float)
+    parser.add_argument('--p-lr', default=0.01, type=float)
     parser.add_argument('--q-lr', default=0.001, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
 
     parser.add_argument('--T', default=19, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
-    parser.add_argument('--latent-dim', default=10, type=int)
-    parser.add_argument('--emissions-dim', default=5, type=int)
+    parser.add_argument('--latent-dim', default=5, type=int)
+    parser.add_argument('--emissions-dim', default=2, type=int)
     parser.add_argument('--num-trials', default=100000, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
@@ -131,17 +131,20 @@ def lds_define_tilt(subkey, model, dataset, env):
         return None, None, _empty_rebuild
 
     # configure the tilt.
-    if env.config.tilt_type == 'PERSTEP':
+    if env.config.tilt_type == 'PERSTEP_ALLOBS':
         tilt_fn = tilts.IGPerStepTilt
         n_tilts = len(dataset[0]) - 1
+        tilt_window_length = None
 
-    elif env.config.tilt_type == 'PERSTEPWINDOW':
+    elif env.config.tilt_type == 'PERSTEP_WINDOW':
         tilt_fn = tilts.IGWindowTilt
         n_tilts = len(dataset[0]) - 1
+        tilt_window_length = 2
 
-    elif env.config.tilt_type == 'SINGLEWINDOW':
+    elif env.config.tilt_type == 'SINGLE_WINDOW':
         tilt_fn = tilts.IGWindowTilt
         n_tilts = 1
+        tilt_window_length = 2
 
     else:
         raise NotImplementedError()
@@ -152,10 +155,10 @@ def lds_define_tilt(subkey, model, dataset, env):
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
 
     # Generate the inputs.
-    stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0)
+    stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0, tilt_window_length, *tilt_inputs)
 
     # Generate the outputs.
-    dummy_tilt_output = tilt_fn._tilt_output_generator(dataset[-1], model, dummy_particles, 0, *tilt_inputs)
+    dummy_tilt_output = tilt_fn._tilt_output_generator(*stock_tilt_input)
 
     # Define any custom link functions.
     trunk_fn = None
@@ -188,13 +191,13 @@ def lds_define_proposal(subkey, model, dataset, env):
         subkey:
         model:
         dataset:
-        proposal_structure:
+        env:
 
     Returns:
 
     """
 
-    if (env.config.proposal_structure is None) or (env.config.proposal_structure == 'BOOTSTRAP'):
+    if env.config.proposal_structure in [None, 'NONE', 'BOOTSTRAP']:
         _empty_rebuild = lambda *args: None
         return None, None, _empty_rebuild
 
@@ -202,54 +205,58 @@ def lds_define_proposal(subkey, model, dataset, env):
     # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
     dummy_p_dist = model.dynamics_distribution(dummy_particles)
-    stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles, 0, dummy_p_dist)  # TODO - note - removed [0] from dummy_particles.
+    stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles, 0, dummy_p_dist)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
+    # If we are using RESQ, define a kernel that basically does nothing to begin with.
+    if env.config.proposal_structure == 'RESQ':
+        kernel_init = lambda *args: nn.initializers.lecun_normal()(*args) * 0.1
+    else:
+        kernel_init = None
+
     trunk_fn = None
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
-    head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=nn.initializers.zeros, )
+    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=kernel_init)
+    head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=nn.initializers.zeros)
 
     # trunk_fn = nn_util.MLP([6, ], output_layer_relu=True)
     # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
-    # Check whether we have a valid number of proposals.
-    n_props = len(dataset[0])
+    # configure the tilt.
+    if env.config.proposal_type == 'PERSTEP_ALLOBS':
+        proposal_cls = proposals.IndependentGaussianProposal
+        n_props = len(dataset[0])
+        proposal_window_length = None
 
-    # Define the required method for building the inputs.
-    def lds_proposal_input_generator(_dataset, _model, _particles, _t, _p_dist, _q_state):
-        """
-        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
-        can be input into the proposal.
+    elif env.config.proposal_type == 'PERSTEP_SINGLEOBS':
+        proposal_cls = proposals.IGSingleObsProposal
+        n_props = len(dataset[0])
+        proposal_window_length = None
 
-        Args:
+    elif env.config.proposal_type == 'SINGLE_SINGLEOBS':
+        proposal_cls = proposals.IGSingleObsProposal
+        n_props = 1
+        proposal_window_length = None
 
+        # TODO - test this.
+        raise NotImplementedError()
 
-        Returns:
-            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
+    elif env.config.proposal_type == 'PERSTEP_WINDOW':
+        raise NotImplementedError()
 
-        """
+    elif env.config.proposal_type == 'SINGLE_WINDOW':
+        raise NotImplementedError()
 
-        # This proposal gets the entire dataset and the current particles.
-        _proposal_inputs = (_dataset, _particles)
-
-        _model_latent_shape = (_model.latent_dim, )
-
-        _is_batched = (_model_latent_shape != _particles.shape)  # TODO - note - removed the [0] from _particles.shape.
-        if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
-        else:
-            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return _vmapped(*_proposal_inputs)
+    else:
+        raise NotImplementedError()
 
     # Define the proposal itself.
-    proposal = proposals.IndependentGaussianProposal(n_proposals=n_props,
-                                                     stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
-                                                     dummy_output=dummy_proposal_output,
-                                                     input_generator=lds_proposal_input_generator,
-                                                     trunk_fn=trunk_fn,
-                                                     head_mean_fn=head_mean_fn,
-                                                     head_log_var_fn=head_log_var_fn, )
+    proposal = proposal_cls(n_proposals=n_props,
+                            stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
+                            dummy_output=dummy_proposal_output,
+                            trunk_fn=trunk_fn,
+                            head_mean_fn=head_mean_fn,
+                            head_log_var_fn=head_log_var_fn, )
 
     # Initialize the network.
     proposal_params = proposal.init(subkey)
@@ -304,21 +311,36 @@ def lds_define_true_model_and_data(key, env):
     num_trials = env.config.num_trials
     T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
-    # NOTE - Set the dynamics scale here.
-    # This needs to be done for all models because it is defined poorly inside the model.
-    dynamics_scale_tril = 1.0 * np.eye(latent_dim)
-
-    # NOTE - can make observations tighter here.
-    emission_scale_tril = 1.0 * np.eye(emissions_dim)
-
-    # NOTE - change the initial scale here.
-    initial_state_scale_tril = 1.0 * np.eye(latent_dim)
-
     # If we are in the 1-D case, then we need to define a boring LDS.
     if latent_dim == 1:
+
+        # NOTE - Set the dynamics scale here.
+        # This needs to be done for all models because it is defined poorly inside the model.
+        dynamics_scale_tril = 1.0 * np.eye(latent_dim)
+
+        # NOTE - can make observations tighter here.
+        emission_scale_tril = 1.0 * np.eye(emissions_dim)
+
+        # NOTE - change the initial scale here.
+        initial_state_scale_tril = 1.0 * np.eye(latent_dim)
+
         # Set up the transmission and emission weights to be unity.
         true_dynamics_weights = np.eye(latent_dim)
         true_emission_weights = np.eye(emissions_dim, latent_dim)
+
+    else:
+
+        # raise NotImplementedError('Still need to work on these settings a btt.')
+
+        # NOTE - Set the dynamics scale here.
+        # This needs to be done for all models because it is defined poorly inside the model.
+        dynamics_scale_tril = 0.1 * np.eye(latent_dim)
+
+        # NOTE - can make observations tighter here.
+        emission_scale_tril = 1.0 * np.eye(emissions_dim)
+
+        # NOTE - change the initial scale here.
+        initial_state_scale_tril = 1.0 * np.eye(latent_dim)
 
     # Create the true model.
     key, subkey = jr.split(key)
@@ -376,7 +398,15 @@ def lds_define_test_model(key, true_model, env):
         for _k in env.config.free_parameters:
             _base = getattr(default_params, _k)
             key, subkey = jr.split(key)
-            new_val = {_k: _base + (2.0 * jr.normal(key=subkey, shape=_base.shape))}
+
+            # TODO - This needs to be made model-specific.
+            if _k == 'dynamics_bias':
+                new_val = {_k: _base + ((2.0 * jr.uniform(key=subkey, shape=_base.shape)) - 1.0)}
+            elif _k == 'dynamics_weights':
+                new_val = {_k: _base * (0.5 + jr.uniform(key=subkey, shape=_base.shape))}
+            else:
+                raise NotImplementedError()
+
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
         # Build out a new model using these values.
@@ -460,7 +490,7 @@ def lds_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em
     Returns:
 
     """
-    _str = 'Step: {:> 5d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred FIVO bound {:> 8.3f}'.\
+    _str = 'Step: {:> 7d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred FIVO bound {:> 8.3f}'.\
         format(_step, true_lml, pred_lml, pred_fivo_bound)
     if em_log_marginal_likelihood is not None:
         _str += '  EM Neg-LML: {:> 8.3f}'.format(em_log_marginal_likelihood)
