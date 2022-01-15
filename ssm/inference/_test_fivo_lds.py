@@ -229,6 +229,7 @@ def lds_define_proposal(subkey, model, dataset, env):
     # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
+
     # configure the tilt.
     if env.config.proposal_type == 'PERSTEP_ALLOBS':
         proposal_cls = proposals.IndependentGaussianProposal
@@ -249,10 +250,14 @@ def lds_define_proposal(subkey, model, dataset, env):
         raise NotImplementedError()
 
     elif env.config.proposal_type == 'PERSTEP_WINDOW':
-        raise NotImplementedError()
+        proposal_cls = proposals.IGWindowProposal
+        n_props = len(dataset[0])
+        proposal_window_length = env.config.proposal_window_length
 
     elif env.config.proposal_type == 'SINGLE_WINDOW':
-        raise NotImplementedError()
+        proposal_cls = proposals.IGWindowProposal
+        n_props = 1
+        proposal_window_length = env.config.proposal_window_length
 
     else:
         raise NotImplementedError()
