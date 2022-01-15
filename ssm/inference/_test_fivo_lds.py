@@ -51,7 +51,7 @@ def lds_get_config():
     parser.add_argument('--vi-minibatch-size', default=16, type=int)  #
     parser.add_argument('--vi-epochs', default=1, type=int)  #
 
-    parser.add_argument('--num-particles', default=8, type=int)
+    parser.add_argument('--num-particles', default=4, type=int)
     parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
