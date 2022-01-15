@@ -38,11 +38,12 @@ def gdm_get_config():
 
     parser.add_argument('--free-parameters', default='dynamics_bias', type=str)              # CSV.  # 'dynamics_bias'
 
-    parser.add_argument('--proposal-structure', default='DIRECT', type=str)       # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='PERSTEP', type=str)  # {'PERSTEP', }.
+    parser.add_argument('--proposal-structure', default='DIRECT', type=str)         # {None/'NONE'/'BOOTSTRAP', 'DIRECT' }
+    parser.add_argument('--proposal-type', default='PERSTEP', type=str)             # {'PERSTEP', }.
 
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)         # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='PERSTEP', type=str)  # {'SINGLEWINDOW', 'PERSTEPWINDOW', 'PERSTEP'}.
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)             # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-type', default='PERSTEP', type=str)                 # {'PERSTEP'}.
+    parser.add_argument('--tilt-window-length', default=None, type=int)             # {int, None}.
 
     parser.add_argument('--num-particles', default=5, type=int)
     parser.add_argument('--datasets-per-batch', default=16, type=int)

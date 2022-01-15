@@ -38,11 +38,12 @@ def svm_get_config():
 
     parser.add_argument('--free-parameters', default='mu', type=str)  # CSV.  # {'log_Q', 'mu'}.
 
-    parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)       # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--proposal-type', default='PERSTEP_ALLOBS', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
 
-    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--tilt-structure', default='NONE', type=str)           # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)       # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--tilt-window-length', default=5, type=int)            # {int, None}.
 
     parser.add_argument('--num-particles', default=8, type=int)
     parser.add_argument('--datasets-per-batch', default=4, type=int)
@@ -141,12 +142,12 @@ def svm_define_tilt(subkey, model, dataset, env):
     elif env.config.tilt_type == 'PERSTEP_WINDOW':
         tilt_fn = tilts.IGWindowTilt
         n_tilts = len(dataset[0]) - 1
-        tilt_window_length = 5
+        tilt_window_length = env.config.tilt_window_length
 
     elif env.config.tilt_type == 'SINGLE_WINDOW':
         tilt_fn = tilts.IGWindowTilt
         n_tilts = 1
-        tilt_window_length = 5
+        tilt_window_length = env.config.tilt_window_length
 
     else:
         raise NotImplementedError()
