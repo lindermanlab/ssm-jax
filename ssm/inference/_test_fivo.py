@@ -44,7 +44,7 @@ try:
     import wandb
     USE_WANDB = True
     USERNAME = 'andrewwarrington'
-    PROJECT = 'fivo-aux-beta'
+    PROJECT = 'fivo-aux-gamma'
 except:
     USE_WANDB = False
     print('[Soft Warning]:  Couldnt configure WandB.')
@@ -67,7 +67,7 @@ def do_config():
     try:
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
-        model = 'LDS'
+        model = 'SVM'
         print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
@@ -302,10 +302,10 @@ def main():
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Set up a buffer for doing an alternate VI loop.
-        VI_USE_VI_GRAD = True and (opt[2] is not None)
-        VI_BUFFER_LENGTH = 10 * env.config.datasets_per_batch * env.config.num_particles
-        VI_MINIBATCH_SIZE = 16
-        VI_EPOCHS = 1
+        VI_USE_VI_GRAD = env.config.vi_use_tilt_gradient and (opt[2] is not None)
+        VI_BUFFER_LENGTH = env.config.vi_buffer_length * env.config.datasets_per_batch * env.config.num_particles
+        VI_MINIBATCH_SIZE = env.config.vi_minibatch_size
+        VI_EPOCHS = env.config.vi_epochs
 
         # Use this update frequency to roughly match that in FIVO-AUX.
         VI_FREQUENCY = int(VI_EPOCHS * np.floor(VI_BUFFER_LENGTH / VI_MINIBATCH_SIZE))
@@ -375,9 +375,9 @@ def main():
                 print('Warning: Skipped step: ', _step, min(smc_posteriors.log_normalizer), pred_fivo_bound)
 
             # If we are using the VI tilt gradient and it is a VI epoch, do that step.
+            key, subkey = jr.split(key)
             if VI_USE_VI_GRAD and (opt[2] is not None) and VI_BUFFER_FULL:
                 if _step % VI_FREQUENCY == 0 or _step == 1:
-                    key, subkey = jr.split(key)
                     _vi_opt, final_vi_elbo, vi_gradient_steps = do_vi_tilt_update_jit(subkey,
                                                                                       env,
                                                                                       fivo.get_params_from_opt(opt),

@@ -193,7 +193,7 @@ class IGPerStepTilt(IndependentGaussianTilt):
 
             return jax.lax.cond(_score_all_future(),
                                 lambda *args: _dist.log_prob(np.asarray([_out])),
-                                lambda *args: np.zeros(means.shape[1]),
+                                lambda *args: np.zeros_like(_dist.log_prob(np.asarray([_out]))),  # TODO - changed from 1 to -1
                                 None)
 
         log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)

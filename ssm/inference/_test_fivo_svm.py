@@ -10,7 +10,7 @@ from tensorflow_probability.substrates.jax import distributions as tfd
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
-from ssm.svm.models import UnivariateSVM
+from ssm.svm.models import SVM
 import ssm.nn_util as nn_util
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
@@ -39,21 +39,27 @@ def svm_get_config():
     parser.add_argument('--free-parameters', default='mu', type=str)  # CSV.  # {'log_Q', 'mu'}.
 
     parser.add_argument('--proposal-structure', default='RESQ', type=str)       # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='PERSTEP_ALLOBS', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--proposal-window-length', default=5, type=int)            # {int, None}.
 
-    parser.add_argument('--tilt-structure', default='NONE', type=str)           # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)           # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)       # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--tilt-window-length', default=5, type=int)            # {int, None}.
 
-    parser.add_argument('--num-particles', default=8, type=int)
-    parser.add_argument('--datasets-per-batch', default=4, type=int)
+    parser.add_argument('--vi-use-tilt-gradient', default=1, type=int)  # {0, 1}.
+    parser.add_argument('--vi-buffer-length', default=10, type=int)  #
+    parser.add_argument('--vi-minibatch-size', default=16, type=int)  #
+    parser.add_argument('--vi-epochs', default=1, type=int)  #
+
+    parser.add_argument('--num-particles', default=4, type=int)
+    parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--p-lr', default=0.001, type=float)
     parser.add_argument('--q-lr', default=0.001, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
 
-    parser.add_argument('--T', default=49, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+    parser.add_argument('--T', default=49, type=int)  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=1, type=int)
     parser.add_argument('--emissions-dim', default=1, type=int)
 
@@ -245,10 +251,14 @@ def svm_define_proposal(subkey, model, dataset, env):
         raise NotImplementedError()
 
     elif env.config.proposal_type == 'PERSTEP_WINDOW':
-        raise NotImplementedError()
+        proposal_cls = proposals.IGWindowProposal
+        n_props = len(dataset[0])
+        proposal_window_length = env.config.proposal_window_length
 
     elif env.config.proposal_type == 'SINGLE_WINDOW':
-        raise NotImplementedError()
+        proposal_cls = proposals.IGWindowProposal
+        n_props = 1
+        proposal_window_length = env.config.proposal_window_length
 
     else:
         raise NotImplementedError()
@@ -259,7 +269,8 @@ def svm_define_proposal(subkey, model, dataset, env):
                             dummy_output=dummy_proposal_output,
                             trunk_fn=trunk_fn,
                             head_mean_fn=head_mean_fn,
-                            head_log_var_fn=head_log_var_fn, )
+                            head_log_var_fn=head_log_var_fn,
+                            proposal_window_length=proposal_window_length)
 
     # Initialize the network.
     proposal_params = proposal.init(subkey)
@@ -300,7 +311,7 @@ def svm_define_true_model_and_data(key, env):
 
     # Create the true model.
     key, subkey = jr.split(key)
-    true_model = UnivariateSVM()
+    true_model = SVM()
 
     # Sample some data.
     key, subkey = jr.split(key)
@@ -348,7 +359,7 @@ def svm_define_test_model(key, true_model, env):
             key, subkey = jr.split(key)
 
             # TODO - This needs to be made model-specific.
-            new_val = {_k: _base + (0.000 * jr.normal(key=subkey, shape=_base.shape))}
+            new_val = {_k: _base + (0.2 * jr.normal(key=subkey, shape=_base.shape))}
 
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
@@ -466,7 +477,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from tensorflow_probability.substrates import jax as tfp
 
-    from ssm.svm.models import UnivariateSVM
+    from ssm.svm.models import SVM
 
     from ssm.utils import random_rotation
     from ssm.plots import plot_dynamics_2d
@@ -593,7 +604,7 @@ if __name__ == '__main__':
 
 
     # Initialize our true SVM model
-    true_svm = UnivariateSVM()
+    true_svm = SVM()
 
     import warnings
 
@@ -612,7 +623,7 @@ if __name__ == '__main__':
     seed = jr.PRNGKey(32)  # NOTE: different seed!
 
     sig_init = np.asarray([[np.log(0.01)]])
-    test_svm = UnivariateSVM(log_sigma=sig_init)
+    test_svm = SVM(log_sigma=sig_init)
 
     rng = jr.PRNGKey(10)
     elbos, fitted_svm, posteriors = test_svm.fit(all_data, method="laplace_em", key=rng, num_iters=25)

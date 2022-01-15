@@ -26,7 +26,7 @@ SVMPosterior = MultivariateNormalBlockTridiag
 
 
 @register_pytree_node_class
-class UnivariateSVM(SSM):
+class SVM(SSM):
     """
     Follows the definition and nomenclature in Naesseth et al 2017.
     """
@@ -35,10 +35,10 @@ class UnivariateSVM(SSM):
                  num_latent_dims: int = 1,
                  num_emission_dims: int = 1,
 
-                 mu: float = np.asarray([0.0]),
-                 invsig_phi: float = np.asarray([utils.inverse_sigmoid(0.9)]),
-                 log_Q: float = np.asarray([[np.log(1.0)]]),
-                 log_beta: float = np.asarray([np.log(1.0)]),
+                 mu: np.ndarray = np.asarray([0.0]),
+                 invsig_phi: np.ndarray = np.asarray([utils.inverse_sigmoid(0.9)]),
+                 log_Q: np.ndarray = np.asarray([[np.log(1.0)]]),
+                 log_beta: np.ndarray = np.asarray([np.log(1.0)]),
 
                  initial_condition = None,
                  dynamics = None,
@@ -61,14 +61,16 @@ class UnivariateSVM(SSM):
         self.latent_dim = num_latent_dims
         self.emission_dims = num_emission_dims
 
-        assert self.latent_dim == 1, "Only defined for univariate case."
-        assert self.emission_dims == 1, "Only defined for univariate case."
-
         # Inscribe the parameters.
         self.log_Q = log_Q
         self.invsig_phi = invsig_phi
         self.mu = mu
         self.log_beta = log_beta
+
+        # Check the input shapes.
+        assert self.invsig_phi.shape == (self.latent_dim, )
+        # assert self.log_Q_diag.shape == (self.latent_dim, )
+        # TODO - expand this to multivariate case.
 
         # The initial condition is a Gaussian with a specific variance.
         # initial_scale_tril = np.sqrt(np.square(np.exp(log_Q))) / (1 - np.square(utils.sigmoid(invsig_phi)))

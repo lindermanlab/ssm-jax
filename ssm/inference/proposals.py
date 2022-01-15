@@ -167,32 +167,7 @@ class IGPerStepProposal(IndependentGaussianProposal):
     """
 
     """
-
-    # Define the required method for building the inputs.
-    def lds_proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
-        """
-        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
-        can be input into the proposal.
-
-        Args:
-
-
-        Returns:
-            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
-
-        """
-
-        # This proposal gets the entire dataset and the current particles.
-        _proposal_inputs = (_dataset, _particles)
-
-        _model_latent_shape = (_model.latent_dim, )
-
-        _is_batched = (_model_latent_shape != _particles.shape)
-        if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
-        else:
-            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return _vmapped(*_proposal_inputs)
+    pass
 
 
 class IGSingleObsProposal(IndependentGaussianProposal):
