@@ -43,6 +43,7 @@ def lds_get_config():
 
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--tilt-window-length', default=2, type=int)  # {int, None}.
 
     parser.add_argument('--num-particles', default=8, type=int)
     parser.add_argument('--datasets-per-batch', default=16, type=int)
@@ -52,9 +53,9 @@ def lds_get_config():
     parser.add_argument('--q-lr', default=0.001, type=float)
     parser.add_argument('--r-lr', default=0.001, type=float)
 
-    parser.add_argument('--T', default=19, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
-    parser.add_argument('--latent-dim', default=5, type=int)
-    parser.add_argument('--emissions-dim', default=2, type=int)
+    parser.add_argument('--T', default=29, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
+    parser.add_argument('--latent-dim', default=1, type=int)
+    parser.add_argument('--emissions-dim', default=1, type=int)
     parser.add_argument('--num-trials', default=100000, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
@@ -139,12 +140,12 @@ def lds_define_tilt(subkey, model, dataset, env):
     elif env.config.tilt_type == 'PERSTEP_WINDOW':
         tilt_fn = tilts.IGWindowTilt
         n_tilts = len(dataset[0]) - 1
-        tilt_window_length = 2
+        tilt_window_length = env.config.tilt_window_length
 
     elif env.config.tilt_type == 'SINGLE_WINDOW':
         tilt_fn = tilts.IGWindowTilt
         n_tilts = 1
-        tilt_window_length = 2
+        tilt_window_length = env.config.tilt_window_length
 
     else:
         raise NotImplementedError()
