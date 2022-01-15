@@ -1,4 +1,5 @@
 #!/bin/bash
+shopt -s expand_aliases
 
 glob_tag='SVM-v0-0-0'
 model='SVM'

@@ -1,4 +1,5 @@
 #!/bin/bash
+shopt -s expand_aliases
 
 glob_tag='GDM-v0-0-0'
 model='GDM'
