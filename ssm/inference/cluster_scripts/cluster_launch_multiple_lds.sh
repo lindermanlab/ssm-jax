@@ -1,9 +1,9 @@
 #!/bin/bash
 
-glob_tag='LDS-v1-6-0'
+glob_tag='LDS-v2-0-0'
 model='LDS'
-proposal_type='PERSTEP'
-tilt_type='SINGLEWINDOW'
+proposal_type='PERSTEP_ALLOBS'
+tilt_type='SINGLE_WINDOW'
 latent_dim=1
 emissions_dim=1
 

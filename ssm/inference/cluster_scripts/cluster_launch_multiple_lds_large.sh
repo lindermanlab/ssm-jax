@@ -2,10 +2,10 @@
 
 glob_tag='LDS-large-v2-0-0'
 model='LDS'
-proposal_type='PERSTEP'
-tilt_type='SINGLEWINDOW'
+proposal_type='PERSTEP_ALLOBS'
+tilt_type='SINGLE_WINDOW'
 latent_dim=5
-emissions_dim=10
+emissions_dim=2
 
 # # BPF-SGR
 exp_tag='bpf-sgr'
