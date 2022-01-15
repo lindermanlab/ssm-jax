@@ -231,7 +231,7 @@ def svm_define_proposal(subkey, model, dataset, env):
     # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
     # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
-    # configure the tilt.
+    # configure the proposal.
     if env.config.proposal_type == 'PERSTEP_ALLOBS':
         proposal_cls = proposals.IndependentGaussianProposal
         n_props = len(dataset[0])
