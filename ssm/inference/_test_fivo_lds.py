@@ -268,7 +268,7 @@ def lds_define_proposal(subkey, model, dataset, env):
                             dummy_output=dummy_proposal_output,
                             trunk_fn=trunk_fn,
                             head_mean_fn=head_mean_fn,
-                            head_log_var_fn=head_log_var_fn, )
+                            head_log_var_fn=head_log_var_fn, proposal_window_length=proposal_window_length)
 
     # Initialize the network.
     proposal_params = proposal.init(subkey)
