@@ -2,8 +2,8 @@
 
 glob_tag='SVM-v0-0-0'
 model='SVM'
-proposal_type='SINGLE_WINDOW'
-tilt_type='SINGLE_WINDOW'
+proposal_type='PERSTEP_WINDOW'
+tilt_type='PERSTEP_WINDOW'
 latent_dim=1
 emissions_dim=1
 
