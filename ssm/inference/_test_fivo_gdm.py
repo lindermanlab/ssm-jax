@@ -34,7 +34,7 @@ def gdm_get_config():
 
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
-    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--temper', default=1.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
     parser.add_argument('--free-parameters', default='dynamics_bias', type=str)              # CSV.  # 'dynamics_bias'
 
@@ -45,6 +45,11 @@ def gdm_get_config():
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)             # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='PERSTEP', type=str)                 # {'PERSTEP'}.
     parser.add_argument('--tilt-window-length', default=None, type=int)             # {int, None}.
+
+    parser.add_argument('--vi-use-tilt-gradient', default=0, type=int)  # {0, 1}.
+    parser.add_argument('--vi-buffer-length', default=10, type=int)  #
+    parser.add_argument('--vi-minibatch-size', default=16, type=int)  #
+    parser.add_argument('--vi-epochs', default=1, type=int)  #
 
     parser.add_argument('--num-particles', default=5, type=int)
     parser.add_argument('--datasets-per-batch', default=16, type=int)

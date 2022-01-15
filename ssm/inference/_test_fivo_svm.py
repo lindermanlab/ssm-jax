@@ -359,7 +359,7 @@ def svm_define_test_model(key, true_model, env):
             key, subkey = jr.split(key)
 
             # TODO - This needs to be made model-specific.
-            new_val = {_k: _base + (0.000 * jr.normal(key=subkey, shape=_base.shape))}
+            new_val = {_k: _base + (0.2 * jr.normal(key=subkey, shape=_base.shape))}
 
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
