@@ -1,10 +1,10 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-glob_tag='SVM-v0-0-0'
+glob_tag='SVM-v1-0-0'
 model='SVM'
-proposal_type='PERSTEP_WINDOW'
-tilt_type='PERSTEP_WINDOW'
+proposal_type='SINGLE_WINDOW'
+tilt_type='SINGLE_WINDOW'
 latent_dim=1
 emissions_dim=1
 
