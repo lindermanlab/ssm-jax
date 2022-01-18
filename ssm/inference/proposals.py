@@ -42,19 +42,18 @@ class IndependentGaussianProposal:
 
     """
 
-    def __init__(self, n_proposals, stock_proposal_input_without_q_state, dummy_output,
+    def __init__(self, n_proposals, stock_proposal_input, dummy_output,
                  trunk_fn=None, head_mean_fn=None, head_log_var_fn=None, proposal_window_length=None):
 
         # Work out the number of proposals.
-        assert (n_proposals == 1) or (n_proposals == len(stock_proposal_input_without_q_state[0])), \
+        assert (n_proposals == 1) or (n_proposals == len(stock_proposal_input[0])), \
             'Can only use a single proposal or as many proposals as there are states.'
         self.n_proposals = n_proposals
 
         self.proposal_window_length = proposal_window_length
 
         # Re-build the full input that will be provided.
-        q_state = None
-        full_input = (*stock_proposal_input_without_q_state, q_state)
+        full_input = stock_proposal_input
         self._dummy_processed_input = self._proposal_input_generator(*full_input)[0]
         output_dim = nn_util.vectorize_pytree(dummy_output).shape[0]
 

@@ -160,8 +160,8 @@ class VRNN(SSM):
         prev_latent = state[1]
         prev_latent_dec = self._decoder_latent_obj(prev_latent)
 
-        # Encode the previous observation.
-        prev_obs = covariates
+        # Encode the PREVIOUS observation.
+        prev_obs = covariates[0]
         prev_obs_enc = self._encoder_data_obj(prev_obs)
 
         # Iterate the RNN.
@@ -214,7 +214,6 @@ class VRNN(SSM):
         emissions_dist = tfd.MultivariateNormalDiag(emissions_mean, np.sqrt(np.exp(emissions_log_var)))
 
         return emissions_dist
-
 
     def tree_flatten(self):
         children = (self._params_rnn,
@@ -349,8 +348,8 @@ def define_vrnn_model(_key):
 
 if __name__ == '__main__':
 
-    latent_dim = 10
-    rnn_state_dim = 11
+    rnn_state_dim = 10
+    latent_dim = 11
     emissions_dim = 12
     latent_encoded_dim = 5
     emissions_encoded_dim = 6
@@ -378,8 +377,11 @@ if __name__ == '__main__':
     # Test some iteration stuff.
     key, subkey = jr.split(key)
     initial_particles = vrnn.initial_distribution().sample(seed=subkey)
+
+    # Generate the initial observations.  NOTE - the subroutine requires previous and current obs, so just duplicate.
     key, subkey = jr.split(key)
-    initial_obs = vrnn.emissions_distribution(initial_particles).sample(seed=subkey)
+    initial_obs = (vrnn.emissions_distribution(initial_particles).sample(seed=subkey),
+                   vrnn.emissions_distribution(initial_particles).sample(seed=subkey))
 
     iterated = vrnn.dynamics_distribution(initial_particles, covariates=initial_obs)
 

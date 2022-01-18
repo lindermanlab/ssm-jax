@@ -212,7 +212,7 @@ def lds_define_proposal(subkey, model, dataset, env):
     # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
     dummy_p_dist = model.dynamics_distribution(dummy_particles)
-    stock_proposal_input_without_q_state = (dataset[0], model, dummy_particles, 0, dummy_p_dist)
+    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist, None)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # If we are using RESQ, define a kernel that basically does nothing to begin with.
@@ -264,7 +264,7 @@ def lds_define_proposal(subkey, model, dataset, env):
 
     # Define the proposal itself.
     proposal = proposal_cls(n_proposals=n_props,
-                            stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
+                            stock_proposal_input=stock_proposal_input,
                             dummy_output=dummy_proposal_output,
                             trunk_fn=trunk_fn,
                             head_mean_fn=head_mean_fn,

@@ -393,8 +393,11 @@ def _smc_forward_pass(key,
         key, particles, accumulated_log_weights, q_state = carry
         key, subkey1, subkey2 = jr.split(key, num=3)
 
+        # Compile the previous and next observations as covariates.
+        covariates = (dataset[t - 1], dataset[t])
+
         # Compute the p and q distributions.
-        p_dist = model.dynamics_distribution(particles)
+        p_dist = model.dynamics_distribution(particles, covariates=covariates)  # NOTE - hijacking covariates to pass PREVIOUS AND CURRENT OBS in.
         q_dist, q_state = proposal(particles, t, p_dist, q_state)
 
         # Sample the new particles.
