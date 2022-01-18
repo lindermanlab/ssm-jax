@@ -253,7 +253,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.001, q_lr=0.001, r_lr=0.001):
+def define_optimizer(p_params=None, q_params=None, r_params=None, lr_p=0.001, lr_q=0.001, lr_r=0.001):
     """
     Build out the appropriate optimizer.
 
@@ -272,19 +272,19 @@ def define_optimizer(p_params=None, q_params=None, r_params=None, p_lr=0.001, q_
     """
 
     if p_params is not None:
-        p_opt_def = optim.Adam(learning_rate=p_lr)
+        p_opt_def = optim.Adam(learning_rate=lr_p)
         p_opt = p_opt_def.create(p_params)
     else:
         p_opt = None
 
     if q_params is not None:
-        q_opt_def = optim.Adam(learning_rate=q_lr)
+        q_opt_def = optim.Adam(learning_rate=lr_q)
         q_opt = q_opt_def.create(q_params)
     else:
         q_opt = None
 
     if r_params is not None:
-        r_opt_def = optim.Adam(learning_rate=r_lr)
+        r_opt_def = optim.Adam(learning_rate=lr_r)
         r_opt = r_opt_def.create(r_params)
     else:
         r_opt = None
@@ -462,7 +462,7 @@ def log_params(_param_hist, _cur_params):
     return _param_hist
 
 
-def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
+def initial_validation(env, key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
                        num_particles=1000, dset_to_plot=0, init_model=None, GLOBAL_PLOT=True, do_print=None, do_plot=True):
     """
 
@@ -500,7 +500,7 @@ def initial_validation(key, true_model, dataset, true_states, opt, do_fivo_sweep
 
     # Test BPF in the true model..
     key, subkey = jr.split(key)
-    true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles)
+    true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles, resampling_criterion=env.config.resampling_criterion)
     true_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
 
     if init_model is not None:
@@ -841,7 +841,13 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
             _tag = 'p'
 
         if true_states is not None:
-            for _i, _p in enumerate(true_states[_dset_idx].T):
+
+            if len(true_states.shape) == 2:
+                _true_states = true_states
+            else:
+                _true_states = true_states[_dset_idx]
+
+            for _i, _p in enumerate(_true_states.T):
                 ax[0].plot(_p, linewidth=1.0, c=color_names[_i], linestyle='--', label='True states' if _i == 0 else None)
                 ax[1].plot(_p, linewidth=1.0, c=color_names[_i], linestyle='--', label='True states' if _i == 0 else None)
 

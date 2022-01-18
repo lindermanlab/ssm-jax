@@ -673,7 +673,17 @@ def do_resample(key,
     if num_particles is None:
         num_particles = len(log_weights)
 
-    should_resample = resampling_criterion(log_weights, 0)
+    if type(resampling_criterion) == str:
+        if resampling_criterion == 'always_resample':
+            callable_resampling_criterion = always_resample_criterion
+        elif resampling_criterion == 'never_resample':
+            callable_resampling_criterion = never_resample_criterion
+        else:
+            raise NotImplementedError()
+    else:
+        callable_resampling_criterion = resampling_criterion
+
+    should_resample = callable_resampling_criterion(log_weights, 0)
 
     resampled_particles, ancestors = jax.lax.cond(
         should_resample,

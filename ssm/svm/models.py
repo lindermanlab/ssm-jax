@@ -36,13 +36,19 @@ class SVM(SSM):
                  num_emission_dims: int = 1,
 
                  mu: np.ndarray = np.asarray([0.0]),
-                 invsig_phi: np.ndarray = np.asarray([utils.inverse_sigmoid(0.9)]),
-                 log_Q: np.ndarray = np.asarray([[np.log(1.0)]]),
-                 log_beta: np.ndarray = np.asarray([np.log(1.0)]),
 
-                 initial_condition = None,
-                 dynamics = None,
-                 emissions = None,
+                 # invsig_phi = 0utils.inverse_sigmoid(0.9).
+                 invsig_phi: np.ndarray = np.asarray([2.197]),
+
+                 # log_Q = np.log(1.0)
+                 log_Q: np.ndarray = np.asarray([[0.0]]),
+
+                 # log_beta = np.log(1.0)
+                 log_beta: np.ndarray = np.asarray([0.0]),
+
+                 initial_condition=None,
+                 dynamics=None,
+                 emissions=None,
 
                  seed: jr.PRNGKey = None):
         """
@@ -264,7 +270,7 @@ class SVMEmission(Emissions):
     """
 
     def __init__(self,
-                 log_beta: float = np.log(1.0)):
+                 log_beta: float):
         r"""
 
         Args:
@@ -298,7 +304,7 @@ class SVMEmission(Emissions):
         assert metadata is None, "Metadata is not provisioned under the original SVM."
 
         mean = np.zeros_like(self.log_beta)  # Emission distribution is zero mean.
-        scale = np.exp(self.log_beta) * np.sqrt(np.exp(state / 2.0))  # Scale is defined conditioned on state.
+        scale = np.sqrt(np.exp(self.log_beta) * np.exp(state / 2.0))  # Scale is defined conditioned on state.
         dist = tfd.MultivariateNormalDiag(mean, scale)
         return dist
 
