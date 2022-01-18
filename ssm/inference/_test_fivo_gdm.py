@@ -27,10 +27,8 @@ def gdm_get_config():
 
     # Set up the experiment.
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', default='GDM', type=str)
 
-    parser.add_argument('--seed', default=10, type=int)
-    parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
+    parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # CSV.  # {'always_resample', 'never_resample'}.
 
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
@@ -40,11 +38,13 @@ def gdm_get_config():
 
     parser.add_argument('--proposal-structure', default='DIRECT', type=str)         # {None/'NONE'/'BOOTSTRAP', 'DIRECT' }
     parser.add_argument('--proposal-type', default='PERSTEP', type=str)             # {'PERSTEP', }.
-    parser.add_argument('--proposal-window-length', default=None, type=int)             # {int, None}.
+    parser.add_argument('--proposal-window-length', default=None, type=int)          # {int, None}.
+    parser.add_argument('--proposal-fn-family', default='AFFINE', type=str)         # {'AFFINE', 'MLP'}.
 
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)             # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='PERSTEP', type=str)                 # {'PERSTEP'}.
     parser.add_argument('--tilt-window-length', default=None, type=int)             # {int, None}.
+    parser.add_argument('--tilt-fn-family', default='AFFINE', type=str)             # {'AFFINE', 'MLP'}.
 
     parser.add_argument('--vi-use-tilt-gradient', default=0, type=int)  # {0, 1}.
     parser.add_argument('--vi-buffer-length', default=10, type=int)  #
@@ -52,7 +52,7 @@ def gdm_get_config():
     parser.add_argument('--vi-epochs', default=1, type=int)  #
 
     parser.add_argument('--num-particles', default=4, type=int)
-    parser.add_argument('--datasets-per-batch', default=16, type=int)
+    parser.add_argument('--datasets-per-batch', default=32, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--lr-p', default=0.001, type=float)
@@ -62,15 +62,18 @@ def gdm_get_config():
     parser.add_argument('--T', default=9, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=1, type=int)
     parser.add_argument('--emissions-dim', default=1, type=int)
+
     parser.add_argument('--num-trials', default=100000, type=int)
+    parser.add_argument('--num-val-datasets', default=1000, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
-    parser.add_argument('--num-val-datasets', default=1000, type=int)
-    parser.add_argument('--validation-particles', default=250, type=int)
+    parser.add_argument('--validation-particles', default=1000, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
-
     parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
+    parser.add_argument('--model', default='GDM', type=str)
+    parser.add_argument('--seed', default=10, type=int)
+    parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
 
     parser.add_argument('--PLOT', default=1, type=int)
 

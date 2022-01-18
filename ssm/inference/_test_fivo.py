@@ -546,34 +546,34 @@ def main():
                           'tilt_temperature': temperature,
 
                           'small_nlml': {'mean':         {'em_true': em_log_marginal_likelihood,
-                                                         'bpf_true': small_true_bpf_nlml,
-                                                         'fivo': small_fivo_nlml, },
-                                        'variance':     {'bpf_true': small_true_bpf_expected_nlml_var,
-                                                         'fivo': small_fivo_expected_nlml_var}},
+                                                          'bpf_true': small_true_bpf_nlml,
+                                                          'pred': small_fivo_nlml, },
+                                         'variance':     {'bpf_true': small_true_bpf_expected_nlml_var,
+                                                          'pred': small_fivo_expected_nlml_var}},
 
                           'kl': kl_metrics,
                           'upc': upc_metrics,
 
                           'expected_kl': {'bpf_true':   np.nanmean(true_bpf_kls),
-                                          'fivo':       np.nanmean(pred_smc_kls)},
+                                          'pred':       np.nanmean(pred_smc_kls)},
 
                           'expected_upc': {'bpf_true':  np.mean(true_bpf_upc),
-                                           'fivo':      np.mean(pred_smc_upc), },
+                                           'pred':      np.mean(pred_smc_upc), },
 
 
                           # 'expected_ess': {'bpf_true':          np.mean(true_bpf_ess),
-                          #                  'fivo':              np.mean(pred_smc_ess), },
+                          #                  'pred':              np.mean(pred_smc_ess), },
                           #
                           # 'ess': {'median':     {'bpf_true':    np.quantile(true_bpf_ess, 0.5, axis=0),
-                          #                        'fivo':        np.quantile(pred_smc_ess, 0.5, axis=0), },
+                          #                        'pred':        np.quantile(pred_smc_ess, 0.5, axis=0), },
                           #         'lq':         {'bpf_true':    np.quantile(true_bpf_ess, 0.25, axis=0),
-                          #                        'fivo':        np.quantile(pred_smc_ess, 0.25, axis=0), },
+                          #                        'pred':        np.quantile(pred_smc_ess, 0.25, axis=0), },
                           #         'uq':         {'bpf_true':    np.quantile(true_bpf_ess, 0.75, axis=0),
-                          #                        'fivo':        np.quantile(pred_smc_ess, 0.75, axis=0), },
+                          #                        'pred':        np.quantile(pred_smc_ess, 0.75, axis=0), },
                           #         'mean':       {'bpf_true':    np.mean(true_bpf_ess, axis=0),
-                          #                        'fivo':        np.mean(pred_smc_ess, axis=0), },
+                          #                        'pred':        np.mean(pred_smc_ess, axis=0), },
                           #         'variance':   {'bpf_true':    np.var(true_bpf_ess, axis=0),
-                          #                        'fivo':        np.var(pred_smc_ess, axis=0), },
+                          #                        'pred':        np.var(pred_smc_ess, axis=0), },
                           #         },
                           }
                 utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb, _commit=False)
