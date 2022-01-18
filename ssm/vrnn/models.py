@@ -252,7 +252,7 @@ class VRNN(SSM):
                               state,
                               covariates=None,
                               metadata=None):
-        assert covariates is not None, 'Inputs must come in through `covariates`.'
+        # assert covariates is not None, 'Inputs must come in through `covariates`.'
         return self._dynamics(state, covariates, metadata)
 
     def emissions_distribution(self,
@@ -282,6 +282,60 @@ class VRNN(SSM):
             verbosity: Verbosity=Verbosity.DEBUG):
         raise NotImplementedError()
 
+    def _single_unconditional_sample(self, key, num_steps):
+        """
+
+        Args:
+            key:
+            numsteps:
+
+        Returns:
+
+        """
+        key, subkey = jr.split(key)
+        initial_particles = self.initial_distribution().sample(seed=key)
+
+        key, subkey = jr.split(key)
+        initial_obs = self.emissions_distribution(initial_particles).sample(seed=key)
+
+        state_history = [initial_particles]
+        obs_history = [initial_obs]
+
+        for _t in range(1, num_steps):
+            # Iterate the model
+            key, subkey = jr.split(key)
+            new_state = self.dynamics_distribution(state_history[-1], covariates=(obs_history[-1], )).sample(seed=subkey)
+
+            # Generate the emission.
+            key, subkey = jr.split(key)
+            new_obs = self.emissions_distribution(new_state, ).sample(seed=subkey)
+
+            # Append to the history.
+            state_history.append(new_state)
+            obs_history.append(new_obs)
+
+        state_history = (np.stack([_s[0] for _s in state_history]),
+                         np.stack([_s[1] for _s in state_history]))
+        obs_history = np.asarray(obs_history)
+
+        return state_history, obs_history
+
+    def unconditional_sample(self, key, num_steps, num_samples):
+        """
+
+        Args:
+            key:
+            num_steps:
+            num_samples:
+
+        Returns:
+
+        """
+
+        state_history, obs_history = jax.vmap(lambda _k: self._single_unconditional_sample(_k, num_steps))(jr.split(key, num_samples))
+
+        return state_history, obs_history
+
 
 # def define_vrnn_proposal(_key,
 #                          _dataset,
@@ -302,48 +356,50 @@ class VRNN(SSM):
 #     return proposals.IndependentGaussianProposal(1, )
 
 
-def define_vrnn_model(_key):
-
-    rnn = nn.Dense(rnn_state_dim)
-    prior = nn.Dense(2 * latent_dim)
-    latent_decoder = nn.Dense(latent_encoded_dim)
-    full_decoder = nn.Dense(2 * emissions_dim)
-    data_encoder = nn.Dense(emissions_encoded_dim)
-
-    input_prior = val_rnn_state
-    input_rnn = np.concatenate((val_rnn_state, val_latent_decoded, val_data_encoded))
-    input_latent_decoder = val_latent
-    input_full_decoder = np.concatenate((val_rnn_state, val_latent_decoded))
-    input_data_encoder = val_obs
-
-    _key, *subkey = jr.split(_key, num=6)
-    params_rnn = rnn.init(subkey[0], input_rnn)
-    params_prior = prior.init(subkey[1], input_prior)
-    params_latent_decoder = latent_decoder.init(subkey[2], input_latent_decoder)
-    params_full_decoder = full_decoder.init(subkey[3], input_full_decoder)
-    params_data_encoder = data_encoder.init(subkey[4], input_data_encoder)
-
-    rebuild_rnn = lambda _params: rnn.bind(_params)
-    rebuild_prior = lambda _params: prior.bind(_params)
-    rebuild_latent_decoder = lambda _params: latent_decoder.bind(_params)
-    rebuild_full_decoder = lambda _params: full_decoder.bind(_params)
-    rebuild_data_encoder = lambda _params: data_encoder.bind(_params)
-
-    return VRNN(latent_dim,
-                emissions_dim,
-                latent_encoded_dim,
-                emissions_encoded_dim,
-                rnn_state_dim,
-                rebuild_rnn,
-                rebuild_prior,
-                rebuild_latent_decoder,
-                rebuild_full_decoder,
-                rebuild_data_encoder,
-                params_rnn,
-                params_prior,
-                params_latent_decoder,
-                params_full_decoder,
-                params_data_encoder, )
+# def define_vrnn_model(_key):
+#
+#     kernel_init = lambda *args: nn.initializers.lecun_normal()(*args) * 0.0001
+#
+#     rnn = nn.Dense(rnn_state_dim, kernel_init=kernel_init)
+#     prior = nn.Dense(2 * latent_dim, kernel_init=kernel_init)
+#     latent_decoder = nn.Dense(latent_encoded_dim, kernel_init=kernel_init)
+#     full_decoder = nn.Dense(2 * emissions_dim, kernel_init=kernel_init)
+#     data_encoder = nn.Dense(emissions_encoded_dim, kernel_init=kernel_init)
+#
+#     input_prior = val_rnn_state
+#     input_rnn = np.concatenate((val_rnn_state, val_latent_decoded, val_data_encoded))
+#     input_latent_decoder = val_latent
+#     input_full_decoder = np.concatenate((val_rnn_state, val_latent_decoded))
+#     input_data_encoder = val_obs
+#
+#     _key, *subkeys = jr.split(_key, num=6)
+#     params_rnn = rnn.init(subkeys[0], input_rnn)
+#     params_prior = prior.init(subkeys[1], input_prior)
+#     params_latent_decoder = latent_decoder.init(subkeys[2], input_latent_decoder)
+#     params_full_decoder = full_decoder.init(subkeys[3], input_full_decoder)
+#     params_data_encoder = data_encoder.init(subkeys[4], input_data_encoder)
+#
+#     rebuild_rnn = lambda _params: rnn.bind(_params)
+#     rebuild_prior = lambda _params: prior.bind(_params)
+#     rebuild_latent_decoder = lambda _params: latent_decoder.bind(_params)
+#     rebuild_full_decoder = lambda _params: full_decoder.bind(_params)
+#     rebuild_data_encoder = lambda _params: data_encoder.bind(_params)
+#
+#     return VRNN(latent_dim,
+#                 emissions_dim,
+#                 latent_encoded_dim,
+#                 emissions_encoded_dim,
+#                 rnn_state_dim,
+#                 rebuild_rnn,
+#                 rebuild_prior,
+#                 rebuild_latent_decoder,
+#                 rebuild_full_decoder,
+#                 rebuild_data_encoder,
+#                 params_rnn,
+#                 params_prior,
+#                 params_latent_decoder,
+#                 params_full_decoder,
+#                 params_data_encoder, )
 
 
 if __name__ == '__main__':

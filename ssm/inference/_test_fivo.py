@@ -67,7 +67,7 @@ def do_config():
     try:
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
-        model = 'GDM'
+        model = 'VRNN'
         print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
@@ -76,6 +76,8 @@ def do_config():
         from ssm.inference._test_fivo_gdm import gdm_get_config as get_config
     elif 'SVM' in model:
         from ssm.inference._test_fivo_svm import svm_get_config as get_config
+    elif 'VRNN' in model:
+        from ssm.inference._test_fivo_vrnn import vrnn_get_config as get_config
     else:
         raise NotImplementedError()
 
@@ -153,6 +155,12 @@ def main():
             from ssm.inference._test_fivo_svm import svm_define_test as define_test
             from ssm.inference._test_fivo_svm import svm_do_plot as do_plot
             from ssm.inference._test_fivo_svm import svm_get_true_target_marginal as get_marginals
+
+        elif 'VRNN' in env.config.model:
+            from ssm.inference._test_fivo_vrnn import vrnn_do_print as do_print
+            from ssm.inference._test_fivo_vrnn import vrnn_define_test as define_test
+            from ssm.inference._test_fivo_vrnn import vrnn_do_plot as do_plot
+            from ssm.inference._test_fivo_vrnn import vrnn_get_true_target_marginal as get_marginals
 
         else:
             raise NotImplementedError()

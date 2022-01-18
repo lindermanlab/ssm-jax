@@ -393,8 +393,8 @@ def _smc_forward_pass(key,
         key, particles, accumulated_log_weights, q_state = carry
         key, subkey1, subkey2 = jr.split(key, num=3)
 
-        # Compile the previous and next observations as covariates.
-        covariates = (dataset[t - 1], dataset[t])
+        # Compile the previous observation as covariates. TODO - add current obs as well.
+        covariates = (dataset[t - 1], )
 
         # Compute the p and q distributions.
         p_dist = model.dynamics_distribution(particles, covariates=covariates)  # NOTE - hijacking covariates to pass PREVIOUS AND CURRENT OBS in.
@@ -404,8 +404,16 @@ def _smc_forward_pass(key,
         new_particles = q_dist.sample(seed=subkey1)
 
         # Compute the incremental importance weight.
-        p_log_probability = p_dist.log_prob(new_particles)
-        q_log_probability = q_dist.log_prob(new_particles)
+        # TODO - need to somehow pass over this and if there are any deterministic distributions don't score those.
+        if 'VRNN' in str(type(model)):
+            _, particle_latent = new_particles
+
+            p_log_probability = p_dist[1].log_prob(new_particles)
+            q_log_probability = q_dist[1].log_prob(new_particles)
+
+        else:
+            p_log_probability = p_dist.log_prob(new_particles)
+            q_log_probability = q_dist.log_prob(new_particles)
 
         # Assume there is a previous tilt.
         r_previous = tilt(particles, t-1) / tilt_temperature
