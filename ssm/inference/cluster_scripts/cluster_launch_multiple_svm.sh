@@ -57,7 +57,7 @@ use_vi=0
 launch_cmd
 
 # FIVO-AUX-VI
-exp_tag='fivo-aux-sgr'
+exp_tag='fivo-aux-vi'
 use_sgr=0
 proposal_structure='RESQ'
 tilt_structure='DIRECT'

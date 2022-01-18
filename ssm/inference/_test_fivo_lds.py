@@ -41,7 +41,6 @@ def lds_get_config():
     parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}
     parser.add_argument('--proposal-window-length', default=2, type=int)             # {int, None}.
-
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--tilt-window-length', default=2, type=int)  # {int, None}.
