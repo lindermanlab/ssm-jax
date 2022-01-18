@@ -165,16 +165,16 @@ class VRNN(SSM):
         prev_obs_enc = self._encoder_data_obj(prev_obs)
 
         # Iterate the RNN.
-        input_rnn = np.concatenate((prev_rnn_state, prev_latent_dec, prev_obs_enc))
+        input_rnn = np.concatenate((prev_rnn_state, prev_latent_dec, prev_obs_enc), axis=-1)
         new_rnn_state = self._rnn_obj(input_rnn)
         # new_rnn_state_dist = tfd.Deterministic(new_rnn_state)
         new_rnn_state_dist = tfd.Independent(tfd.Deterministic(new_rnn_state), reinterpreted_batch_ndims=1)  # Was giving a [] event dim.
 
         # Call the prior local parameter generation functions.
         prior_dist_local_params = self._prior_obj(new_rnn_state)
-        prior_dist_local_params = np.reshape(prior_dist_local_params, (2, -1))
-        prior_mean = prior_dist_local_params[0]
-        prior_log_var = prior_dist_local_params[1]
+        prior_dist_local_params = np.reshape(prior_dist_local_params, (*prior_dist_local_params.shape[:-1], 2, -1))
+        prior_mean = prior_dist_local_params[..., 0, :]
+        prior_log_var = prior_dist_local_params[..., 1, :]
 
         # Construct the latent distribution itself.
         prior_latent_dist = tfd.MultivariateNormalDiag(prior_mean, np.sqrt(np.exp(prior_log_var)))
@@ -186,7 +186,7 @@ class VRNN(SSM):
 
     def _emissions(self, state, covariates, metadata):
         """
-
+        oooo baby there is some head scratching indexing in here!
         Args:
             state:
             covariates:
@@ -204,13 +204,13 @@ class VRNN(SSM):
         latent_dec = self._decoder_latent_obj(latent)
 
         # Construct the input to the emissions distribution.
-        input_full_decoder = np.concatenate((rnn_state, latent_dec, ))
+        input_full_decoder = np.concatenate((rnn_state, latent_dec, ), axis=-1)
 
         # Construct the emissions distribution itself.
         emissions_local_parameters = self._decoder_full_obj(input_full_decoder)
-        emissions_local_parameters = np.reshape(emissions_local_parameters, (2, -1))
-        emissions_mean = emissions_local_parameters[0]
-        emissions_log_var = emissions_local_parameters[1]
+        emissions_local_parameters = np.reshape(emissions_local_parameters, (*emissions_local_parameters.shape[:-1], 2, -1))
+        emissions_mean = emissions_local_parameters[..., 0, :]
+        emissions_log_var = emissions_local_parameters[..., 1, :]
         emissions_dist = tfd.MultivariateNormalDiag(emissions_mean, np.sqrt(np.exp(emissions_log_var)))
 
         return emissions_dist

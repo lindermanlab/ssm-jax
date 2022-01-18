@@ -244,7 +244,7 @@ def _single_smc(key,
     # This function also returns the iterated state of the proposal, and so there is no
     # initial proposal state if we are using p.
     if proposal is None:
-        proposal = lambda *args: (model.dynamics_distribution(args[0]), None)
+        proposal = lambda *args: (model.dynamics_distribution(args[0], covariates=args[4]), None)
 
     # If no explicit proposal is provided, default to a log-value of zero.
     if tilt is None:
@@ -366,8 +366,14 @@ def _smc_forward_pass(key,
     initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
 
     # Resample particles under the zeroth observation.
-    initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
-    initial_q_log_probability = initial_distribution.log_prob(initial_particles)
+    if 'VRNN' in str(type(model)):
+        initial_p_log_probability = model.initial_distribution()._model[1].log_prob(initial_particles[1]).sum(axis=-1)
+        initial_q_log_probability = initial_distribution._model[1].log_prob(initial_particles[1]).sum(axis=-1)
+
+    else:
+        initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
+        initial_q_log_probability = initial_distribution.log_prob(initial_particles)
+
     initial_r_log_probability = tilt(initial_particles, 0) / tilt_temperature
 
     # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
@@ -394,11 +400,13 @@ def _smc_forward_pass(key,
         key, subkey1, subkey2 = jr.split(key, num=3)
 
         # Compile the previous observation as covariates. TODO - add current obs as well.
-        covariates = (dataset[t - 1], )
+        covariates = (
+                        np.repeat(np.expand_dims(dataset[t - 1], 0), num_particles, axis=0),
+                      )
 
         # Compute the p and q distributions.
         p_dist = model.dynamics_distribution(particles, covariates=covariates)  # NOTE - hijacking covariates to pass PREVIOUS AND CURRENT OBS in.
-        q_dist, q_state = proposal(particles, t, p_dist, q_state)
+        q_dist, q_state = proposal(particles, t, p_dist, q_state, covariates)
 
         # Sample the new particles.
         new_particles = q_dist.sample(seed=subkey1)
@@ -406,10 +414,8 @@ def _smc_forward_pass(key,
         # Compute the incremental importance weight.
         # TODO - need to somehow pass over this and if there are any deterministic distributions don't score those.
         if 'VRNN' in str(type(model)):
-            _, particle_latent = new_particles
-
-            p_log_probability = p_dist[1].log_prob(new_particles)
-            q_log_probability = q_dist[1].log_prob(new_particles)
+            p_log_probability = p_dist._model[1].log_prob(new_particles[1])
+            q_log_probability = q_dist._model[1].log_prob(new_particles[1])
 
         else:
             p_log_probability = p_dist.log_prob(new_particles)
@@ -420,7 +426,7 @@ def _smc_forward_pass(key,
 
         # There is no tilt at the final timestep.
         r_current = jax.lax.cond(t == (len(dataset)-1),
-                                 lambda *_args: np.zeros(len(new_particles)),
+                                 lambda *_args: np.zeros((num_particles, )),
                                  lambda *_args: tilt(new_particles, t),
                                  None) / tilt_temperature
 
@@ -463,6 +469,12 @@ def _smc_forward_pass(key,
         smc_step,
         (key, initial_resampled_particles, initial_log_weights_post_resamp, initial_q_state),
         np.arange(1, len(dataset)))
+
+    # TODO - this is crappy, we are going to remove the rnn hidden state here and just return the Z-values.
+    #  Not sure if/why this is the best thing to do, but we need to do something...
+    if "VRNN" in str(type(model)):
+        initial_resampled_particles = initial_resampled_particles[1]
+        filtering_particles = filtering_particles[1]
 
     # Need to prepend the initial timestep.
     filtering_particles = np.concatenate((initial_resampled_particles[None, :], filtering_particles))

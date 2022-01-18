@@ -79,7 +79,7 @@ class IndependentGaussianProposal:
         return jax.vmap(self.proposal.init, in_axes=(0, None))\
             (jr.split(key, self.n_proposals), self._dummy_processed_input)
 
-    def apply(self, params, dataset, model, particles, t, p_dist, q_state):
+    def apply(self, params, dataset, model, particles, t, p_dist, q_state, *inputs):
         """
 
         Args:
@@ -108,7 +108,7 @@ class IndependentGaussianProposal:
         else:
             params_at_t = jax.tree_map(lambda args: args[t], params)
 
-        proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state)
+        proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state, *inputs)
         q_dist = self.proposal.apply(params_at_t, proposal_inputs)
 
         # # TODO - Can force the optimal proposal here for the default GDM example..
@@ -136,7 +136,7 @@ class IndependentGaussianProposal:
 
         return q_dist, None
 
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
@@ -171,7 +171,7 @@ class IGPerStepProposal(IndependentGaussianProposal):
 
 class IGSingleObsProposal(IndependentGaussianProposal):
 
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
         """
 
         """
@@ -194,7 +194,7 @@ class IGWindowProposal(IndependentGaussianProposal):
     # window_length = 2
 
     # We need to define the method for generating the inputs.
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, *_inputs):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
         """
 
         """

@@ -240,7 +240,7 @@ class GdmProposal(proposals.IndependentGaussianProposal):
     """
 
     # Define the required method for building the inputs.
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
