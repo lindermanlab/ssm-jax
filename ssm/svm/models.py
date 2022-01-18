@@ -43,8 +43,8 @@ class SVM(SSM):
                  # log_Q = np.log(1.0)
                  log_Q: np.ndarray = np.asarray([[0.0]]),
 
-                 # log_beta = np.log(0.1)
-                 log_beta: np.ndarray = np.asarray([-2.303]),
+                 # log_beta = np.log(1.0)
+                 log_beta: np.ndarray = np.asarray([0.0]),
 
                  initial_condition=None,
                  dynamics=None,

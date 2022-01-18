@@ -27,24 +27,24 @@ def svm_get_config():
 
     # Set up the experiment.
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', default='SVM', type=str)
 
-    parser.add_argument('--seed', default=10, type=int)
-    parser.add_argument('--log-group', default='debug', type=str)  # {'debug', 'gdm-v1.0'}
+    parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # CSV.  # {'always_resample', 'never_resample'}.
 
-    parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
+    parser.add_argument('--use-sgr', default=0, type=int)  # {0, 1}
 
-    parser.add_argument('--temper', default=0.5, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
-    parser.add_argument('--free-parameters', default='mu', type=str)  # CSV.  # {'log_Q', 'mu'}.
+    parser.add_argument('--free-parameters', default='log_Q,invsig_phi,mu', type=str)  # CSV.  # {'log_Q', 'mu', 'log_beta'}.
 
-    parser.add_argument('--proposal-structure', default='RESQ', type=str)       # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)           # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)       # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--proposal-window-length', default=5, type=int)            # {int, None}.
+    parser.add_argument('--proposal-fn-family', default='MLP', type=str)         # {'AFFINE', 'MLP'}.
 
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)           # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)       # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
-    parser.add_argument('--tilt-window-length', default=5, type=int)            # {int, None}.
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)             # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)           # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--tilt-window-length', default=5, type=int)                # {int, None}.
+    parser.add_argument('--tilt-fn-family', default='MLP', type=str)             # {'AFFINE', 'MLP'}.
 
     parser.add_argument('--vi-use-tilt-gradient', default=1, type=int)  # {0, 1}.
     parser.add_argument('--vi-buffer-length', default=10, type=int)  #
@@ -52,26 +52,28 @@ def svm_get_config():
     parser.add_argument('--vi-epochs', default=1, type=int)  #
 
     parser.add_argument('--num-particles', default=4, type=int)
-    parser.add_argument('--datasets-per-batch', default=16, type=int)
+    parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.001, type=float)
-    parser.add_argument('--q-lr', default=0.001, type=float)
-    parser.add_argument('--r-lr', default=0.001, type=float)
+    parser.add_argument('--lr-p', default=0.0001, type=float)
+    parser.add_argument('--lr-q', default=0.001, type=float)
+    parser.add_argument('--lr-r', default=0.001, type=float)
 
     parser.add_argument('--T', default=49, type=int)  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=1, type=int)
     parser.add_argument('--emissions-dim', default=1, type=int)
 
     parser.add_argument('--num-trials', default=10000, type=int)  # NOTE - try with a single trial.
-    parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--num-val-datasets', default=100, type=int)
 
+    parser.add_argument('--dset-to-plot', default=0, type=int)
     parser.add_argument('--validation-particles', default=250, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
-
     parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
+    parser.add_argument('--model', default='SVM', type=str)
+    parser.add_argument('--seed', default=10, type=int)
+    parser.add_argument('--log-group', default='debug', type=str)  # {'debug', 'gdm-v1.0'}
 
     parser.add_argument('--PLOT', default=1, type=int)
 
@@ -101,6 +103,10 @@ def svm_define_test(key, env):
     # Define the true model.
     key, subkey = jr.split(key)
     true_model, true_states, dataset = svm_define_true_model_and_data(subkey, env)
+
+    if len(dataset.shape) == 2:
+        print('\nWARNING: Expanding dataset dim.\n')
+        dataset = np.expand_dims(dataset, 0)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
@@ -169,14 +175,19 @@ def svm_define_tilt(subkey, model, dataset, env):
     # Generate the outputs.
     dummy_tilt_output = tilt_fn._tilt_output_generator(*stock_tilt_input)
 
-    # # Define any custom link functions.
-    # trunk_fn = None
-    # head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
-    # head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
+    # Define any custom link functions.
+    if env.config.tilt_fn_family == 'AFFINE':
+        trunk_fn = None
+        head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
+        head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
 
-    trunk_fn = nn_util.MLP([5, ], output_layer_relu=True)
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
-    head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
+    elif env.config.tilt_fn_family == 'MLP':
+        trunk_fn = nn_util.MLP([10, 10, ], output_layer_relu=True)
+        head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
+        head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
+
+    else:
+        raise NotImplementedError()
 
     # Define the tilts themselves.
     tilt = tilt_fn(n_tilts=n_tilts,
@@ -221,15 +232,20 @@ def svm_define_proposal(subkey, model, dataset, env):
     if env.config.proposal_structure == 'RESQ':
         kernel_init = lambda *args: nn.initializers.lecun_normal()(*args) * 0.1
     else:
-        kernel_init = None
+        kernel_init = nn.initializers.lecun_normal()
 
-    trunk_fn = None
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=kernel_init)
-    head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=nn.initializers.zeros)
+    if env.config.proposal_fn_family == 'AFFINE':
+        trunk_fn = None
+        head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=kernel_init)
+        head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=nn.initializers.zeros)
 
-    # trunk_fn = nn_util.MLP([6, ], output_layer_relu=True)
-    # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
-    # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
+    elif env.config.proposal_fn_family == 'MLP':
+        trunk_fn = nn_util.MLP([10, 10, ], output_layer_relu=True)
+        head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=kernel_init)
+        head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.1, )
+
+    else:
+        raise NotImplementedError()
 
     # configure the proposal.
     if env.config.proposal_type == 'PERSTEP_ALLOBS':

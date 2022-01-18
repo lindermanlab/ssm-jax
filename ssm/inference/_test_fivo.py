@@ -158,13 +158,13 @@ def main():
             raise NotImplementedError()
 
         # Define some holders that will be overwritten later.
-        true_lml = 0.0
+        true_nlml = 0.0
         em_log_marginal_likelihood = 0.0
-        pred_em_lml = 0.0
+        pred_em_nlml = 0.0
         filt_fig = None
         sweep_fig_filter = None
         sweep_fig_smooth = None
-        true_bpf_lml = 0.0
+        true_bpf_nlml = 0.0
         true_bpf_kls = None
         true_bpf_upc = None
         true_bpf_ess = None
@@ -184,9 +184,6 @@ def main():
         proposal, proposal_params, rebuild_prop_fn = ret_vals[2]        # Unpack proposal.
         tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                # Unpack tilt.
 
-        if len(dataset.shape) == 2:
-            print('WARNING: Expanding dataset dim.')
-            dataset = np.expand_dims(dataset, 0)
         validation_datasets = dataset[:env.config.num_val_datasets]
 
         # In here we can re-build models from saves if we want to.
@@ -206,13 +203,13 @@ def main():
         opt = fivo.define_optimizer(p_params=get_model_free_params(model),
                                     q_params=proposal_params,
                                     r_params=tilt_params,
-                                    p_lr=env.config.p_lr,
-                                    q_lr=env.config.q_lr,
-                                    r_lr=env.config.r_lr,
+                                    lr_p=env.config.lr_p,
+                                    lr_q=env.config.lr_q,
+                                    lr_r=env.config.lr_r,
                                     )
 
         # Jit the smc subroutine for completeness.
-        smc_jit = jax.jit(smc, static_argnums=6)
+        smc_jit = jax.jit(smc, static_argnums=(6, 7))
 
         # Close over constant parameters.
         do_fivo_sweep_closed = lambda _key, _params, _num_particles, _datasets, _temperature=1.0: \
@@ -224,7 +221,8 @@ def main():
                                _datasets,
                                _num_particles,
                                **{'use_stop_gradient_resampling': env.config.use_sgr,
-                                  'tilt_temperature': _temperature})
+                                  'tilt_temperature': _temperature,
+                                  'resampling_criterion': env.config.resampling_criterion})
 
         # Jit this badboy.
         do_fivo_sweep_jitted = \
@@ -238,10 +236,11 @@ def main():
 
         # Test the initial models.
         key, subkey = jr.split(key)
-        true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound = \
-            fivo.initial_validation(key,
+        true_nlml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_nlml, initial_fivo_bound = \
+            fivo.initial_validation(env, key,
                                     true_model,
-                                    validation_datasets, true_states,
+                                    validation_datasets,
+                                    true_states,
                                     opt,
                                     do_fivo_sweep_jitted,
                                     smc_jit,
@@ -259,7 +258,8 @@ def main():
             _sweep_posteriors = smc_jit(_subkey,
                                         true_model,
                                         validation_datasets,
-                                        num_particles=env.config.sweep_test_particles, )
+                                        num_particles=env.config.sweep_test_particles,
+                                        resampling_criterion=env.config.resampling_criterion)
             return _sweep_posteriors.log_normalizer
 
         # Wrap another call to fivo for validation.
@@ -278,7 +278,7 @@ def main():
         param_hist = [[], [], []]  # Model, proposal, tilt.
         val_hist = [[], [], []]  # Model, proposal, tilt.
         param_figures = [None, None, None]  # Model, proposal, tilt.
-        lml_hist = []
+        nlml_hist = []
         smoothed_training_loss = 0.0
 
         # Back up the true parameters.
@@ -336,6 +336,8 @@ def main():
             idx = jr.randint(key=subkey, shape=(env.config.datasets_per_batch, ), minval=0, maxval=len(dataset))
             batched_dataset = dataset.at[idx].get()
 
+            temperature = tilt_temperatures[_step]
+
             # Do the sweep and compute the gradient.
             cur_params = dc(fivo.get_params_from_opt(opt))
             key, subkey = jr.split(key)
@@ -343,7 +345,7 @@ def main():
                                                                                  fivo.get_params_from_opt(opt),
                                                                                  env.config.num_particles,
                                                                                  batched_dataset,
-                                                                                 tilt_temperatures[_step])
+                                                                                 temperature)
 
             # Quickly calculate a smoothed training loss for quick and dirty plotting.
             if smoothed_training_loss == 0.0:
@@ -352,16 +354,6 @@ def main():
                 smoothed_training_loss = 0.1 * pred_fivo_bound + 0.9 * smoothed_training_loss
 
             # ----------------------------------------------------------------------------------------------------------------------------------------
-
-            # Add the most recent sweep to the buffer.
-            if (len(VI_STATE_BUFFER) * env.config.datasets_per_batch * env.config.num_particles) >= VI_BUFFER_LENGTH:
-                VI_BUFFER_FULL = True
-                del VI_STATE_BUFFER[0]
-                del VI_OBS_BUFFER[0]
-            else:
-                VI_BUFFER_FULL = False
-            VI_STATE_BUFFER.append(smc_posteriors.weighted_particles[0])
-            VI_OBS_BUFFER.append(batched_dataset)
 
             # Apply the gradient update.
             if np.isfinite(pred_fivo_bound):
@@ -376,8 +368,19 @@ def main():
 
             # If we are using the VI tilt gradient and it is a VI epoch, do that step.
             key, subkey = jr.split(key)
-            if VI_USE_VI_GRAD and (opt[2] is not None) and VI_BUFFER_FULL:
-                if _step % VI_FREQUENCY == 0 or _step == 1:
+            if VI_USE_VI_GRAD and (opt[2] is not None):
+
+                # Add the most recent sweep to the buffer.
+                if (len(VI_STATE_BUFFER) * env.config.datasets_per_batch * env.config.num_particles) >= VI_BUFFER_LENGTH:
+                    VI_BUFFER_FULL = True
+                    del VI_STATE_BUFFER[0]
+                    del VI_OBS_BUFFER[0]
+                else:
+                    VI_BUFFER_FULL = False
+                VI_STATE_BUFFER.append(smc_posteriors.weighted_particles[0])
+                VI_OBS_BUFFER.append(batched_dataset)
+
+                if (_step % VI_FREQUENCY == 0 and VI_BUFFER_FULL) or _step == 1:
                     _vi_opt, final_vi_elbo, vi_gradient_steps = do_vi_tilt_update_jit(subkey,
                                                                                       env,
                                                                                       fivo.get_params_from_opt(opt),
@@ -406,20 +409,20 @@ def main():
                                                                             fivo.get_params_from_opt(opt),
                                                                             _num_particles=env.config.validation_particles,
                                                                             _datasets=validation_datasets)
-                pred_lml = - utils.lexp(pred_sweep.log_normalizer)
-                lml_hist.append(dc(pred_lml))
+                pred_nlml = - utils.lexp(pred_sweep.log_normalizer)
+                nlml_hist.append(dc(pred_nlml))
 
                 # Test the variance of the estimators.
                 key, subkey = jr.split(key)
-                small_fivo_lml_all, val_fivo_bound = single_fivo_eval_small_vmap(jr.split(subkey, 20), fivo.get_params_from_opt(opt))
-                small_fivo_lml = - utils.lexp(utils.lexp(small_fivo_lml_all, _axis=1))
-                small_fivo_expected_lml_var = np.mean(np.var(small_fivo_lml_all, axis=0))
+                small_fivo_nlml_all, val_fivo_bound = single_fivo_eval_small_vmap(jr.split(subkey, 20), fivo.get_params_from_opt(opt))
+                small_fivo_nlml = - utils.lexp(utils.lexp(small_fivo_nlml_all, _axis=1))
+                small_fivo_expected_nlml_var = np.mean(np.var(small_fivo_nlml_all, axis=0))
 
                 # Test BPF in the true model.
                 key, subkey = jr.split(key)
-                small_true_bpf_lml_all = single_bpf_true_eval_small_vmap(jr.split(subkey, 20))
-                small_true_bpf_lml = - utils.lexp(utils.lexp(small_true_bpf_lml_all, _axis=1))
-                small_true_bpf_expected_lml_var = np.mean(np.var(small_true_bpf_lml_all, axis=0))
+                small_true_bpf_nlml_all = single_bpf_true_eval_small_vmap(jr.split(subkey, 20))
+                small_true_bpf_nlml = - utils.lexp(utils.lexp(small_true_bpf_nlml_all, _axis=1))
+                small_true_bpf_expected_nlml_var = np.mean(np.var(small_true_bpf_nlml_all, axis=0))
 
                 # Test the KLs.
                 key, subkey = jr.split(key)
@@ -478,9 +481,9 @@ def main():
                                         do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=2, true_states=true_states)
 
                     param_figures = do_plot(param_hist,
-                                            lml_hist,
+                                            nlml_hist,
                                             em_log_marginal_likelihood,
-                                            true_lml,
+                                            true_nlml,
                                             get_model_free_params(true_model),
                                             param_figures)
 
@@ -535,18 +538,18 @@ def main():
                           'params_p_pred': param_hist[0][-1],
                           'params_q_pred': param_hist[1][-1],
                           'params_r_pred': param_hist[2][-1],
-                          'true_lml': true_lml,
-                          'pred_lml': pred_lml,
+                          'true_nlml': true_nlml,
+                          'pred_nlml': pred_nlml,
                           'pred_fivo_bound': pred_fivo_bound_to_print,
                           'small_fivo_bound': np.mean(np.asarray(val_fivo_bound)),
                           'smoothed_training_loss': smoothed_training_loss,
-                          'tilt_temperature': tilt_temperatures[_step],
+                          'tilt_temperature': temperature,
 
-                          'small_lml': {'mean':         {'em_true': em_log_marginal_likelihood,
-                                                         'bpf_true': small_true_bpf_lml,
-                                                         'fivo': small_fivo_lml, },
-                                        'variance':     {'bpf_true': small_true_bpf_expected_lml_var,
-                                                         'fivo': small_fivo_expected_lml_var}},
+                          'small_nlml': {'mean':         {'em_true': em_log_marginal_likelihood,
+                                                         'bpf_true': small_true_bpf_nlml,
+                                                         'fivo': small_fivo_nlml, },
+                                        'variance':     {'bpf_true': small_true_bpf_expected_nlml_var,
+                                                         'fivo': small_fivo_expected_nlml_var}},
 
                           'kl': kl_metrics,
                           'upc': upc_metrics,
@@ -585,15 +588,15 @@ def main():
                 # Do some printing.
                 try:
                     if VI_USE_VI_GRAD:
-                        print("VI: Step {:>5d}:  Final VI ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
+                        print("VI: Step {:>5d}:  Final VI NEG-ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
                               format(_step, final_vi_elbo, vi_gradient_steps, VI_FREQUENCY))
                 except:
                     pass
                 do_print(_step,
                          true_model,
                          opt,
-                         true_lml,
-                         pred_lml,
+                         true_nlml,
+                         pred_nlml,
                          pred_fivo_bound_to_print,
                          em_log_marginal_likelihood)
 

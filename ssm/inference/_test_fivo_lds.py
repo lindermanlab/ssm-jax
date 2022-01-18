@@ -32,19 +32,19 @@ def lds_get_config():
     parser.add_argument('--seed', default=10, type=int)
     parser.add_argument('--log-group', default='debug', type=str)  # {'debug', 'gdm-v1.0'}
 
-    parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
+    parser.add_argument('--use-sgr', default=0, type=int)  # {0, 1}
 
-    parser.add_argument('--temper', default=1.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--temper', default=0.2, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
     parser.add_argument('--free-parameters', default='dynamics_weights', type=str)  # CSV.  # {'dynamics_bias', 'dynamics_weights'}.
 
     parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='PERSTEP_WINDOW', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}
-    parser.add_argument('--proposal-window-length', default=None, type=int)             # {int, None}.
+    parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}
+    parser.add_argument('--proposal-window-length', default=2, type=int)             # {int, None}.
 
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)  # {None/'NONE', 'DIRECT'}
-    parser.add_argument('--tilt-type', default='PERSTEP_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
-    parser.add_argument('--tilt-window-length', default=5, type=int)  # {int, None}.
+    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
+    parser.add_argument('--tilt-window-length', default=2, type=int)  # {int, None}.
 
     parser.add_argument('--vi-use-tilt-gradient', default=1, type=int)  # {0, 1}.
     parser.add_argument('--vi-buffer-length', default=10, type=int)  #
@@ -55,13 +55,13 @@ def lds_get_config():
     parser.add_argument('--datasets-per-batch', default=16, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
-    parser.add_argument('--p-lr', default=0.001, type=float)
-    parser.add_argument('--q-lr', default=0.001, type=float)
-    parser.add_argument('--r-lr', default=0.001, type=float)
+    parser.add_argument('--lr-p', default=0.001, type=float)
+    parser.add_argument('--lr-q', default=0.001, type=float)
+    parser.add_argument('--lr-r', default=0.001, type=float)
 
     parser.add_argument('--T', default=29, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
-    parser.add_argument('--latent-dim', default=1, type=int)
-    parser.add_argument('--emissions-dim', default=1, type=int)
+    parser.add_argument('--latent-dim', default=10, type=int)
+    parser.add_argument('--emissions-dim', default=2, type=int)
     parser.add_argument('--num-trials', default=100000, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
@@ -268,7 +268,8 @@ def lds_define_proposal(subkey, model, dataset, env):
                             dummy_output=dummy_proposal_output,
                             trunk_fn=trunk_fn,
                             head_mean_fn=head_mean_fn,
-                            head_log_var_fn=head_log_var_fn, )
+                            head_log_var_fn=head_log_var_fn,
+                            proposal_window_length=proposal_window_length)
 
     # Initialize the network.
     proposal_params = proposal.init(subkey)
