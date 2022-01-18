@@ -411,11 +411,15 @@ def log_params(_param_hist, _cur_params):
 
     # MODEL.
     if _cur_params[0] is not None:
-        _p = _cur_params[0]._asdict()
-        _p_flat = {}
-        for _k in _p.keys():
-            _p_flat[_k] = dc(onp.array(_p[_k].flatten()))
-        _param_hist[0].append(_p_flat)
+        try:
+            _p = _cur_params[0]._asdict()
+            _p_flat = {}
+            for _k in _p.keys():
+                _p_flat[_k] = dc(onp.array(_p[_k].flatten()))
+            _param_hist[0].append(_p_flat)
+        except:
+            print('Logging model parameters failed. ')
+            _param_hist[0].append(None)
     else:
         _param_hist[0].append(None)
 
