@@ -3,6 +3,7 @@ import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
 from jax import lax
+from flax.core.frozen_dict import freeze, FrozenDict
 
 from ssm.base import SSM
 from ssm.inference.laplace_em import laplace_approximation, laplace_em
@@ -36,6 +37,30 @@ class LDS(SSM):
         self._initial_condition = initial_condition
         self._dynamics = dynamics
         self._emissions = emissions
+        
+    @property
+    def _parameters(self):
+        return freeze(dict(initial_condition=self._initial_condition._parameters,
+                           dynamics=self._dynamics._parameters,
+                           emissions=self._emissions._parameters))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._initial_condition._parameters = params["initial_condition"]
+        self._dynamics._parameters = params["dynamics"]
+        self._emissions._parameters = params["emissions"]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(initial_condition=self._initial_condition._hyperparameters,
+                           transitions=self._transitions._hyperparameters,
+                           emissions=self._emissions._hyperparameters))
+        
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._initial_condition._hyperparameters = hyperparams["initial_condition"]
+        self._transitions._hyperparameters = hyperparams["transitions"]
+        self._emissions._hyperparameters = hyperparams["emissions"]
 
     @property
     def latent_dim(self):

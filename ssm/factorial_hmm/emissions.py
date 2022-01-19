@@ -1,6 +1,7 @@
 from jax import vmap
 import jax.numpy as np
 from jax.tree_util import register_pytree_node_class
+from flax.core.frozen_dict import freeze, FrozenDict
 
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
@@ -79,6 +80,23 @@ class NormalFactorialEmissions(FactorialEmissions):
     @property
     def emissions_shape(self):
         return self._distribution.event_shape
+    
+    
+    @property
+    def _parameters(self):
+        return freeze(dict(distribution=self._distribution))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._distribution = params["distribution"]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(prior=self._prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._prior = hyperparams["prior"]
 
     def distribution(self, state, covariates=None, metadata=None):
         """

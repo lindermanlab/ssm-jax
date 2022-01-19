@@ -1,6 +1,7 @@
 from __future__ import annotations
 import jax.numpy as np
 from jax.tree_util import register_pytree_node_class
+from flax.core.frozen_dict import freeze, FrozenDict
 
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
@@ -37,6 +38,24 @@ class FactorialInitialCondition(InitialCondition):
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         return cls(initial_condition_objects=children)
+    
+    @property
+    def _parameters(self):
+        return freeze({idx: ic._parameters for idx, ic in enumerate(self._initial_conditions)})
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        for idx in range(self.num_groups):
+            self._initial_conditions[idx]._parameters = params[idx]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze({idx: ic._hyperparameters for idx, ic in enumerate(self._initial_conditions)})
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        for idx in range(self.num_groups):
+            self._initial_conditions[idx]._hyperparameters = hyperparams[idx]
 
     def log_initial_probs(self, data, covariates=None, metadata=None):
         return tuple(ic.log_initial_probs(data, covariates=covariates, metadata=metadata)

@@ -4,6 +4,7 @@ import jax.numpy as np
 from jax import vmap, lax
 from jax.tree_util import tree_map, register_pytree_node_class
 from tensorflow_probability.substrates import jax as tfp
+from flax.core.frozen_dict import freeze, FrozenDict
 
 from ssm.hmm.emissions import Emissions
 from ssm.hmm.posterior import StationaryHMMPosterior
@@ -70,6 +71,22 @@ class AutoregressiveEmissions(Emissions):
     @property
     def emissions_shape(self):
         return (self._distribution.weights.shape[-1],)
+    
+    @property
+    def _parameters(self):
+        return freeze(dict(distribution=self._distribution))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._distribution = params["distribution"]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(prior=self._prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._prior = hyperparams["prior"]
 
     def distribution(self, state: int, covariates=None, metadata=None, history: np.ndarray=None) -> ssmd.GaussianLinearRegression:
         """Returns the emissions distribution conditioned on a given state.

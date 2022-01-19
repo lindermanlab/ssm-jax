@@ -3,6 +3,7 @@ import jax
 from jax._src.tree_util import tree_map
 import jax.numpy as np
 from jax import tree_util, vmap
+from flax.core.frozen_dict import freeze, FrozenDict
 from jax.flatten_util import ravel_pytree
 from jax.tree_util import register_pytree_node_class
 import tensorflow_probability.substrates.jax as tfp
@@ -101,6 +102,22 @@ class GaussianEmissions(Emissions):
         return cls(aux_data,
                    emissions_distribution=distribution,
                    emissions_distribution_prior=prior)
+
+    @property
+    def _parameters(self):
+        return freeze(dict(distribution=self._distribution))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._distribution = params["distribution"]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(prior=self._prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._prior = hyperparams["prior"]
 
     @property
     def weights(self):
@@ -229,6 +246,22 @@ class PoissonEmissions(Emissions):
         return cls(aux_data,
                    emissions_distribution=distribution,
                    emissions_distribution_prior=prior)
+        
+    @property
+    def _parameters(self):
+        return freeze(dict(distribution=self._distribution))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._distribution = params["distribution"]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(prior=self._prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._prior = hyperparams["prior"]
 
     @property
     def weights(self):

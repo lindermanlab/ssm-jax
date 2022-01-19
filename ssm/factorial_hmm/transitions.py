@@ -2,6 +2,7 @@ from __future__ import annotations
 from jax._src.numpy.lax_numpy import cov
 import jax.numpy as np
 from jax.tree_util import register_pytree_node_class
+from flax.core.frozen_dict import freeze, FrozenDict
 
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
@@ -29,6 +30,24 @@ class FactorialTransitions(Transitions):
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         return cls(children)
+    
+    @property
+    def _parameters(self):
+        return freeze({idx: t._parameters for idx, t in enumerate(self._transitions)})
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        for idx in range(self.num_groups):
+            self._transitions[idx]._parameters = params[idx]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze({idx: t._hyperparameters for idx, t in enumerate(self._transitions)})
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        for idx in range(self.num_groups):
+            self._transitions[idx]._hyperparameters = hyperparams[idx]
 
     @property
     def transition_matrix(self):
