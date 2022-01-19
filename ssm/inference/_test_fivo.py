@@ -187,12 +187,10 @@ def main():
         ret_vals = define_test(subkey, env)
 
         # Unpack that big mess of stuff.
-        true_model, true_states, dataset = ret_vals[0]                  # Unpack true model.
-        model, get_model_free_params, rebuild_model_fn = ret_vals[1]    # Unpack test model.
-        proposal, proposal_params, rebuild_prop_fn = ret_vals[2]        # Unpack proposal.
-        tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                # Unpack tilt.
-
-        validation_datasets = dataset[:env.config.num_val_datasets]
+        true_model, true_states, train_dataset, train_dataset_masks, validation_datasets, validation_dataset_masks = ret_vals[0]  # Unpack true model.
+        model, get_model_free_params, rebuild_model_fn = ret_vals[1]        # Unpack test model.
+        proposal, proposal_params, rebuild_prop_fn = ret_vals[2]            # Unpack proposal.
+        tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                    # Unpack tilt.
 
         # In here we can re-build models from saves if we want to.
         try:
@@ -217,20 +215,29 @@ def main():
                                     )
 
         # Jit the smc subroutine for completeness.
-        smc_jit = jax.jit(smc, static_argnums=(6, 7))
+        smc_jit = jax.jit(smc, static_argnums=(7, 8))
+
+        smc_fixed_args = {'use_stop_gradient_resampling': env.config.use_sgr,
+                          'resampling_criterion': env.config.resampling_criterion, }
 
         # Close over constant parameters.
-        do_fivo_sweep_closed = lambda _key, _params, _num_particles, _datasets, _temperature=1.0: \
-            fivo.do_fivo_sweep(_params,
-                               _key,
-                               rebuild_model_fn,
-                               rebuild_prop_fn,
-                               rebuild_tilt_fn,
-                               _datasets,
-                               _num_particles,
-                               **{'use_stop_gradient_resampling': env.config.use_sgr,
-                                  'tilt_temperature': _temperature,
-                                  'resampling_criterion': env.config.resampling_criterion})
+        def do_fivo_sweep_closed(_key, _params, _num_particles, _datasets, _masks, _temperature=1.0):
+            _smc_args = dc(smc_fixed_args)
+            _smc_args['tilt_temperature'] = _temperature
+
+            assert _masks.shape[0] == _datasets.shape[0], "Unequal first dimension."
+            assert _masks.shape[1] == _datasets.shape[1], "Unequal first dimension."
+
+            return fivo.do_fivo_sweep(_params,
+                                      _key,
+                                      rebuild_model_fn,
+                                      rebuild_prop_fn,
+                                      rebuild_tilt_fn,
+                                      _datasets,
+                                      _masks,
+                                      _num_particles,
+                                      **_smc_args
+                                      )
 
         # Jit this badboy.
         do_fivo_sweep_jitted = \
@@ -245,9 +252,11 @@ def main():
         # Test the initial models.
         key, subkey = jr.split(key)
         true_nlml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_nlml, initial_fivo_bound = \
-            fivo.initial_validation(env, key,
+            fivo.initial_validation(env,
+                                    key,
                                     true_model,
                                     validation_datasets,
+                                    validation_dataset_masks,
                                     true_states,
                                     opt,
                                     do_fivo_sweep_jitted,
@@ -266,8 +275,10 @@ def main():
             _sweep_posteriors = smc_jit(_subkey,
                                         true_model,
                                         validation_datasets,
+                                        validation_dataset_masks,
                                         num_particles=env.config.sweep_test_particles,
-                                        resampling_criterion=env.config.resampling_criterion)
+                                        resampling_criterion=env.config.resampling_criterion,
+                                        tilt_temperature=1.0, )
             return _sweep_posteriors.log_normalizer
 
         # Wrap another call to fivo for validation.
@@ -275,8 +286,10 @@ def main():
         def _single_fivo_eval_small(_subkey, _params):
             _val_fivo_bound, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
                                                                       _params,
-                                                                      _datasets=validation_datasets,
-                                                                      _num_particles=env.config.sweep_test_particles,)
+                                                                      env.config.sweep_test_particles,
+                                                                      validation_datasets,
+                                                                      validation_dataset_masks,
+                                                                      _temperature=1.0, )
             return _sweep_posteriors.log_normalizer, _val_fivo_bound
 
         single_bpf_true_eval_small_vmap = jax.vmap(_single_bpf_true_eval_small)
@@ -321,6 +334,7 @@ def main():
         # Define defaults.
         VI_STATE_BUFFER = []
         VI_OBS_BUFFER = []
+        VI_MASK_BUFFER = []
 
         if VI_USE_VI_GRAD:
             print()
@@ -341,9 +355,11 @@ def main():
 
             # Batch the data.
             key, subkey = jr.split(key)
-            idx = jr.randint(key=subkey, shape=(env.config.datasets_per_batch, ), minval=0, maxval=len(dataset))
-            batched_dataset = dataset.at[idx].get()
+            idx = jr.randint(key=subkey, shape=(env.config.datasets_per_batch, ), minval=0, maxval=len(train_dataset))
+            batched_dataset = train_dataset.at[idx].get()
+            batched_dataset_masks = train_dataset_masks.at[idx].get()
 
+            # Pull out the tilt temperature.
             temperature = tilt_temperatures[_step]
 
             # Do the sweep and compute the gradient.
@@ -353,7 +369,9 @@ def main():
                                                                                  fivo.get_params_from_opt(opt),
                                                                                  env.config.num_particles,
                                                                                  batched_dataset,
-                                                                                 temperature)
+                                                                                 batched_dataset_masks,
+                                                                                 temperature,
+                                                                                 )
 
             # Quickly calculate a smoothed training loss for quick and dirty plotting.
             if smoothed_training_loss == 0.0:
@@ -383,10 +401,12 @@ def main():
                     VI_BUFFER_FULL = True
                     del VI_STATE_BUFFER[0]
                     del VI_OBS_BUFFER[0]
+                    del VI_MASK_BUFFER[0]
                 else:
                     VI_BUFFER_FULL = False
                 VI_STATE_BUFFER.append(smc_posteriors.weighted_particles[0])
                 VI_OBS_BUFFER.append(batched_dataset)
+                VI_MASK_BUFFER.append(batched_dataset_masks)
 
                 if (_step % VI_FREQUENCY == 0 and VI_BUFFER_FULL) or _step == 1:
                     _vi_opt, final_vi_elbo, vi_gradient_steps = do_vi_tilt_update_jit(subkey,
@@ -396,6 +416,7 @@ def main():
                                                                                       rebuild_tilt_fn,
                                                                                       VI_STATE_BUFFER,
                                                                                       VI_OBS_BUFFER,
+                                                                                      VI_MASK_BUFFER,
                                                                                       opt[2],
                                                                                       _epochs=VI_EPOCHS,
                                                                                       _sgd_batch_size=VI_MINIBATCH_SIZE)
@@ -416,7 +437,9 @@ def main():
                 pred_fivo_bound_to_print, pred_sweep = do_fivo_sweep_jitted(subkey,
                                                                             fivo.get_params_from_opt(opt),
                                                                             _num_particles=env.config.validation_particles,
-                                                                            _datasets=validation_datasets)
+                                                                            _datasets=validation_datasets,
+                                                                            _masks=validation_dataset_masks,
+                                                                            _temperature=1.0)
                 pred_nlml = - utils.lexp(pred_sweep.log_normalizer)
                 nlml_hist.append(dc(pred_nlml))
 

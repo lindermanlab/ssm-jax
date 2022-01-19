@@ -105,6 +105,13 @@ class IndependentGaussianProposal:
         # Pull out the time and the appropriate proposal.
         if self.n_proposals == 1:
             params_at_t = jax.tree_map(lambda args: args[0], params)
+        elif self.n_proposals == 2:
+            # If there are two proposals then assume that one is the initial proposal and the other is the static proposal.
+            params_at_t = jax.lax.cond(t == 0,
+                                       lambda *_: jax.tree_map(lambda args: args[0], params),
+                                       lambda *_: jax.tree_map(lambda args: args[1], params),
+                                       None
+                                       )
         else:
             params_at_t = jax.tree_map(lambda args: args[t], params)
 
@@ -256,17 +263,23 @@ def rebuild_proposal(proposal, proposal_structure):
         # Proposal takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
         if proposal_structure == 'DIRECT':
 
-            def _proposal(particles, t, p_dist, q_state):
-                z_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state)
+            def _proposal(particles, t, p_dist, q_state, *inputs):
+                z_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
                 return z_dist, new_q_state
 
         elif proposal_structure == 'RESQ':
 
-            def _proposal(particles, t, p_dist, q_state):
-                q_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state)
+            def _proposal(particles, t, p_dist, q_state, *inputs):
+                q_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
                 z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist.mean() + q_dist.mean(),
                                                               covariance_matrix=q_dist.covariance())
                 return z_dist, new_q_state
+
+        elif proposal_structure == 'VRNN':
+
+            def _proposal(particles, t, p_dist, q_state, *inputs):
+                raise NotImplementedError()
+
         else:
             raise NotImplementedError()
 

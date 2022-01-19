@@ -46,6 +46,7 @@ def do_fivo_sweep(_param_vals,
                   _rebuild_proposal,
                   _rebuild_tilt,
                   _datasets,
+                  _masks,
                   _num_particles,
                   **_smc_kw_args):
     """
@@ -90,18 +91,20 @@ def do_fivo_sweep(_param_vals,
                                                 _rebuild_tilt,
                                                 _datasets,
                                                 _num_particles,
+                                                _masks,
                                                 **_smc_kw_args)
     else:
-        _single_fivo_sweep_closed = lambda _single_dataset: _do_single_fivo_sweep(_param_vals,
-                                                                                  _key,
-                                                                                  _rebuild_model,
-                                                                                  _rebuild_proposal,
-                                                                                  _rebuild_tilt,
-                                                                                  _single_dataset,
-                                                                                  _num_particles,
-                                                                                  **_smc_kw_args)
+        _single_fivo_sweep_closed = lambda _single_dataset, _mask, _key: _do_single_fivo_sweep(_param_vals,
+                                                                                               _key,
+                                                                                               _rebuild_model,
+                                                                                               _rebuild_proposal,
+                                                                                               _rebuild_tilt,
+                                                                                               _single_dataset,
+                                                                                               _mask,
+                                                                                               _num_particles,
+                                                                                               **_smc_kw_args)
 
-        _smc_posteriors = jax.vmap(_single_fivo_sweep_closed)(_datasets)
+        _smc_posteriors = jax.vmap(_single_fivo_sweep_closed)(_datasets, _masks, jr.split(_key, len(_datasets)))
 
     # Compute the mean of the log marginal.
     _lml = np.mean(_smc_posteriors.log_normalizer)
@@ -115,6 +118,7 @@ def _do_single_fivo_sweep(_param_vals,
                           _rebuild_proposal,
                           _rebuild_tilt,
                           _single_dataset,
+                          _single_mask,
                           _num_particles,
                           **_smc_kw_args):
     """
@@ -141,10 +145,16 @@ def _do_single_fivo_sweep(_param_vals,
 
     # Build the initial distribution from the zeroth proposal.
     if _proposal is not None:
-        initial_distribution = lambda *_args: _proposal(np.zeros(_model.latent_dim, ),
-                                                        0,
-                                                        _model.initial_distribution(),
-                                                        None)
+
+        # TODO - I think using this as the initial distribution for `SINGLE_X` proposals may be bad.
+
+        if 'VRNN' in str(type(_model)):
+            initial_distribution = lambda *_args: _model.initial_distribution()
+        else:
+            initial_distribution = lambda *_args: _proposal(np.zeros(_model.latent_dim, ),
+                                                            0,
+                                                            _model.initial_distribution(),
+                                                            None)
     else:
         initial_distribution = _proposal
 
@@ -152,7 +162,10 @@ def _do_single_fivo_sweep(_param_vals,
     _tilt = _rebuild_tilt(_param_vals[2], _single_dataset, _model)
 
     # Do the sweep.
-    _smc_posteriors = smc(_key, _model, _single_dataset,
+    _smc_posteriors = smc(_key,
+                          _model,
+                          _single_dataset,
+                          _single_mask,
                           proposal=_proposal,
                           initialization_distribution=initial_distribution,
                           tilt=_tilt,
@@ -340,11 +353,33 @@ def do_vi_tilt_update(key,
                       _rebuild_tilt,
                       _state_buffer_raw,
                       _obs_buffer_raw,
+                      _mask_buffer_raw,
                       _vi_opt,
                       _epochs=5,
                       _sgd_batch_size=16):
+    """
+
+    Args:
+        key:
+        _env:
+        _param_vals:
+        _rebuild_model:
+        _rebuild_tilt:
+        _state_buffer_raw:
+        _obs_buffer_raw:
+        _mask_buffer_raw:
+        _vi_opt:
+        _epochs:
+        _sgd_batch_size:
+
+    Returns:
+
+    """
     print('[test_message]: Hello, im an uncompiled VI update.')
     assert _vi_opt is not None
+
+    if _env.config.model == 'VRNN':
+        raise NotImplementedError()
 
     # Reconstruct the model, inscribing the current parameter values.
     model = _rebuild_model(_param_vals[0])
@@ -466,7 +501,7 @@ def log_params(_param_hist, _cur_params):
     return _param_hist
 
 
-def initial_validation(env, key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
+def initial_validation(env, key, true_model, dataset, dataset_masks, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
                        num_particles=1000, dset_to_plot=0, init_model=None, GLOBAL_PLOT=True, do_print=None, do_plot=True):
     """
 
@@ -474,6 +509,7 @@ def initial_validation(env, key, true_model, dataset, true_states, opt, do_fivo_
         key:
         true_model:
         dataset:
+        dataset_masks:
         true_states:
         opt:
         do_fivo_sweep_jitted:
@@ -504,20 +540,32 @@ def initial_validation(env, key, true_model, dataset, true_states, opt, do_fivo_
 
     # Test BPF in the true model..
     key, subkey = jr.split(key)
-    true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles, resampling_criterion=env.config.resampling_criterion)
+    true_bpf_posterior = _smc_jit(subkey,
+                                  true_model,
+                                  dataset,
+                                  dataset_masks,
+                                  num_particles=num_particles,
+                                  resampling_criterion=env.config.resampling_criterion)
     true_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
 
     if init_model is not None:
         # Test BPF in the initial model..
         key, subkey = jr.split(key)
-        init_bpf_posterior = _smc_jit(subkey, init_model, dataset, num_particles=num_particles)
+        init_bpf_posterior = _smc_jit(subkey,
+                                      init_model,
+                                      dataset,
+                                      dataset_masks,
+                                      num_particles=num_particles,
+                                      resampling_criterion=env.config.resampling_criterion)
         initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
 
     # Test SMC in the initial model.
     key, subkey = jr.split(key)
-    initial_fivo_bound, init_smc_posterior = do_fivo_sweep_jitted(subkey, get_params_from_opt(opt),
-                                                                  _num_particles=num_particles,
-                                                                  _datasets=dataset)
+    initial_fivo_bound, init_smc_posterior = do_fivo_sweep_jitted(subkey,
+                                                                  get_params_from_opt(opt),
+                                                                  _datasets=dataset,
+                                                                  _masks=dataset_masks,
+                                                                  _num_particles=num_particles,)
     initial_lml = -utils.lexp(init_smc_posterior.log_normalizer)
 
     # # Dump any odd and ends of test code in here.
@@ -543,31 +591,31 @@ def initial_validation(env, key, true_model, dataset, true_states, opt, do_fivo_
 
         if true_bpf_posterior is not None:
             _plot_single_sweep(true_bpf_posterior[dset_to_plot].filtering_particles,
-                               true_states[dset_to_plot],
+                               true_states[dset_to_plot] if true_states is not None else None,
                                tag='True BPF Filtering (' + str(num_particles) + ' particles).',
                                obs=dataset[dset_to_plot])
             _plot_single_sweep(true_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
-                               true_states[dset_to_plot],
+                               true_states[dset_to_plot] if true_states is not None else None,
                                tag='True BPF Smoothing (' + str(num_particles) + ' particles).',
                                obs=dataset[dset_to_plot])
 
         if init_bpf_posterior is not None:
             _plot_single_sweep(init_bpf_posterior[dset_to_plot].filtering_particles,
-                               true_states[dset_to_plot],
+                               true_states[dset_to_plot] if true_states is not None else None,
                                tag='Initial BPF Filtering (' + str(num_particles) + ' particles).',
                                obs=dataset[dset_to_plot])
             _plot_single_sweep(init_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
-                               true_states[dset_to_plot],
+                               true_states[dset_to_plot] if true_states is not None else None,
                                tag='Initial BPF Smoothing (' + str(num_particles) + ' particles).',
                                obs=dataset[dset_to_plot])
 
         if init_smc_posterior is not None:
             filt_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].filtering_particles,
-                                          true_states[dset_to_plot],
+                                          true_states[dset_to_plot] if true_states is not None else None,
                                           tag='Initial SMC Filtering (' + str(num_particles) + ' particles).',
                                           obs=dataset[dset_to_plot])
             sweep_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
-                                           true_states[dset_to_plot],
+                                           true_states[dset_to_plot] if true_states is not None else None,
                                            tag='Initial SMC Smoothing (' + str(num_particles) + ' particles).',
                                            obs=dataset[dset_to_plot])
         else:

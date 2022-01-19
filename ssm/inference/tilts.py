@@ -169,6 +169,13 @@ class IGPerStepTilt(IndependentGaussianTilt):
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
             t_params = jax.tree_map(lambda args: args[0], params)
+        elif self.n_tilts == 2:
+            # If there are two tilts then assume that one is the initial tilt and the other is the static tilt.
+            t_params = jax.lax.cond(t == 0,
+                                    lambda *_: jax.tree_map(lambda args: args[0], params),
+                                    lambda *_: jax.tree_map(lambda args: args[1], params),
+                                    None
+                                    )
         else:
             t_params = jax.tree_map(lambda args: args[t], params)
 

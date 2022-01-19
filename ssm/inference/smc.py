@@ -20,6 +20,7 @@ default_verbosity = Verbosity.DEBUG
 def smc(key,
         model,
         dataset,
+        masks,
         initialization_distribution=None,
         proposal=None,
         tilt=None,
@@ -124,19 +125,19 @@ def smc(key,
         resampling_function = systematic_resampling
 
     # Close over the static arguments.
-    single_smc_closed = lambda _k, _d: \
+    single_smc_closed = lambda _k, _d, _m: \
         _single_smc(_k, model, _d, initialization_distribution, proposal, tilt, num_particles,
-                    resampling_criterion, resampling_function, tilt_temperature, use_stop_gradient_resampling,
-                    use_resampling_gradients, verbosity=verbosity)
+                    resampling_criterion, resampling_function, tilt_temperature, _m, use_stop_gradient_resampling,
+                    use_resampling_gradients, verbosity=verbosity, )
 
     # If there are three dimensions, it assumes that the dimensions correspond to
     # (batch_dim x time x states).  This copies the format of ssm->base->sample.
     # If there is a batch dimension, then we will vmap over the leading dim.
     if dataset.ndim == 3:
         key = jr.split(key, len(dataset))
-        return vmap(single_smc_closed)(key, dataset)
+        return vmap(single_smc_closed)(key, dataset, masks)
     else:
-        return single_smc_closed(key, dataset)
+        return single_smc_closed(key, dataset, masks)
 
 
 def _single_smc(key,
@@ -149,6 +150,7 @@ def _single_smc(key,
                 resampling_criterion,
                 resampling_function,
                 tilt_temperature,
+                mask,
                 use_stop_gradient_resampling=False,
                 use_resampling_gradients=False,
                 verbosity=default_verbosity):
@@ -262,6 +264,7 @@ def _single_smc(key,
                           resampling_criterion,
                           resampling_function,
                           tilt_temperature,
+                          mask,
                           use_stop_gradient_resampling,
                           use_resampling_gradients,
                           verbosity)
@@ -290,6 +293,7 @@ def _smc_forward_pass(key,
                       resampling_criterion,
                       resampling_function,
                       tilt_temperature,
+                      mask,
                       use_stop_gradient_resampling=False,
                       use_resampling_gradients=False,
                       verbosity=default_verbosity, ):
@@ -367,9 +371,8 @@ def _smc_forward_pass(key,
 
     # Resample particles under the zeroth observation.
     if 'VRNN' in str(type(model)):
-        initial_p_log_probability = model.initial_distribution()._model[1].log_prob(initial_particles[1]).sum(axis=-1)
-        initial_q_log_probability = initial_distribution._model[1].log_prob(initial_particles[1]).sum(axis=-1)
-
+        initial_p_log_probability = np.sum(np.asarray([_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(model.initial_distribution()._model, initial_particles)]), axis=0)
+        initial_q_log_probability = np.sum(np.asarray([_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(initial_distribution._model, initial_particles)]), axis=0)
     else:
         initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
         initial_q_log_probability = initial_distribution.log_prob(initial_particles)
@@ -414,9 +417,8 @@ def _smc_forward_pass(key,
         # Compute the incremental importance weight.
         # TODO - need to somehow pass over this and if there are any deterministic distributions don't score those.
         if 'VRNN' in str(type(model)):
-            p_log_probability = p_dist._model[1].log_prob(new_particles[1])
-            q_log_probability = q_dist._model[1].log_prob(new_particles[1])
-
+            p_log_probability = np.sum(np.asarray([_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(p_dist._model, new_particles)]), axis=0)
+            q_log_probability = np.sum(np.asarray([_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(q_dist._model, new_particles)]), axis=0)
         else:
             p_log_probability = p_dist.log_prob(new_particles)
             q_log_probability = q_dist.log_prob(new_particles)
@@ -484,8 +486,11 @@ def _smc_forward_pass(key,
     ancestors = np.concatenate((np.arange(num_particles)[None, :], ancestors))
     q_states = np.concatenate((np.asarray([initial_q_state]), q_states)) if q_states is not None else None
 
+    # We now need to mask out the weights from outside the trajectory.
+    masked_log_weights_pre_resamp = np.expand_dims(mask, 1) * log_weights_pre_resamp
+
     # Average over particle dimension.
-    p_hats = spsp.logsumexp(log_weights_pre_resamp, axis=1) - np.log(num_particles)
+    p_hats = spsp.logsumexp(masked_log_weights_pre_resamp, axis=1) - np.log(num_particles)
 
     # Compute the log marginal likelihood.
     # Note that this needs to force the last accumulated incremental weight to be used.
@@ -761,7 +766,7 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
         single_sweep_lsd = particles[1]
         single_sweep_usd = particles[2]
 
-    ts = np.arange(len(true_states))
+    ts = np.arange(len(single_sweep_median))
 
     if fig is not None:
         plt.figure(fig.number)
@@ -773,7 +778,8 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
         plt.plot(ts, single_sweep_median[:, _i], c=_c, label=gen_label(_i, 'Predicted'))
         plt.fill_between(ts, single_sweep_lsd[:, _i], single_sweep_usd[:, _i], color=_c, alpha=0.1)
 
-        plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
+        if true_states is not None:
+            plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
 
     # Enable plotting obs here.
     # if obs is not None:
