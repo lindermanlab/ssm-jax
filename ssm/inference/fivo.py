@@ -418,7 +418,7 @@ def log_params(_param_hist, _cur_params):
                 _p_flat[_k] = dc(onp.array(_p[_k].flatten()))
             _param_hist[0].append(_p_flat)
         except:
-            print('Logging model parameters failed. ')
+            print('[WARNING]: Logging model parameters failed. ')
             _param_hist[0].append(None)
     else:
         _param_hist[0].append(None)
@@ -433,7 +433,7 @@ def log_params(_param_hist, _cur_params):
 
                 # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
 
-                # TODO ---- this is kind of messy.  makes plotting GDM easier but isn't general....
+                # TODO ---- this is kind of messy.  makes plotting GDM easier, but isn't general....
                 if ('var' in _k) and ('bias' in _k):
                     _p_flat[_k + '_(EXP)'] = dc(onp.array(np.exp(_p[_ko][_ki])))
                 else:
@@ -453,7 +453,7 @@ def log_params(_param_hist, _cur_params):
 
                 # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
 
-                # TODO ---- this is kind of messy.  makes plotting GDM easier but isn't general....
+                # TODO ---- this is kind of messy.  makes plotting GDM easier, but isn't general....
                 if ('var' in _k) and ('bias' in _k):
                     _p_flat[_k + '_(EXP)'] = dc(onp.array(np.exp(_p[_ko][_ki])))
                 else:

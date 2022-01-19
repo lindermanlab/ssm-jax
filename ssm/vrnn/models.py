@@ -334,7 +334,10 @@ class VRNN(SSM):
 
         state_history, obs_history = jax.vmap(lambda _k: self._single_unconditional_sample(_k, num_steps))(jr.split(key, num_samples))
 
-        return state_history, obs_history
+        # We return just the latent states.
+        print('[WARNING]: Returning just the latent states as the true state history.')
+
+        return state_history[1], obs_history
 
 
 # def define_vrnn_proposal(_key,

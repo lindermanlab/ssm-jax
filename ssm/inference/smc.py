@@ -356,7 +356,7 @@ def _smc_forward_pass(key,
             Full matrix of resampled ancestor indices.
     """
 
-    print('[test message]: Hello, im an uncompiled SMC sweep. ')
+    print('[WARNING]: Hello, im an uncompiled SMC sweep. ')
 
     # Generate the initial distribution.
     initial_distribution, initial_q_state = initialization_distribution()
