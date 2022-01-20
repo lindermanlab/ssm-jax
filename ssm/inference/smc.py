@@ -483,6 +483,12 @@ def _smc_forward_pass(key,
         (key, initial_resampled_particles, initial_log_weights_post_resamp, initial_q_state),
         np.arange(1, len(dataset)))
 
+    # if np.any(np.isnan(log_weights_post_resamp)):
+    #     carry = (key, initial_resampled_particles, initial_log_weights_post_resamp, initial_q_state)
+    #     for _t in np.arange(1, len(dataset)):
+    #         carry, _ = smc_step(carry, _t)
+    #     raise RuntimeError()
+
     # TODO - this is crappy, we are going to remove the rnn hidden state here and just return the Z-values.
     #  Not sure if/why this is the best thing to do, but we need to do something...
     if "VRNN" in str(type(model)):

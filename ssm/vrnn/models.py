@@ -11,17 +11,7 @@ import flax.linen as nn
 
 from jax.tree_util import register_pytree_node_class
 from ssm.base import SSM
-from ssm.lds.initial import StandardInitialCondition
-from ssm.lds.dynamics import Dynamics, StationaryDynamics
-from ssm.lds.emissions import Emissions
-import ssm.utils as utils
 from ssm.utils import Verbosity, random_rotation, make_named_tuple, ensure_has_batch_dim, auto_batch
-from ssm.inference.em import em
-from ssm.inference.laplace_em import laplace_em
-from jax.flatten_util import ravel_pytree
-from jax import tree_util, vmap
-
-import ssm.inference.proposals as proposals
 
 import tensorflow_probability.substrates.jax as tfp
 tfd = tfp.distributions
@@ -119,9 +109,11 @@ class VRNN(SSM):
         self._decoder_full_obj = self._rebuild_decoder_full_obj(params_decoder_full)           # \phi_{\tau}^{dec} ( \phi_{\tau}^{z} ( z_t ) , h_{t-1} ).
         self._encoder_data_obj = self._rebuild_encoder_data_obj(params_encoder_data)           # \phi_{\tau}^{x} ( x_{t} ).
 
-        # Compile some of the functions here, as doing it later causes no end of heartache.
-        self._jit_rnn_apply = jax.jit(lambda _a, _b: self._rnn_obj.apply(self._params_rnn, _a, _b))
-        self._vmap_rnn_apply = jax.vmap(self._jit_rnn_apply)
+        # # Compile some of the functions here, as doing it later causes no end of heartache.
+        # self._jit_rnn_apply = jax.jit(lambda _a, _b: self._rnn_obj.apply(self._params_rnn, _a, _b))
+        # self._vmap_rnn_apply = jax.vmap(self._jit_rnn_apply)
+
+        # self.vmapped_cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, )()
 
         # Grab the parameter values.  This allows us to explicitly re-build the object.
         self._parameters = make_named_tuple(dict_in=locals(),
@@ -180,35 +172,76 @@ class VRNN(SSM):
         # Iterate the RNN.
         input_rnn = np.concatenate((prev_latent_dec, prev_obs_enc), axis=-1)
 
-        # Just copy the previous state_history.
-        new_rnn_carry = prev_rnn_state
-        new_rnn_hidden_state = prev_rnn_state[..., 1, :]
+
+        # # Just copy the previous state_history.
+        # new_rnn_carry = (prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :])
+        # new_rnn_hidden_state = prev_rnn_state[..., 1, :]
+
+        # Yesterdays car crashes of attempts:
 
         # # This code causes it to NaN out immediately.
         # iter_vmapped = jax.vmap(lambda _a, _b: nn.LSTMCell().apply(self._params_rnn, _a, _b))  # TODO self._rnn_obj.__class__()
         # new_rnn_carry, new_rnn_hidden_state = iter_vmapped(prev_rnn_state, input_rnn)
-        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
 
         # # Attempt # 3.
         # iter_vmapped = jax.vmap(lambda _a, _b: self._rnn_obj(_a, _b))
         # new_rnn_carry, new_rnn_hidden_state = iter_vmapped(prev_rnn_state, input_rnn)
-        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
+
+        # # Attempt # 3.1.
+        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj((prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
+
+        # # # Attempt # 3.2.
+        # new_rnn_carry = []
+        # new_rnn_hidden_state = []
+        # for _s, _i in zip(prev_rnn_state, input_rnn):
+        #     _a, _b = self._rnn_obj((_s[0], _s[1]), _i)
+        #     new_rnn_carry.append(_a)
+        #     new_rnn_hidden_state.append(_b)
+        # new_rnn_carry = np.asarray(new_rnn_carry)
+        # new_rnn_hidden_state = np.asarray(new_rnn_hidden_state)
 
         # # Attempt # 4.
         # new_rnn_carry, new_rnn_hidden_state = self._vmap_rnn_apply(prev_rnn_state, input_rnn)
-        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
 
         # # Attempt # 5.
         # vmapped_cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, )
         # new_rnn_carry, new_rnn_hidden_state = vmapped_cell()(prev_rnn_state, input_rnn)
-        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
+
+        # # Attempt # 5.1.
+        # new_rnn_carry, new_rnn_hidden_state = self.vmapped_cell((prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
 
         # # Attempt # 6.
         # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, (prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
-        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
+
+        # Todays car crashes of attempts:
+
+        # # Attempt # 7.
+        # _iterate_jit = jax.jit(self._rnn_obj.apply)
+        # _iterate_jit_vmap = jax.vmap(_iterate_jit, in_axes=(None, 0, 0))
+        # new_rnn_carry, new_rnn_hidden_state = _iterate_jit_vmap(self._params_rnn, (prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
+
+        # # General debug probe # 8.
+        # new_rnn_hidden_state = new_rnn_hidden_state + self._params_rnn.tree_flatten()[0]
+
+        # # General debug probe # 9.
+        # rnn_cell = nn.LSTMCell()
+        # init_params = rnn_cell.init(jr.PRNGKey(1), (prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
+        # rnn_cell = rnn_cell.bind(init_params)
+        # new_rnn_carry, new_rnn_hidden_state = rnn_cell((prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
+
+        # # Debug attempt # 10 + A.R.  THIS RAN.  BUT DOESNT USE CELL.
+        # n_particles = len(input_rnn)
+        # cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, in_axes=(0, ))()
+        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, cell.initialize_carry(jr.PRNGKey(0), batch_dims=(n_particles,), size=self.rnn_state_dim), np.zeros((n_particles, 25,)))
+
+        # Debug attempt # 11 + A.R.
+        n_particles = len(input_rnn)
+        cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, in_axes=(0, ))()
+        new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, (np.zeros_like(prev_rnn_state[..., 0, :]), np.zeros_like(prev_rnn_state[..., 1, :])), np.zeros_like(input_rnn))
 
 
         # # Make the deterministic distribution from the outputs of the RNN.
+        new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
         new_rnn_state_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry), reinterpreted_batch_ndims=2)  # Was giving a [] event dim.
 
         # Call the prior local parameter generation functions.
@@ -466,44 +499,136 @@ class VRNN(SSM):
 
 if __name__ == '__main__':
 
-    rnn_state_dim = 10
-    latent_dim = 11
-    emissions_dim = 12
-    latent_encoded_dim = 5
-    emissions_encoded_dim = 6
+    GLOBAL_data = jr.uniform(key=jr.PRNGKey(2), shape=(5, 11, 2))
+    n_particles = 20
 
-    val_rnn_state = np.zeros(rnn_state_dim)
-    val_obs = np.zeros(emissions_dim)
-    val_latent = np.zeros(latent_dim)
-    val_latent_decoded = np.zeros(latent_encoded_dim)
-    val_data_encoded = np.zeros(emissions_encoded_dim)
+    rnn_cell = nn.LSTMCell()
+    GLOBAL_carry = rnn_cell.initialize_carry(jr.PRNGKey(0), batch_dims=(), size=15)
+    init_params = rnn_cell.init(jr.PRNGKey(1), GLOBAL_carry, GLOBAL_data[0, 0])
+    rnn_cell = rnn_cell.bind(init_params)
 
-    key = jr.PRNGKey(0)
-    key, subkey = jr.split(key)
-    vrnn = define_vrnn_model(subkey)
+    GLOBAL_particles_carry = jax.tree_map(lambda _a: np.repeat(np.expand_dims(_a, 0), n_particles, axis=0), GLOBAL_carry)
 
-    # Do some jit tests.
-    def fn(_key, _vrnn):
-        return _vrnn.emissions_shape
+    # Do it in non-jit land.
+    next_carry_nonjit = rnn_cell(GLOBAL_particles_carry, GLOBAL_data[0, 0])
 
-    jitted = jax.jit(fn)
+    # Now do it in jit land.
+    iterate_jit = jax.jit(rnn_cell.apply)
+    iterate_jit_vmap = jax.vmap(iterate_jit, in_axes=(None, 0, None))
+    next_carry_jit = iterate_jit_vmap(init_params, GLOBAL_particles_carry, GLOBAL_data[0, 0])
+    next_carry_jit = iterate_jit_vmap(init_params, GLOBAL_particles_carry, GLOBAL_data[0, 0])
+    next_carry_jit = iterate_jit_vmap(init_params, GLOBAL_particles_carry, GLOBAL_data[0, 0])
+    assert np.all(np.isclose(next_carry_nonjit[0][0], next_carry_jit[0][0])), "JIT not equal non-Jit."
 
-    a = jitted(jr.PRNGKey(0), vrnn)
-    b = jitted(jr.PRNGKey(1), vrnn)
-    c = jax.vmap(jitted, in_axes=(0, None))(jr.split(jr.PRNGKey(0), 10), vrnn, )
+    # now wrap it in a class
+    class Foo():
 
-    # Test some iteration stuff.
-    key, subkey = jr.split(key)
-    initial_particles = vrnn.initial_distribution().sample(seed=subkey)
+        def __init__(self, _rnn_params, _rebuild_rnn):
+            self.rnn_params = _rnn_params
+            self.rebuild_rnn = _rebuild_rnn
+            self._rnn_obj = self.rebuild_rnn(self.rnn_params)
 
-    # Generate the initial observations.  NOTE - the subroutine requires previous and current obs, so just duplicate.
-    key, subkey = jr.split(key)
-    initial_obs = (vrnn.emissions_distribution(initial_particles).sample(seed=subkey),
-                   vrnn.emissions_distribution(initial_particles).sample(seed=subkey))
+        def apply(self, _data, _carry):
+            _iterate_jit = jax.jit(self._rnn_obj.apply)
+            _iterate_jit_vmap = jax.vmap(_iterate_jit, in_axes=(None, 0, None))
+            _next_carry_jit, _hs = _iterate_jit_vmap(self.rnn_params, (_carry[..., 0, :], _carry[..., 1, :]), _data)
 
-    iterated = vrnn.dynamics_distribution(initial_particles, covariates=initial_obs)
+            # _next_carry_jit, _hs = self._rnn_obj((_carry[..., 0, :], _carry[..., 1, :]), _data)
 
-    print('Done')
+            _next_carry_jit = np.stack(_next_carry_jit).transpose(1, 0, 2)
+            return _next_carry_jit, _hs
+
+        def step(self, _carry, _t):
+            _particles_carry, _data = _carry
+            _iterated, _hs = self.apply(_data[_t], _particles_carry)
+            return (_iterated, _data), (_hs)
+
+        def do_sweep(self, _data):
+            print('Uncompiled sweep.')
+            _carry = rnn_cell.initialize_carry(jr.PRNGKey(0), batch_dims=(), size=15)
+            _particles_carry = jax.tree_map(lambda _a: np.repeat(np.expand_dims(_a, 0), n_particles, axis=0), _carry)
+
+            _particles_carry = np.stack(_particles_carry).transpose(1, 0, 2)
+
+            _final_carry, _ = jax.lax.scan(self.step,
+                                           (_particles_carry, _data),
+                                           np.arange(len(_data)))
+            return _final_carry
+
+
+    particles_carry = np.stack(GLOBAL_particles_carry).transpose(1, 0, 2)
+    rebuild_rnn = lambda _p: rnn_cell.bind(_p)
+    foo = Foo(init_params, rebuild_rnn)
+    next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
+    next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
+    next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
+    assert np.all(np.isclose(next_carry_nonjit[0][0], next_carry_class[0][:, 0])), "Class not equal non-Jit."
+
+    # Now take the grad.
+    def loss_fn(_params, _rebuild_rnn, _data):
+
+        _foo = Foo(_params, _rebuild_rnn)
+        _final_carry = _foo.do_sweep(_data)
+        _loss = np.mean(np.abs(_final_carry[0][0]))
+
+        return _loss
+
+    loss_jitted = jax.jit(loss_fn, static_argnums=1)
+    loss_closed = lambda _params, _data: loss_jitted(_params, rebuild_rnn, _data)
+    loss_vmaped = jax.vmap(loss_closed, in_axes=(None, 0))
+
+    loss_valgrad = jax.value_and_grad(lambda _params, _data: np.mean(loss_vmaped(_params, _data)), argnums=0)
+
+    loss_j_1, grad_j_1 = loss_valgrad(init_params, GLOBAL_data[0:2])
+    loss_j_2, grad_j_2 = loss_valgrad(init_params, GLOBAL_data[1:3])
+
+    with jax.disable_jit():
+        loss_1, grad_1 = loss_valgrad(init_params, GLOBAL_data[0:2])
+        loss_2, grad_2 = loss_valgrad(init_params, GLOBAL_data[1:3])
+
+    p = 0
+
+
+# if __name__ == '__main__':
+#
+#     rnn_state_dim = 10
+#     latent_dim = 11
+#     emissions_dim = 12
+#     latent_encoded_dim = 5
+#     emissions_encoded_dim = 6
+#
+#     val_rnn_state = np.zeros(rnn_state_dim)
+#     val_obs = np.zeros(emissions_dim)
+#     val_latent = np.zeros(latent_dim)
+#     val_latent_decoded = np.zeros(latent_encoded_dim)
+#     val_data_encoded = np.zeros(emissions_encoded_dim)
+#
+#     key = jr.PRNGKey(0)
+#     key, subkey = jr.split(key)
+#     vrnn = define_vrnn_model(subkey)
+#
+#     # Do some jit tests.
+#     def fn(_key, _vrnn):
+#         return _vrnn.emissions_shape
+#
+#     jitted = jax.jit(fn)
+#
+#     a = jitted(jr.PRNGKey(0), vrnn)
+#     b = jitted(jr.PRNGKey(1), vrnn)
+#     c = jax.vmap(jitted, in_axes=(0, None))(jr.split(jr.PRNGKey(0), 10), vrnn, )
+#
+#     # Test some iteration stuff.
+#     key, subkey = jr.split(key)
+#     initial_particles = vrnn.initial_distribution().sample(seed=subkey)
+#
+#     # Generate the initial observations.  NOTE - the subroutine requires previous and current obs, so just duplicate.
+#     key, subkey = jr.split(key)
+#     initial_obs = (vrnn.emissions_distribution(initial_particles).sample(seed=subkey),
+#                    vrnn.emissions_distribution(initial_particles).sample(seed=subkey))
+#
+#     iterated = vrnn.dynamics_distribution(initial_particles, covariates=initial_obs)
+#
+#     print('Done')
 
 
 

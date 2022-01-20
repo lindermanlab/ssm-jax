@@ -4,24 +4,26 @@ Wrapper for exploring FIVO..
 import jax
 import jax.numpy as np
 import matplotlib.pyplot as plt
+import numpy as onp
+import pickle as p
+import git
+import platform
+import argparse
+
 from jax import random as jr
 from copy import deepcopy as dc
 from timeit import default_timer as dt
-import numpy as onp
-import pickle as p
+from jax.config import config
 from types import SimpleNamespace
 from typing import Iterable
-import argparse
-import git
-import platform
 from pprint import pprint
 
 # Import some ssm stuff.
+import ssm.utils as utils
+import ssm.inference.fivo as fivo
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
 from ssm.inference.smc import _plot_single_sweep
 from ssm.inference.smc import smc
-import ssm.utils as utils
-import ssm.inference.fivo as fivo
 from tensorflow_probability.substrates.jax import distributions as tfd
 
 # If we are on Mac, assume it is a local run
@@ -33,13 +35,12 @@ default_verbosity = Verbosity.DEBUG
 # NOTE - this is really useful, but will break parts of the
 # computation graph if NaNs are used for signalling purposes.
 # NaN debugging stuff.
-# from jax.config import config
 # config.update("jax_debug_nans", True)
 
 # Disable jit for inspection.
 DISABLE_JIT = False
 
-DEFAULT_MODEL = 'SVM'
+DEFAULT_MODEL = 'VRNN'
 
 # Import and configure WandB.
 try:
