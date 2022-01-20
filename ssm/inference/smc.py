@@ -122,7 +122,7 @@ def smc(key,
     if resampling_criterion is None:
         resampling_criterion = always_resample_criterion
     if resampling_function is None:
-        resampling_function = systematic_resampling
+        resampling_function = multinomial_resampling  # TODO - changed from: systematic_resampling
 
     # Close over the static arguments.
     single_smc_closed = lambda _k, _d, _m: \
@@ -370,9 +370,13 @@ def _smc_forward_pass(key,
     initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
 
     # Resample particles under the zeroth observation.
+    # TODO - make this tidier.
     if 'VRNN' in str(type(model)):
-        initial_p_log_probability = np.sum(np.asarray([_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(model.initial_distribution()._model, initial_particles)]), axis=0)
-        initial_q_log_probability = np.sum(np.asarray([_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(initial_distribution._model, initial_particles)]), axis=0)
+        _init_p = [_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(model.initial_distribution()._model, initial_particles)]
+        initial_p_log_probability = _init_p[0].sum(axis=1) + _init_p[1]
+
+        _init_q = [_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(initial_distribution._model, initial_particles)]
+        initial_q_log_probability = _init_q[0].sum(axis=1) + _init_q[1]
     else:
         initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
         initial_q_log_probability = initial_distribution.log_prob(initial_particles)
@@ -402,10 +406,14 @@ def _smc_forward_pass(key,
         key, particles, accumulated_log_weights, q_state = carry
         key, subkey1, subkey2 = jr.split(key, num=3)
 
-        # Compile the previous observation as covariates. TODO - add current obs as well.
-        covariates = (
-                        np.repeat(np.expand_dims(dataset[t - 1], 0), num_particles, axis=0),
-                      )
+        # TODO - this is kinda messy.
+        if 'VRNN' in str(type(model)):
+            # Compile the previous observation as covariates. TODO - add current obs as well.
+            covariates = (
+                            np.repeat(np.expand_dims(dataset[t - 1], 0), num_particles, axis=0),
+                          )
+        else:
+            covariates = None
 
         # Compute the p and q distributions.
         p_dist = model.dynamics_distribution(particles, covariates=covariates)  # NOTE - hijacking covariates to pass PREVIOUS AND CURRENT OBS in.
@@ -417,8 +425,11 @@ def _smc_forward_pass(key,
         # Compute the incremental importance weight.
         # TODO - need to somehow pass over this and if there are any deterministic distributions don't score those.
         if 'VRNN' in str(type(model)):
-            p_log_probability = np.sum(np.asarray([_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(p_dist._model, new_particles)]), axis=0)
-            q_log_probability = np.sum(np.asarray([_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(q_dist._model, new_particles)]), axis=0)
+            _p = [_m.log_prob(_p) for _m, _p in zip(p_dist._model, new_particles)]
+            p_log_probability = _p[0] + _p[1]
+
+            _q = [_m.log_prob(_p) for _m, _p in zip(q_dist._model, new_particles)]
+            q_log_probability = _q[0] + _q[1]
         else:
             p_log_probability = p_dist.log_prob(new_particles)
             q_log_probability = q_dist.log_prob(new_particles)
@@ -500,6 +511,12 @@ def _smc_forward_pass(key,
     if use_resampling_gradients:
         raise NotImplementedError("This code isn't ready yet.  There are still too many issues with indexing etc.")
         # z_hat = z_hat + _compute_resampling_grad()
+
+    # If we are using the VRNN, normalize this to the length of the trace.
+    # TODO - make this neater somehow.
+    if "VRNN" in str(type(model)):
+        # Normalize the quantity to be in terms of nats/step for the VRNN case.
+        l_tilde /= np.sum(mask)
         
     return filtering_particles, l_tilde, ancestors, resampled, log_weights_post_resamp
 

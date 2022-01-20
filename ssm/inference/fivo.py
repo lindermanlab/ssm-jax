@@ -540,13 +540,14 @@ def initial_validation(env, key, true_model, dataset, dataset_masks, true_states
 
     # Test BPF in the true model..
     key, subkey = jr.split(key)
-    true_bpf_posterior = _smc_jit(subkey,
-                                  true_model,
-                                  dataset,
-                                  dataset_masks,
-                                  num_particles=num_particles,
-                                  resampling_criterion=env.config.resampling_criterion)
-    true_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
+    if env.config.synthetic_data:
+        true_bpf_posterior = _smc_jit(subkey,
+                                      true_model,
+                                      dataset,
+                                      dataset_masks,
+                                      num_particles=num_particles,
+                                      resampling_criterion=env.config.resampling_criterion)
+        true_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
 
     if init_model is not None:
         # Test BPF in the initial model..
@@ -632,7 +633,7 @@ def initial_validation(env, key, true_model, dataset, dataset_masks, true_states
     return true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
 
 
-def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_kls=None):
+def compare_kls(get_marginals, env, opt, dataset, dataset_masks, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_kls=None):
     """
 
     Args:
@@ -699,14 +700,15 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
     # Compare the KLs of the smoothing distributions.
     if true_bpf_kls is None:
         key, subkey = jr.split(key)
-        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, num_particles=num_particles)
+        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, dataset_masks, num_particles=num_particles)
         true_bpf_kls = compute_marginal_kls(true_bpf_posterior.weighted_smoothing_particles)
 
     key, subkey = jr.split(key)
     _, pred_smc_posterior = do_fivo_sweep_jitted(subkey,
                                                  get_params_from_opt(opt),
                                                  _num_particles=num_particles,
-                                                 _datasets=dataset)
+                                                 _datasets=dataset,
+                                                 _masks=dataset_masks)
     pred_smc_kls = compute_marginal_kls(pred_smc_posterior.weighted_smoothing_particles)
 
     if plot and env.config.PLOT:
@@ -746,7 +748,7 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
     return true_bpf_kls, pred_smc_kls
 
 
-def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_upc=None):
+def compare_unqiue_particle_counts(env, opt, dataset, masks, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_upc=None):
     """
 
     Args:
@@ -785,14 +787,15 @@ def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_s
     # Compare the KLs of the smoothing distributions.
     if true_bpf_upc is None:
         key, subkey = jr.split(key)
-        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, num_particles=num_particles)
+        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, masks, num_particles=num_particles)
         true_bpf_upc = calculate_unique_particle_counts(true_bpf_posterior.weighted_smoothing_particles)
 
     key, subkey = jr.split(key)
     _, pred_smc_posterior = do_fivo_sweep_jitted(subkey,
                                                  get_params_from_opt(opt),
                                                  _num_particles=num_particles,
-                                                 _datasets=dataset)
+                                                 _datasets=dataset,
+                                                 _masks=masks)
     pred_smc_upc = calculate_unique_particle_counts(pred_smc_posterior.weighted_smoothing_particles)
 
     if plot and env.config.PLOT:
@@ -815,7 +818,7 @@ def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_s
     return true_bpf_upc, pred_smc_upc
 
 
-def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted,
+def compare_sweeps(env, opt, dataset, masks, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted,
                    tag='', nrep=10, true_states=None, num_particles=None):
     """
 
@@ -849,6 +852,7 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
     final_val_posterior_bpf_true = smc_jitted(subkey,
                                               true_model,
                                               dataset,
+                                              masks,
                                               num_particles=num_particles)
 
     # SMC with tilt.
@@ -856,7 +860,8 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
     _, final_val_posterior_fivo_aux = do_fivo_sweep_jitted(subkey,
                                                            get_params_from_opt(opt),
                                                            _num_particles=num_particles,
-                                                           _datasets=dataset,)
+                                                           _datasets=dataset,
+                                                           _masks=masks)
 
     # CODE for plotting lineages.
     for _dset_idx in range(nrep):

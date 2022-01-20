@@ -30,7 +30,7 @@ def svm_get_config():
 
     parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # CSV.  # {'always_resample', 'never_resample'}.
 
-    parser.add_argument('--use-sgr', default=0, type=int)  # {0, 1}
+    parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
 
     parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
@@ -46,13 +46,13 @@ def svm_get_config():
     parser.add_argument('--tilt-window-length', default=5, type=int)                # {int, None}.
     parser.add_argument('--tilt-fn-family', default='MLP', type=str)             # {'AFFINE', 'MLP'}.
 
-    parser.add_argument('--vi-use-tilt-gradient', default=1, type=int)  # {0, 1}.
+    parser.add_argument('--vi-use-tilt-gradient', default=0, type=int)  # {0, 1}.
     parser.add_argument('--vi-buffer-length', default=10, type=int)  #
     parser.add_argument('--vi-minibatch-size', default=16, type=int)  #
     parser.add_argument('--vi-epochs', default=1, type=int)  #
 
     parser.add_argument('--num-particles', default=4, type=int)
-    parser.add_argument('--datasets-per-batch', default=8, type=int)
+    parser.add_argument('--datasets-per-batch', default=32, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--lr-p', default=0.0001, type=float)
@@ -64,7 +64,7 @@ def svm_get_config():
     parser.add_argument('--emissions-dim', default=1, type=int)
 
     parser.add_argument('--num-trials', default=100000, type=int)  # NOTE - try with a single trial.
-    parser.add_argument('--num-val-datasets', default=100, type=int)
+    parser.add_argument('--num-val-dataset-fraction', default=0.01, type=int)
 
     parser.add_argument('--dset-to-plot', default=0, type=int)
     parser.add_argument('--validation-particles', default=250, type=int)
@@ -76,6 +76,10 @@ def svm_get_config():
     parser.add_argument('--log-group', default='debug', type=str)  # {'debug', 'gdm-v1.0'}
 
     parser.add_argument('--PLOT', default=1, type=int)
+
+    # There is only one type of dataset here.
+    parser.add_argument('--DATASET', default='default', type=str)
+    parser.add_argument('--synthetic-data', default=1, type=int)
 
     config = parser.parse_args().__dict__
 
@@ -102,7 +106,7 @@ def svm_define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset = svm_define_true_model_and_data(subkey, env)
+    true_model, true_states, dataset, dataset_masks = svm_define_true_model_and_data(subkey, env)
 
     if len(dataset.shape) == 2:
         print('\nWARNING: Expanding dataset dim.\n')
@@ -120,8 +124,15 @@ def svm_define_test(key, env):
     key, subkey = jr.split(key)
     tilt, tilt_params, rebuild_tilt_fn = svm_define_tilt(subkey, model, dataset, env)
 
+    # Build up the train/val splits.
+    num_val_datasets = int(len(dataset) * env.config.num_val_dataset_fraction)
+    validation_datasets = dataset[:num_val_datasets]
+    validation_dataset_masks = dataset_masks[:num_val_datasets]
+    train_datasets = dataset[num_val_datasets:]
+    train_dataset_masks = dataset_masks[num_val_datasets:]
+
     # Return this big pile of stuff.
-    ret_model = (true_model, true_states, dataset)
+    ret_model = (true_model, true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
     ret_test = (model, get_model_params, rebuild_model_fn)
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
@@ -225,7 +236,7 @@ def svm_define_proposal(subkey, model, dataset, env):
     # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
     dummy_p_dist = model.dynamics_distribution(dummy_particles)
-    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist)
+    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist, None)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # If we are using RESQ, define a kernel that basically does nothing to begin with.
@@ -260,7 +271,7 @@ def svm_define_proposal(subkey, model, dataset, env):
 
     elif env.config.proposal_type == 'SINGLE_SINGLEOBS':
         proposal_cls = proposals.IGSingleObsProposal
-        n_props = 1
+        n_props = 2  # TODO - NOTE - changed the behavior so that n_props = 2 means there is an initial prop and then a single prop.
         proposal_window_length = None
 
         # TODO - test this.
@@ -273,7 +284,7 @@ def svm_define_proposal(subkey, model, dataset, env):
 
     elif env.config.proposal_type == 'SINGLE_WINDOW':
         proposal_cls = proposals.IGWindowProposal
-        n_props = 1
+        n_props = 2  # TODO - NOTE - changed the behavior so that n_props = 2 means there is an initial prop and then a single prop.
         proposal_window_length = env.config.proposal_window_length
 
     else:
@@ -333,7 +344,10 @@ def svm_define_true_model_and_data(key, env):
     key, subkey = jr.split(key)
     true_states, dataset = true_model.sample(key=subkey, num_steps=T+1, num_samples=num_trials)
 
-    return true_model, true_states, dataset
+    # All observations should be used.
+    dataset_masks = np.ones((num_trials, T+1))
+
+    return true_model, true_states, dataset, dataset_masks
 
 
 def svm_define_test_model(key, true_model, env):

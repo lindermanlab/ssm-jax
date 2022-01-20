@@ -30,14 +30,16 @@ LOCAL_SYSTEM = (('mac' in platform.platform()) or ('Mac' in platform.platform())
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
 
-# # NOTE - this is really useful, but will break parts of the
-# # computation graph if NaNs are used for signalling purposes.
-# # NaN debugging stuff.
+# NOTE - this is really useful, but will break parts of the
+# computation graph if NaNs are used for signalling purposes.
+# NaN debugging stuff.
 # from jax.config import config
 # config.update("jax_debug_nans", True)
 
 # Disable jit for inspection.
 DISABLE_JIT = False
+
+DEFAULT_MODEL = 'SVM'
 
 # Import and configure WandB.
 try:
@@ -67,7 +69,7 @@ def do_config():
     try:
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
-        model = 'VRNN'
+        model = DEFAULT_MODEL
         print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
@@ -202,6 +204,7 @@ def main():
                 tilt_params = loaded_params[2]
         except:
             pass
+
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -346,7 +349,7 @@ def main():
             print('\tVI_USE_VI_GRAD:', VI_USE_VI_GRAD)
             print()
 
-            do_vi_tilt_update_jit = jax.jit(fivo.do_vi_tilt_update, static_argnums=(1, 3, 4, 8, 9))
+            do_vi_tilt_update_jit = jax.jit(fivo.do_vi_tilt_update, static_argnums=(1, 3, 4, 9, 10))
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -365,6 +368,8 @@ def main():
             # Do the sweep and compute the gradient.
             cur_params = dc(fivo.get_params_from_opt(opt))
             key, subkey = jr.split(key)
+
+
             (pred_fivo_bound, smc_posteriors), grad = do_fivo_sweep_val_and_grad(subkey,
                                                                                  fivo.get_params_from_opt(opt),
                                                                                  env.config.num_particles,
@@ -373,11 +378,15 @@ def main():
                                                                                  temperature,
                                                                                  )
 
-            # Quickly calculate a smoothed training loss for quick and dirty plotting.
-            if smoothed_training_loss == 0.0:
-                smoothed_training_loss = pred_fivo_bound
-            else:
-                smoothed_training_loss = 0.1 * pred_fivo_bound + 0.9 * smoothed_training_loss
+            # with jax.disable_jit():  # TODO - INSANE BUG where jitting this function causes it to fail...
+            #     (pred_fivo_bound, smc_posteriors), grad = do_fivo_sweep_val_and_grad(subkey,
+            #                                                                          fivo.get_params_from_opt(opt),
+            #                                                                          env.config.num_particles,
+            #                                                                          batched_dataset,
+            #                                                                          batched_dataset_masks,
+            #                                                                          temperature,
+            #                                                                          )
+
 
             # ----------------------------------------------------------------------------------------------------------------------------------------
 
@@ -425,6 +434,7 @@ def main():
             # ----------------------------------------------------------------------------------------------------------------------------------------
 
             # Do some validation and give some output.
+            smoothed_training_loss = 0.1 * pred_fivo_bound + 0.9 * smoothed_training_loss if smoothed_training_loss != 0.0 else pred_fivo_bound
             val_interval = 2500
             plot_interval = 2500
             if (_step % val_interval == 0) or (_step == 1):
@@ -434,6 +444,7 @@ def main():
 
                 # Do a FIVO-AUX sweep.
                 key, subkey = jr.split(key)
+                # with jax.disable_jit():
                 pred_fivo_bound_to_print, pred_sweep = do_fivo_sweep_jitted(subkey,
                                                                             fivo.get_params_from_opt(opt),
                                                                             _num_particles=env.config.validation_particles,
@@ -461,6 +472,7 @@ def main():
                                                               env,
                                                               opt,
                                                               validation_datasets,
+                                                              validation_dataset_masks,
                                                               true_model,
                                                               subkey,
                                                               do_fivo_sweep_jitted,
@@ -472,6 +484,7 @@ def main():
                 true_bpf_upc, pred_smc_upc = fivo.compare_unqiue_particle_counts(env,
                                                                                  opt,
                                                                                  validation_datasets,
+                                                                                 validation_dataset_masks,
                                                                                  true_model,
                                                                                  subkey,
                                                                                  do_fivo_sweep_jitted,
@@ -508,7 +521,7 @@ def main():
                     #     obs=dataset[env.config.dset_to_plot])
 
                     key, subkey = jr.split(key)
-                    fivo.compare_sweeps(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, subkey,
+                    fivo.compare_sweeps(env, opt, validation_datasets, validation_dataset_masks, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, subkey,
                                         do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=2, true_states=true_states)
 
                     param_figures = do_plot(param_hist,

@@ -46,8 +46,8 @@ class IndependentGaussianProposal:
                  trunk_fn=None, head_mean_fn=None, head_log_var_fn=None, proposal_window_length=None):
 
         # Work out the number of proposals.
-        assert (n_proposals == 1) or (n_proposals == len(stock_proposal_input[0])), \
-            'Can only use a single proposal or as many proposals as there are states.'
+        assert (n_proposals == 1) or (n_proposals == 2) or (n_proposals == len(stock_proposal_input[0])), \
+            'Can only use a single proposal, two proposals (init and single), or as many proposals as there are states.'
         self.n_proposals = n_proposals
 
         self.proposal_window_length = proposal_window_length

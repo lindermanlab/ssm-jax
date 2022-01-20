@@ -30,6 +30,10 @@ from ssm.distributions import MultivariateNormalBlockTridiag
 SVMPosterior = MultivariateNormalBlockTridiag
 
 
+def _iterate_rnn(_rnn_obj, _params, _prev_rnn_state, _input_rnn):
+    return _rnn_obj.apply(_params, _prev_rnn_state, _input_rnn)
+
+
 @register_pytree_node_class
 class VRNN(SSM):
     """
@@ -48,6 +52,8 @@ class VRNN(SSM):
                  latent_enc_dim: int,
                  obs_enc_dim: int,
                  rnn_state_dim: int,
+
+                 output_type: str,
 
                  rebuild_rnn,                                       # Static functions.
                  rebuild_prior,                                     # Static functions.
@@ -93,6 +99,8 @@ class VRNN(SSM):
         self.obs_enc_dim = obs_enc_dim
         self.rnn_state_dim = rnn_state_dim
 
+        self.output_type = output_type
+
         self._params_rnn = params_rnn
         self._params_prior = params_prior
         self._params_decoder_latent = params_decoder_latent
@@ -110,6 +118,10 @@ class VRNN(SSM):
         self._decoder_latent_obj = self._rebuild_decoder_latent_obj(params_decoder_latent)     # \phi_{\tau}^{z} ( z_t ).
         self._decoder_full_obj = self._rebuild_decoder_full_obj(params_decoder_full)           # \phi_{\tau}^{dec} ( \phi_{\tau}^{z} ( z_t ) , h_{t-1} ).
         self._encoder_data_obj = self._rebuild_encoder_data_obj(params_encoder_data)           # \phi_{\tau}^{x} ( x_{t} ).
+
+        # Compile some of the functions here, as doing it later causes no end of heartache.
+        self._jit_rnn_apply = jax.jit(lambda _a, _b: self._rnn_obj.apply(self._params_rnn, _a, _b))
+        self._vmap_rnn_apply = jax.vmap(self._jit_rnn_apply)
 
         # Grab the parameter values.  This allows us to explicitly re-build the object.
         self._parameters = make_named_tuple(dict_in=locals(),
@@ -130,7 +142,8 @@ class VRNN(SSM):
         assert covariates is None, "Covariates are not provisioned in the initial state."
         assert metadata is None, "Metadata is not provisioned in the initial state."
 
-        initial_rnn_state = np.zeros(self.rnn_state_dim)
+        # TODO - deterministic initialization...
+        initial_rnn_state = self._rnn_obj.initialize_carry(jr.PRNGKey(0), batch_dims=(), size=self.rnn_state_dim)  # np.zeros(self.rnn_state_dim)
         initial_z_state = np.zeros(self.latent_dim)
 
         # Construct a joint distribution so that we have a single object.
@@ -165,13 +178,41 @@ class VRNN(SSM):
         prev_obs_enc = self._encoder_data_obj(prev_obs)
 
         # Iterate the RNN.
-        input_rnn = np.concatenate((prev_rnn_state, prev_latent_dec, prev_obs_enc), axis=-1)
-        new_rnn_state = self._rnn_obj(input_rnn)
-        # new_rnn_state_dist = tfd.Deterministic(new_rnn_state)
-        new_rnn_state_dist = tfd.Independent(tfd.Deterministic(new_rnn_state), reinterpreted_batch_ndims=1)  # Was giving a [] event dim.
+        input_rnn = np.concatenate((prev_latent_dec, prev_obs_enc), axis=-1)
+
+        # Just copy the previous state_history.
+        new_rnn_carry = prev_rnn_state
+        new_rnn_hidden_state = prev_rnn_state[..., 1, :]
+
+        # # This code causes it to NaN out immediately.
+        # iter_vmapped = jax.vmap(lambda _a, _b: nn.LSTMCell().apply(self._params_rnn, _a, _b))  # TODO self._rnn_obj.__class__()
+        # new_rnn_carry, new_rnn_hidden_state = iter_vmapped(prev_rnn_state, input_rnn)
+        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
+
+        # # Attempt # 3.
+        # iter_vmapped = jax.vmap(lambda _a, _b: self._rnn_obj(_a, _b))
+        # new_rnn_carry, new_rnn_hidden_state = iter_vmapped(prev_rnn_state, input_rnn)
+        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
+
+        # # Attempt # 4.
+        # new_rnn_carry, new_rnn_hidden_state = self._vmap_rnn_apply(prev_rnn_state, input_rnn)
+        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
+
+        # # Attempt # 5.
+        # vmapped_cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, )
+        # new_rnn_carry, new_rnn_hidden_state = vmapped_cell()(prev_rnn_state, input_rnn)
+        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
+
+        # # Attempt # 6.
+        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, (prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
+        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
+
+
+        # # Make the deterministic distribution from the outputs of the RNN.
+        new_rnn_state_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry), reinterpreted_batch_ndims=2)  # Was giving a [] event dim.
 
         # Call the prior local parameter generation functions.
-        prior_dist_local_params = self._prior_obj(new_rnn_state)
+        prior_dist_local_params = self._prior_obj(new_rnn_hidden_state)
         prior_dist_local_params = np.reshape(prior_dist_local_params, (*prior_dist_local_params.shape[:-1], 2, -1))
         prior_mean = prior_dist_local_params[..., 0, :]
         prior_log_var = prior_dist_local_params[..., 1, :]
@@ -204,14 +245,31 @@ class VRNN(SSM):
         latent_dec = self._decoder_latent_obj(latent)
 
         # Construct the input to the emissions distribution.
-        input_full_decoder = np.concatenate((rnn_state, latent_dec, ), axis=-1)
+        input_full_decoder = np.concatenate((rnn_state[..., 1, :], latent_dec, ), axis=-1)
 
         # Construct the emissions distribution itself.
         emissions_local_parameters = self._decoder_full_obj(input_full_decoder)
-        emissions_local_parameters = np.reshape(emissions_local_parameters, (*emissions_local_parameters.shape[:-1], 2, -1))
-        emissions_mean = emissions_local_parameters[..., 0, :]
-        emissions_log_var = emissions_local_parameters[..., 1, :]
-        emissions_dist = tfd.MultivariateNormalDiag(emissions_mean, np.sqrt(np.exp(emissions_log_var)))
+
+        if self.output_type == 'GAUSSIAN':
+
+            emissions_local_parameters = np.reshape(emissions_local_parameters, (*emissions_local_parameters.shape[:-1], 2, -1))
+            emissions_mean = emissions_local_parameters[..., 0, :]
+            emissions_log_var = emissions_local_parameters[..., 1, :]
+            emissions_dist = tfd.MultivariateNormalDiag(emissions_mean, np.sqrt(np.exp(emissions_log_var)))
+
+        elif self.output_type == 'BERNOULLI':
+
+            # emissions_local_parameters = np.reshape(emissions_local_parameters, (*emissions_local_parameters.shape[:-1], 2, -1))
+            # emissions_0 = emissions_local_parameters[..., 0, :]
+            # emissions_1 = emissions_local_parameters[..., 1, :]
+            # emissions_odds_logit = emissions_1 - emissions_0
+            # emissions_dist = tfd.Independent(tfd.Bernoulli(emissions_odds_logit), reinterpreted_batch_ndims=1)
+
+            emissions_odds_logit = emissions_local_parameters
+            emissions_dist = tfd.Independent(tfd.Bernoulli(emissions_odds_logit), reinterpreted_batch_ndims=1)
+
+        else:
+            raise NotImplementedError
 
         return emissions_dist
 
@@ -227,6 +285,7 @@ class VRNN(SSM):
                     self.latent_enc_dim,
                     self.obs_enc_dim,
                     self.rnn_state_dim,
+                    self.output_type,
                     self._rebuild_rnn_obj,
                     self._rebuild_prior_obj,
                     self._rebuild_decoder_latent_obj,
