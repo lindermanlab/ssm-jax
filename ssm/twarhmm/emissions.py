@@ -3,6 +3,7 @@ from functools import partial
 import jax.numpy as np
 from jax.tree_util import tree_map, register_pytree_node_class
 from jax import vmap
+from flax.core.frozen_dict import freeze, FrozenDict
 
 from tensorflow_probability.substrates import jax as tfp
 
@@ -66,6 +67,29 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         effective_scale_trils = np.einsum('kde,i->kide', self._scale_trils, 1/np.sqrt(self._time_constants))
         self._distribution = GaussianLinearRegression(
             effective_weights, effective_biases, effective_scale_trils)
+        
+    @property
+    def _parameters(self):
+        return freeze(dict(weights=self._weights,
+                           time_constants=self._time_constants,
+                           biases=self._biases,
+                           scale_trils=self._scale_trils))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._weights = params["weights"]
+        self._time_constants = params["time_constants"]
+        self._biases = params["biases"]
+        self._scale_trils = params["scale_trils"]
+        self._make_distribution()  # construct self._distribution
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(prior=self._prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._prior = hyperparams["prior"]
 
     @property
     def emissions_shape(self):

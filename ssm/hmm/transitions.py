@@ -196,6 +196,22 @@ class SimpleStickyTransitions(Transitions):
         if transition_distribution_prior is None:
             transition_distribution_prior = ssmd.Beta(9, 1)
         self._prior = transition_distribution_prior
+        
+    @property
+    def _parameters(self):
+        return freeze(dict(distribution=self._distribution))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._distribution = params["distribution"]
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(prior=self._prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._prior = hyperparams["prior"]
 
     def tree_flatten(self):
         children = (self.stay_probability, self._distribution, self._prior)
