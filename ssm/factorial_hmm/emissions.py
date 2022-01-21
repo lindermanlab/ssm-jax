@@ -81,7 +81,6 @@ class NormalFactorialEmissions(FactorialEmissions):
     def emissions_shape(self):
         return self._distribution.event_shape
     
-    
     @property
     def _parameters(self):
         return freeze(dict(distribution=self._distribution))

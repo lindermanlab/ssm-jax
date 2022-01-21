@@ -56,9 +56,9 @@ class HMM(SSM):
     @property
     def emissions_shape(self):
         return self._emissions.emissions_shape
-    
+
     @property
-    def _parameters(self):
+    def _parameters(self) -> FrozenDict:
         return freeze(dict(initial_condition=self._initial_condition._parameters,
                            transitions=self._transitions._parameters,
                            emissions=self._emissions._parameters))

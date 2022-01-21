@@ -117,13 +117,13 @@ class SSM(object):
     @property
     def _hyperparameters(self):
         return freeze(dict(initial_condition=self._initial_condition._hyperparameters,
-                           transitions=self._transitions._hyperparameters,
+                           dynamics=self._dynamics._hyperparameters,
                            emissions=self._emissions._hyperparameters))
         
     @_hyperparameters.setter
     def _hyperparameters(self, hyperparams):
         self._initial_condition._hyperparameters = hyperparams["initial_condition"]
-        self._transitions._hyperparameters = hyperparams["transitions"]
+        self._dynamics._hyperparameters = hyperparams["dynamics"]
         self._emissions._hyperparameters = hyperparams["emissions"]
 
     @auto_batch(batched_args=("states", "data", "covariates", "metadata"))
