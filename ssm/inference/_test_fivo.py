@@ -9,6 +9,7 @@ import pickle as p
 import git
 import platform
 import argparse
+import sys
 
 from jax import random as jr
 from copy import deepcopy as dc
@@ -25,6 +26,7 @@ from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
 from ssm.inference.smc import _plot_single_sweep
 from ssm.inference.smc import smc
 from tensorflow_probability.substrates.jax import distributions as tfd
+import ssm.inference.fivo_vi as fivo_vi
 
 # If we are on Mac, assume it is a local run
 LOCAL_SYSTEM = (('mac' in platform.platform()) or ('Mac' in platform.platform()))
@@ -66,7 +68,6 @@ def do_config():
     """
 
     # Quickly hack finding the model and importing the right config.
-    import sys
     try:
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
@@ -74,33 +75,30 @@ def do_config():
         print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
-        from ssm.inference._test_fivo_lds import lds_get_config as get_config
+        from ssm.inference._test_fivo_lds import get_config
     elif 'GDM' in model:
-        from ssm.inference._test_fivo_gdm import gdm_get_config as get_config
+        from ssm.inference._test_fivo_gdm import get_config
     elif 'SVM' in model:
-        from ssm.inference._test_fivo_svm import svm_get_config as get_config
+        from ssm.inference._test_fivo_svm import get_config
     elif 'VRNN' in model:
-        from ssm.inference._test_fivo_vrnn import vrnn_get_config as get_config
+        from ssm.inference._test_fivo_vrnn import get_config
     else:
         raise NotImplementedError()
 
     # Go and get the model-specific config.
-    config = get_config()
+    config_dict, do_print, define_test, do_plot, get_marginals = get_config()
 
     # Define the parameter names that we are going to learn.
     # This has to be a tuple of strings that index which args we will pull out.
-    if config['free_parameters'] is None or config['free_parameters'] == '':
-        config['free_parameters'] = ()
+    if config_dict['free_parameters'] is None or config_dict['free_parameters'] == '':
+        config_dict['free_parameters'] = ()
     else:
-        config['free_parameters'] = tuple(config['free_parameters'].replace(' ', '').split(','))
+        config_dict['free_parameters'] = tuple(config_dict['free_parameters'].replace(' ', '').split(','))
 
-    # Do some type conversions.
-    config['use_sgr'] = bool(config['use_sgr'])
-
-    # Get everything.
+    # Pack everything into a wandb object for tracking.
     if USE_WANDB:
         # Set up WandB
-        env = wandb.init(project=PROJECT, entity=USERNAME, group=config['log_group'], config=config)
+        env = wandb.init(project=PROJECT, entity=USERNAME, group=config['log_group'], config=config_dict)
     else:
         log_group = 'none'
         env = SimpleNamespace(**{'config': SimpleNamespace(**config),
@@ -124,10 +122,13 @@ def do_config():
         env.config.git_branch = 'NoneFound'
         env.config.git_is_dirty = 'NoneFound'
 
+    # Set up the key.
+    key = jr.PRNGKey(env.config.seed)
+
     # Do some final bits.
     if len(env.config.free_parameters) == 0: print('\nWARNING: NO FREE MODEL PARAMETERS...\n')
     pprint(env.config)
-    return env
+    return env, key, do_print, define_test, do_plot, get_marginals
 
 
 def main():
@@ -138,50 +139,11 @@ def main():
     with possibly_disable_jit(DISABLE_JIT):
 
         # Set up the experiment and log to WandB
-        env = do_config()
-
-        # Import the right functions.
-        if 'GDM' in env.config.model:
-            from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
-            from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
-            from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
-            from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
-
-        elif 'LDS' in env.config.model:
-            from ssm.inference._test_fivo_lds import lds_do_print as do_print
-            from ssm.inference._test_fivo_lds import lds_define_test as define_test
-            from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
-            from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
-
-        elif 'SVM' in env.config.model:
-            from ssm.inference._test_fivo_svm import svm_do_print as do_print
-            from ssm.inference._test_fivo_svm import svm_define_test as define_test
-            from ssm.inference._test_fivo_svm import svm_do_plot as do_plot
-            from ssm.inference._test_fivo_svm import svm_get_true_target_marginal as get_marginals
-
-        elif 'VRNN' in env.config.model:
-            from ssm.inference._test_fivo_vrnn import vrnn_do_print as do_print
-            from ssm.inference._test_fivo_vrnn import vrnn_define_test as define_test
-            from ssm.inference._test_fivo_vrnn import vrnn_do_plot as do_plot
-            from ssm.inference._test_fivo_vrnn import vrnn_get_true_target_marginal as get_marginals
-
-        else:
-            raise NotImplementedError()
+        env, key, do_print, define_test, do_plot, get_marginals = do_config()
 
         # Define some holders that will be overwritten later.
-        true_nlml = 0.0
-        em_log_marginal_likelihood = 0.0
-        pred_em_nlml = 0.0
-        filt_fig = None
-        sweep_fig_filter = None
-        sweep_fig_smooth = None
-        true_bpf_nlml = 0.0
-        true_bpf_kls = None
-        true_bpf_upc = None
-        true_bpf_ess = None
-
-        # Set up the first key
-        key = jr.PRNGKey(env.config.seed)
+        true_nlml, em_log_marginal_likelihood, pred_em_nlml, true_bpf_nlml = 0.0, 0.0, 0.0, 0.0
+        filt_fig, sweep_fig_filter, sweep_fig_smooth, true_bpf_kls, true_bpf_upc, true_bpf_ess = None, None, None, None, None, None
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -206,8 +168,9 @@ def main():
         except:
             pass
 
-
-        # --------------------------------------------------------------------------------------------------------------------------------------------
+        # There are some fixed args to the SMC subroutine.
+        smc_fixed_kwargs = {'use_stop_gradient_resampling': env.config.use_sgr,
+                          'resampling_criterion': env.config.resampling_criterion, }
 
         # Build up the optimizer.
         opt = fivo.define_optimizer(p_params=get_model_free_params(model),
@@ -218,15 +181,13 @@ def main():
                                     lr_r=env.config.lr_r,
                                     )
 
-        # Jit the smc subroutine for completeness.
-        smc_jit = jax.jit(smc, static_argnums=(7, 8))
+        # --------------------------------------------------------------------------------------------------------------------------------------------
 
-        smc_fixed_args = {'use_stop_gradient_resampling': env.config.use_sgr,
-                          'resampling_criterion': env.config.resampling_criterion, }
+        # Jit and vmap over a ton of functions for use later.
 
         # Close over constant parameters.
         def do_fivo_sweep_closed(_key, _params, _num_particles, _datasets, _masks, _temperature=1.0):
-            _smc_args = dc(smc_fixed_args)
+            _smc_args = dc(smc_fixed_kwargs)
             _smc_args['tilt_temperature'] = _temperature
 
             assert _masks.shape[0] == _datasets.shape[0], "Unequal first dimension."
@@ -243,6 +204,32 @@ def main():
                                       **_smc_args
                                       )
 
+        # Wrap a single call to BPF (for validation purposes).
+        @jax.jit
+        def _single_bpf_true_eval_small(_subkey):
+            _sweep_posteriors = smc_jit(_subkey,
+                                        true_model,
+                                        validation_datasets,
+                                        validation_dataset_masks,
+                                        num_particles=env.config.sweep_test_particles,
+                                        tilt_temperature=1.0, 
+                                        **smc_fixed_kwargs)
+            return _sweep_posteriors.log_normalizer
+
+        # Wrap another call to fivo for validation.
+        @jax.jit
+        def _single_fivo_eval_small(_subkey, _params):
+            _val_fivo_bound, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
+                                                                      _params,
+                                                                      env.config.sweep_test_particles,
+                                                                      validation_datasets,
+                                                                      validation_dataset_masks,
+                                                                      _temperature=1.0, )
+            return _sweep_posteriors.log_normalizer, _val_fivo_bound
+
+        # Jit the smc subroutine for completeness.
+        smc_jit = jax.jit(smc, static_argnums=(7, 8))
+
         # Jit this badboy.
         do_fivo_sweep_jitted = \
             jax.jit(do_fivo_sweep_closed, static_argnums=(2, ))
@@ -250,6 +237,10 @@ def main():
         # Convert into value and grad.
         do_fivo_sweep_val_and_grad = \
             jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
+
+        # Make a vmap over the validation calls.
+        single_bpf_true_eval_small_vmap = jax.vmap(_single_bpf_true_eval_small)
+        single_fivo_eval_small_vmap = jax.vmap(_single_fivo_eval_small, in_axes=(0, None))
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -269,35 +260,9 @@ def main():
                                     dset_to_plot=env.config.dset_to_plot,
                                     init_model=model,
                                     do_print=do_print,
-                                    do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
+                                    do_plot=False)  # TODO - re-enable plotting: env.config.PLOT)
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
-
-        # Wrap another call to fivo for validation.
-        @jax.jit
-        def _single_bpf_true_eval_small(_subkey):
-            _sweep_posteriors = smc_jit(_subkey,
-                                        true_model,
-                                        validation_datasets,
-                                        validation_dataset_masks,
-                                        num_particles=env.config.sweep_test_particles,
-                                        resampling_criterion=env.config.resampling_criterion,
-                                        tilt_temperature=1.0, )
-            return _sweep_posteriors.log_normalizer
-
-        # Wrap another call to fivo for validation.
-        @jax.jit
-        def _single_fivo_eval_small(_subkey, _params):
-            _val_fivo_bound, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
-                                                                      _params,
-                                                                      env.config.sweep_test_particles,
-                                                                      validation_datasets,
-                                                                      validation_dataset_masks,
-                                                                      _temperature=1.0, )
-            return _sweep_posteriors.log_normalizer, _val_fivo_bound
-
-        single_bpf_true_eval_small_vmap = jax.vmap(_single_bpf_true_eval_small)
-        single_fivo_eval_small_vmap = jax.vmap(_single_fivo_eval_small, in_axes=(0, None))
 
         # Define some storage.
         param_hist = [[], [], []]  # Model, proposal, tilt.
@@ -328,19 +293,19 @@ def main():
 
         # Set up a buffer for doing an alternate VI loop.
         VI_USE_VI_GRAD = env.config.vi_use_tilt_gradient and (opt[2] is not None)
-        VI_BUFFER_LENGTH = env.config.vi_buffer_length * env.config.datasets_per_batch * env.config.num_particles
-        VI_MINIBATCH_SIZE = env.config.vi_minibatch_size
-        VI_EPOCHS = env.config.vi_epochs
-
-        # Use this update frequency to roughly match that in FIVO-AUX.
-        VI_FREQUENCY = int(VI_EPOCHS * np.floor(VI_BUFFER_LENGTH / VI_MINIBATCH_SIZE))
-
-        # Define defaults.
-        VI_STATE_BUFFER = []
-        VI_OBS_BUFFER = []
-        VI_MASK_BUFFER = []
-
         if VI_USE_VI_GRAD:
+            VI_BUFFER_LENGTH = env.config.vi_buffer_length * env.config.datasets_per_batch * env.config.num_particles
+            VI_MINIBATCH_SIZE = env.config.vi_minibatch_size
+            VI_EPOCHS = env.config.vi_epochs
+
+            # Use this update frequency to roughly match that in FIVO-AUX.
+            VI_FREQUENCY = int(VI_EPOCHS * np.floor(VI_BUFFER_LENGTH / VI_MINIBATCH_SIZE))
+
+            # Define defaults.
+            VI_STATE_BUFFER = []
+            VI_OBS_BUFFER = []
+            VI_MASK_BUFFER = []
+
             print()
             print('VI HYPERPARAMETERS:')
             print('\tVI_BUFFER_LENGTH:', VI_BUFFER_LENGTH)
@@ -350,7 +315,7 @@ def main():
             print('\tVI_USE_VI_GRAD:', VI_USE_VI_GRAD)
             print()
 
-            do_vi_tilt_update_jit = jax.jit(fivo.do_vi_tilt_update, static_argnums=(1, 3, 4, 9, 10))
+            do_vi_tilt_update_jit = jax.jit(fivo_vi.do_vi_tilt_update, static_argnums=(1, 3, 4, 9, 10))
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -370,7 +335,7 @@ def main():
             cur_params = dc(fivo.get_params_from_opt(opt))
             key, subkey = jr.split(key)
 
-
+            # Compute the value and grad.
             (pred_fivo_bound, smc_posteriors), grad = do_fivo_sweep_val_and_grad(subkey,
                                                                                  fivo.get_params_from_opt(opt),
                                                                                  env.config.num_particles,
@@ -637,6 +602,7 @@ def main():
                               format(_step, final_vi_elbo, vi_gradient_steps, VI_FREQUENCY))
                 except:
                     pass
+
                 do_print(_step,
                          true_model,
                          opt,

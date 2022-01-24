@@ -18,7 +18,7 @@ import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 
 
-def gdm_get_config():
+def get_config():
     """
 
     Returns:
@@ -90,7 +90,7 @@ def gdm_get_config():
     assert config['latent_dim'] == 1
     assert config['emissions_dim'] == 1
 
-    return config
+    return config, do_print, define_test, do_plot, get_true_target_marginal
 
 
 def define_test(key, env):
@@ -127,48 +127,13 @@ def define_test(key, env):
 
 
 class GdmTilt(tilts.IndependentGaussianTilt):
+    """
+    NOTE - the optimal tilt can be programmed in `apply` as:
 
-    def apply(self, params, dataset, model, particles, t, *inputs):
-        """
+    # Force optimal tilt here for default GDM example.
+    r_dist = tfd.MultivariateNormalDiag(loc=tilt_inputs, scale_diag=np.sqrt(r_dist.variance()))
 
-        Args:
-            params (FrozenDict):    FrozenDict of the parameters of the tilt.
-
-            dataset:
-
-            model:
-
-            particles:
-
-            t:
-
-            inputs (tuple):         Tuple of additional inputs to the tilt in SMC.
-
-            data:
-
-        Returns:
-            (Float): Tilt log value.
-
-        """
-
-        # Pull out the time and the appropriate tilt.
-        if self.n_tilts == 1:
-            t_params = params[0]
-        else:
-            t_params = jax.tree_map(lambda args: args[t], params)
-
-        # Generate a tilt distribution.
-        tilt_inputs = self._tilt_input_generator(dataset, model, particles, t, *inputs)
-        r_dist = self.tilt.apply(t_params, tilt_inputs)
-
-        # # Force optimal tilt here for default GDM example.
-        # r_dist = tfd.MultivariateNormalDiag(loc=tilt_inputs, scale_diag=np.sqrt(r_dist.variance()))
-
-        # Now score under that distribution.
-        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, self.tilt_window_length, *inputs)
-        log_r_val = r_dist.log_prob(tilt_outputs)
-
-        return log_r_val
+    """
 
     # We need to define the method for generating the inputs.
     @staticmethod
@@ -227,9 +192,6 @@ def define_tilt(subkey, model, dataset, env):
     w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     head_mean_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=w_init, bias_init=b_init)
-
-    # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
-    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0], bias_init=b_init)
 
     # Define the tilt itself.
@@ -241,7 +203,7 @@ def define_tilt(subkey, model, dataset, env):
     tilt_params = tilt.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env.config.tilt_structure)
+    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env)
     return tilt, tilt_params, rebuild_tilt_fn
 
 
@@ -251,9 +213,9 @@ class GdmProposal(proposals.IndependentGaussianProposal):
     """
 
     # Define the required method for building the inputs.
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, *_inputs):
         """
-        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
+        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, ) into a vector object that
         can be input into the proposal.
 
         Args:
@@ -265,6 +227,7 @@ class GdmProposal(proposals.IndependentGaussianProposal):
 
         """
 
+        # Package the last observation and the particles as the input to the proposal.
         _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset, index=len(_dataset)-1, axis=0, keepdims=False),
                             _particles)
 
@@ -299,20 +262,16 @@ def define_proposal(subkey, model, dataset, env):
     assert env.config.proposal_structure == 'DIRECT', "GDM only admits DIRECT tilt functions."
 
     # Define the proposal that we will use.
-    # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state).
+    # Stock proposal input form is (dataset, model, particles, t, p_dist, ).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
     dummy_p_dist = model.dynamics_distribution(dummy_particles)
-    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist, None)
+    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist, )
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # Define a more conservative initialization.
     w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
-
-    # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
-    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
     head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=b_init)
 
     # Check whether we have a valid number of proposals.
@@ -336,6 +295,9 @@ def define_proposal(subkey, model, dataset, env):
 def get_true_target_marginal(model, data):
     """
     Take in a model and some data and return the tfd distribution representing the marginals of true posterior.
+
+    NOTE - this assumes that `\alpha = 0`.
+
     Args:
         model:
         data:
@@ -343,10 +305,6 @@ def get_true_target_marginal(model, data):
     Returns:
 
     """
-
-    #
-    # NOTE - this assumes that `\alpha = 0`.
-    #
 
     assert len(data.shape) == 3
 
@@ -456,9 +414,12 @@ def define_test_model(key, true_model, env):
 
         # Mutate the free parameters.
         for _k in env.config.free_parameters:
+
+            # TODO - this is the part where the parameters are re-initialized...
+
             _base = getattr(default_params, _k)
             key, subkey = jr.split(key)
-            new_val = {_k: _base + (1.0 * jr.normal(key=subkey, shape=_base.shape))}  # TODO - re-add 10.0*
+            new_val = {_k: _base + (10.0 * jr.normal(key=subkey, shape=_base.shape))}
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
         # Build out a new model using these values.

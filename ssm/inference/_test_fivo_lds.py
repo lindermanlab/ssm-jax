@@ -91,7 +91,7 @@ def get_config():
     if config['tilt_structure'] == 'NONE' or config['tilt_structure'] is None:
         config['temper'] = 0.0
 
-    return config
+    return config, do_print, define_test, do_plot, get_true_target_marginal
 
 
 def define_test(key, env):
@@ -202,7 +202,7 @@ def define_tilt(subkey, model, dataset, env):
     tilt_params = tilt.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env.config.tilt_structure)
+    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env)
     return tilt, tilt_params, rebuild_tilt_fn
 
 
@@ -224,10 +224,10 @@ def define_proposal(subkey, model, dataset, env):
         return None, None, _empty_rebuild
 
     # Define the proposal that we will use.
-    # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state).
+    # Stock proposal input form is (dataset, model, particles, t, p_dist, ).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
     dummy_p_dist = model.dynamics_distribution(dummy_particles)
-    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist, None)
+    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist, )
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # If we are using RESQ, define a kernel that basically does nothing to begin with.

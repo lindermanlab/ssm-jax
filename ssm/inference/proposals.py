@@ -23,16 +23,15 @@ class IndependentGaussianProposal:
     To define a different proposal FUNCTION here (as opposed to a proposal structure), change this class.
 
     This modules `.apply` method also wraps a call to the input generator, which takes the standard proposal
-    parameterization (dataset, model, particles, t, p_dist, q_state) and flattens it into the right form.
+    parameterization (dataset, model, particles, t, p_dist, ) and flattens it into the right form.
 
     Args:
         - n_proposals (int):
             Number of independent proposals to define.  Here must be equal to one (other definitions may use multiple
             proposals independently indexed by discrete state/time etc.
 
-        - stock_proposal_input_without_q_state (tuple):
-            Tuple of the stock proposal input used in SMC, without the `q_state` (as this state must be defined here).
-            Of type: (dataset, model, particles, time, p_dist).
+        - stock_proposal_input (tuple):
+            Tuple of the stock proposal input used in SMC; of type: (dataset, model, particles, time, p_dist).
 
         - dummy_output (ndarray):
             Correctly shaped ndarray of dummy values used to define the output layer.
@@ -79,7 +78,7 @@ class IndependentGaussianProposal:
         return jax.vmap(self.proposal.init, in_axes=(0, None))\
             (jr.split(key, self.n_proposals), self._dummy_processed_input)
 
-    def apply(self, params, dataset, model, particles, t, p_dist, q_state, *inputs):
+    def apply(self, params, dataset, model, particles, t, p_dist, *inputs):
         """
 
         Args:
@@ -94,8 +93,6 @@ class IndependentGaussianProposal:
             t:
 
             p_dist:
-
-            q_state:
 
         Returns:
             (Tuple): (TFP distribution over latent state, updated q internal state).
@@ -115,7 +112,7 @@ class IndependentGaussianProposal:
         else:
             params_at_t = jax.tree_map(lambda args: args[t], params)
 
-        proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state, *inputs)
+        proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, *inputs)
         q_dist = self.proposal.apply(params_at_t, proposal_inputs)
 
         # # TODO - Can force the optimal proposal here for the default GDM example..
@@ -143,9 +140,9 @@ class IndependentGaussianProposal:
 
         return q_dist, None
 
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, *_inputs):
         """
-        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
+        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist) into a vector object that
         can be input into the proposal.
 
         Args:
@@ -178,7 +175,7 @@ class IGPerStepProposal(IndependentGaussianProposal):
 
 class IGSingleObsProposal(IndependentGaussianProposal):
 
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, *_inputs):
         """
 
         """
@@ -201,7 +198,7 @@ class IGWindowProposal(IndependentGaussianProposal):
     # window_length = 2
 
     # We need to define the method for generating the inputs.
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, *_inputs):
         """
 
         """
@@ -242,8 +239,6 @@ def rebuild_proposal(proposal, proposal_structure):
     model objects was proving to be a pain, so this allows you to vmap the proposal inside the proposal itself,
     and then get the results of that and use them as required (i.e. for implementing the ResQ proposal).
 
-    NOTE - both of the proposal functions also return a None, as there is no q_state to pass along.
-
     Args:
         proposal:               Proposal object.  Will wrap a call to the `.apply` method.
         proposal_structure:     String indicating the type of proposal structure to use.
@@ -260,24 +255,24 @@ def rebuild_proposal(proposal, proposal_structure):
             return None
 
         # We fork depending on the proposal type.
-        # Proposal takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
+        # Proposal takes arguments of (dataset, model, particles, time, p_dist, ...).
         if proposal_structure == 'DIRECT':
 
-            def _proposal(particles, t, p_dist, q_state, *inputs):
-                z_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
-                return z_dist, new_q_state
+            def _proposal(particles, t, p_dist, *inputs):
+                z_dist = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, *inputs)
+                return z_dist
 
         elif proposal_structure == 'RESQ':
 
-            def _proposal(particles, t, p_dist, q_state, *inputs):
-                q_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
+            def _proposal(particles, t, p_dist, *inputs):
+                q_dist = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, *inputs)
                 z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist.mean() + q_dist.mean(),
                                                               covariance_matrix=q_dist.covariance())
-                return z_dist, new_q_state
+                return z_dist
 
         elif proposal_structure == 'VRNN':
 
-            def _proposal(particles, t, p_dist, q_state, *inputs):
+            def _proposal(particles, t, p_dist, *inputs):
                 raise NotImplementedError()
 
         else:

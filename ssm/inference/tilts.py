@@ -82,7 +82,7 @@ class IndependentGaussianTilt:
 
         # Pull out the time and the appropriate tilt.
         if self.n_tilts == 1:
-            t_params = jax.tree_map(lambda args: args[0], params)  # params[0]
+            t_params = jax.tree_map(lambda args: args[0], params)
         else:
             t_params = jax.tree_map(lambda args: args[t], params)
 
@@ -128,7 +128,7 @@ class IndependentGaussianTilt:
 
         model_latent_shape = (model.latent_dim, )
 
-        is_batched = (model_latent_shape != particles.shape)  # TODO - note - removed the [0] from _particles.shape.
+        is_batched = (model_latent_shape != particles.shape)
         if not is_batched:
             return nn_util.vectorize_pytree(tilt_inputs)
         else:
@@ -200,7 +200,7 @@ class IGPerStepTilt(IndependentGaussianTilt):
 
             return jax.lax.cond(_score_all_future(),
                                 lambda *args: _dist.log_prob(np.asarray([_out])),
-                                lambda *args: np.zeros_like(_dist.log_prob(np.asarray([_out]))),  # TODO - changed from 1 to -1
+                                lambda *args: np.zeros_like(_dist.log_prob(np.asarray([_out]))),
                                 None)
 
         log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)
@@ -232,7 +232,7 @@ class IGWindowTilt(IndependentGaussianTilt):
         return nn_util.vectorize_pytree(tilt_outputs)
 
 
-def rebuild_tilt(tilt, tilt_structure):
+def rebuild_tilt(tilt, env):
     """
     """
 
@@ -242,8 +242,8 @@ def rebuild_tilt(tilt, tilt_structure):
             return lambda *_: 0.0
 
         # We fork depending on the tilt type.
-        # tilt takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
-        if tilt_structure == 'DIRECT':
+        # tilt takes arguments of (dataset, model, particles, time, p_dist, ...).
+        if env.config.tilt_structure == 'DIRECT':
 
             def _tilt(_particles, _t, __dataset=None):
 

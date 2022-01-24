@@ -109,12 +109,6 @@ class VRNN(SSM):
         self._decoder_full_obj = self._rebuild_decoder_full_obj(params_decoder_full)           # \phi_{\tau}^{dec} ( \phi_{\tau}^{z} ( z_t ) , h_{t-1} ).
         self._encoder_data_obj = self._rebuild_encoder_data_obj(params_encoder_data)           # \phi_{\tau}^{x} ( x_{t} ).
 
-        # # Compile some of the functions here, as doing it later causes no end of heartache.
-        # self._jit_rnn_apply = jax.jit(lambda _a, _b: self._rnn_obj.apply(self._params_rnn, _a, _b))
-        # self._vmap_rnn_apply = jax.vmap(self._jit_rnn_apply)
-
-        # self.vmapped_cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, )()
-
         # Grab the parameter values.  This allows us to explicitly re-build the object.
         self._parameters = make_named_tuple(dict_in=locals(),
                                             keys=list(inspect.signature(self.__init__)._parameters.keys()),
@@ -135,13 +129,8 @@ class VRNN(SSM):
         assert metadata is None, "Metadata is not provisioned in the initial state."
 
         # TODO - deterministic initialization...
-        initial_rnn_state = self._rnn_obj.initialize_carry(jr.PRNGKey(0), batch_dims=(), size=self.rnn_state_dim)  # np.zeros(self.rnn_state_dim)
+        initial_rnn_state = self._rnn_obj.initialize_carry(jr.PRNGKey(0), batch_dims=(), size=self.rnn_state_dim)
         initial_z_state = np.zeros(self.latent_dim)
-
-        # # Construct a joint distribution so that we have a single object.
-        # initial_dist = tfd.JointDistributionSequential((tfd.Deterministic(initial_rnn_state[0]),
-        #                                                 tfd.Deterministic(initial_rnn_state[1]),
-        #                                                 tfd.Deterministic(initial_z_state)), )
 
         return initial_z_state, initial_rnn_state
 
@@ -173,90 +162,7 @@ class VRNN(SSM):
 
         # Iterate the RNN.
         input_rnn = np.concatenate((prev_latent_dec, prev_obs_enc), axis=-1)
-
-
-        # # Just copy the previous state_history.
-        # new_rnn_carry = (prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :])
-        # new_rnn_hidden_state = prev_rnn_state[..., 1, :]
-
-        # Yesterdays car crashes of attempts:
-
-        # # This code causes it to NaN out immediately.
-        # iter_vmapped = jax.vmap(lambda _a, _b: nn.LSTMCell().apply(self._params_rnn, _a, _b))  # TODO self._rnn_obj.__class__()
-        # new_rnn_carry, new_rnn_hidden_state = iter_vmapped(prev_rnn_state, input_rnn)
-
-        # # Attempt # 3.
-        # iter_vmapped = jax.vmap(lambda _a, _b: self._rnn_obj(_a, _b))
-        # new_rnn_carry, new_rnn_hidden_state = iter_vmapped(prev_rnn_state, input_rnn)
-
-        # # Attempt # 3.1.
-        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj((prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
-
-        # # # Attempt # 3.2.
-        # new_rnn_carry = []
-        # new_rnn_hidden_state = []
-        # for _s, _i in zip(prev_rnn_state, input_rnn):
-        #     _a, _b = self._rnn_obj((_s[0], _s[1]), _i)
-        #     new_rnn_carry.append(_a)
-        #     new_rnn_hidden_state.append(_b)
-        # new_rnn_carry = np.asarray(new_rnn_carry)
-        # new_rnn_hidden_state = np.asarray(new_rnn_hidden_state)
-
-        # # Attempt # 4.
-        # new_rnn_carry, new_rnn_hidden_state = self._vmap_rnn_apply(prev_rnn_state, input_rnn)
-
-        # # Attempt # 5.
-        # vmapped_cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, )
-        # new_rnn_carry, new_rnn_hidden_state = vmapped_cell()(prev_rnn_state, input_rnn)
-
-        # # Attempt # 5.1.
-        # new_rnn_carry, new_rnn_hidden_state = self.vmapped_cell((prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
-
-        # # Attempt # 6.
-        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, (prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
-
-        # Todays car crashes of attempts:
-
-        # # Attempt # 7.
-        # _iterate_jit = jax.jit(self._rnn_obj.apply)
-        # _iterate_jit_vmap = jax.vmap(_iterate_jit, in_axes=(None, 0, 0))
-        # new_rnn_carry, new_rnn_hidden_state = _iterate_jit_vmap(self._params_rnn, (prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
-
-        # # General debug probe # 8.
-        # new_rnn_hidden_state = new_rnn_hidden_state + self._params_rnn.tree_flatten()[0]
-
-        # # General debug probe # 9.
-        # rnn_cell = nn.LSTMCell()
-        # init_params = rnn_cell.init(jr.PRNGKey(1), (prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
-        # rnn_cell = rnn_cell.bind(init_params)
-        # new_rnn_carry, new_rnn_hidden_state = rnn_cell((prev_rnn_state[..., 0, :], prev_rnn_state[..., 1, :]), input_rnn)
-
-        # # Debug attempt # 10 + A.R.  THIS RAN.  BUT DOESNT USE CELL.
-        # n_particles = len(input_rnn)
-        # cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, in_axes=(0, ))()
-        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, cell.initialize_carry(jr.PRNGKey(0), batch_dims=(n_particles,), size=self.rnn_state_dim), np.zeros((n_particles, 25,)))
-
-        # # Debug attempt # 11 + A.R.
-        # n_particles = len(input_rnn)
-        # cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, in_axes=(0, ))()
-        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, (np.zeros_like(prev_rnn_state[..., 0, :]), np.zeros_like(prev_rnn_state[..., 1, :])), np.zeros_like(input_rnn))
-
-        # # Debug attempt # 12 post julia.
-        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, (np.zeros_like(prev_rnn_state[..., 0, :]), np.zeros_like(prev_rnn_state[..., 1, :])), np.zeros_like(input_rnn))
-
-        # # # Pulling apart distribution # 13 post julia.  # TODO - no input.
-        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, prev_rnn_state, np.zeros_like(input_rnn))
-
-        # # Pulling apart distribution # 13 post julia.  # TODO - no input.
         new_rnn_full, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, prev_rnn_state, input_rnn)
-
-
-        # # # Make the deterministic distribution from the outputs of the RNN.
-        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
-        # new_rnn_state_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry), reinterpreted_batch_ndims=2)  # Was giving a [] event dim.
-
-        # new_rnn_carry_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry[0]), reinterpreted_batch_ndims=1)  # Was giving a [] event dim.
-        # new_rnn_hidden_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry[1]), reinterpreted_batch_ndims=1)  # Was giving a [] event dim.
 
         # Call the prior local parameter generation functions.
         prior_dist_local_params = self._prior_obj(new_rnn_hidden_state)
@@ -266,10 +172,6 @@ class VRNN(SSM):
 
         # Construct the latent distribution itself.
         prior_latent_dist = tfd.MultivariateNormalDiag(prior_mean, np.sqrt(np.exp(prior_log_var)))
-
-        # # # Construct a joint distribution so that we have a single object.
-        # joint_dist = tfd.JointDistributionSequential((new_rnn_carry_dist, new_rnn_hidden_dist, prior_latent_dist))
-        # # joint_dist = tfd.JointDistributionSequential((new_rnn_state_dist, prior_latent_dist))
 
         return prior_latent_dist, new_rnn_full
 
