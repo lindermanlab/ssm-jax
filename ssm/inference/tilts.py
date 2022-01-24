@@ -252,6 +252,10 @@ def rebuild_tilt(tilt, tilt_structure):
 
                 r_log_val = tilt.apply(_param_vals, __dataset, _model, _particles, _t)
                 return r_log_val
+
+        elif tilt_structure == 'VRNN':
+            raise NotImplementedError()
+
         else:
             raise NotImplementedError()
 

@@ -40,7 +40,7 @@ default_verbosity = Verbosity.DEBUG
 # Disable jit for inspection.
 DISABLE_JIT = False
 
-DEFAULT_MODEL = 'GDM'
+DEFAULT_MODEL = 'VRNN'
 
 # Import and configure WandB.
 try:
@@ -74,33 +74,33 @@ def do_config():
         print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
-        from ssm.inference._test_fivo_lds import lds_get_config as get_config
+        from ssm.inference._test_fivo_lds import get_config
     elif 'GDM' in model:
-        from ssm.inference._test_fivo_gdm import gdm_get_config as get_config
+        from ssm.inference._test_fivo_gdm import get_config
     elif 'SVM' in model:
-        from ssm.inference._test_fivo_svm import svm_get_config as get_config
+        from ssm.inference._test_fivo_svm import get_config
     elif 'VRNN' in model:
-        from ssm.inference._test_fivo_vrnn import vrnn_get_config as get_config
+        from ssm.inference._test_fivo_vrnn import get_config
     else:
         raise NotImplementedError()
 
     # Go and get the model-specific config.
-    config = get_config()
+    config_dict, do_print, define_test, do_plot, get_marginals = get_config()
 
     # Define the parameter names that we are going to learn.
     # This has to be a tuple of strings that index which args we will pull out.
-    if config['free_parameters'] is None or config['free_parameters'] == '':
-        config['free_parameters'] = ()
+    if config_dict['free_parameters'] is None or config_dict['free_parameters'] == '':
+        config_dict['free_parameters'] = ()
     else:
-        config['free_parameters'] = tuple(config['free_parameters'].replace(' ', '').split(','))
+        config_dict['free_parameters'] = tuple(config_dict['free_parameters'].replace(' ', '').split(','))
 
     # Do some type conversions.
-    config['use_sgr'] = bool(config['use_sgr'])
+    config_dict['use_sgr'] = bool(config_dict['use_sgr'])
 
     # Get everything.
     if USE_WANDB:
         # Set up WandB
-        env = wandb.init(project=PROJECT, entity=USERNAME, group=config['log_group'], config=config)
+        env = wandb.init(project=PROJECT, entity=USERNAME, group=config_dict['log_group'], config=config_dict)
     else:
         log_group = 'none'
         env = SimpleNamespace(**{'config': SimpleNamespace(**config),
@@ -113,21 +113,23 @@ def do_config():
     env.config.local_system = LOCAL_SYSTEM
 
     # Grab some git information.
+    git_commit, git_branch, git_is_dirty = 'NoneFound', 'NoneFound', 'NoneFound'
     try:
         repo = git.Repo(search_parent_directories=True)
-        env.config.git_commit = repo.head.object.hexsha
-        env.config.git_branch = repo.active_branch
-        env.config.git_is_dirty = repo.is_dirty()
+        git_commit = repo.head.object.hexsha
+        git_branch = repo.active_branch
+        git_is_dirty = repo.is_dirty()
     except:
         print('Failed to grab git info...')
-        env.config.git_commit = 'NoneFound'
-        env.config.git_branch = 'NoneFound'
-        env.config.git_is_dirty = 'NoneFound'
+    finally:
+        env.config.git_commit = git_commit
+        env.config.git_branch = git_branch
+        env.config.git_is_dirty = git_is_dirty
 
     # Do some final bits.
     if len(env.config.free_parameters) == 0: print('\nWARNING: NO FREE MODEL PARAMETERS...\n')
     pprint(env.config)
-    return env
+    return env, do_print, define_test, do_plot, get_marginals
 
 
 def main():
@@ -138,35 +140,7 @@ def main():
     with possibly_disable_jit(DISABLE_JIT):
 
         # Set up the experiment and log to WandB
-        env = do_config()
-
-        # Import the right functions.
-        if 'GDM' in env.config.model:
-            from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
-            from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
-            from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
-            from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
-
-        elif 'LDS' in env.config.model:
-            from ssm.inference._test_fivo_lds import lds_do_print as do_print
-            from ssm.inference._test_fivo_lds import lds_define_test as define_test
-            from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
-            from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
-
-        elif 'SVM' in env.config.model:
-            from ssm.inference._test_fivo_svm import svm_do_print as do_print
-            from ssm.inference._test_fivo_svm import svm_define_test as define_test
-            from ssm.inference._test_fivo_svm import svm_do_plot as do_plot
-            from ssm.inference._test_fivo_svm import svm_get_true_target_marginal as get_marginals
-
-        elif 'VRNN' in env.config.model:
-            from ssm.inference._test_fivo_vrnn import vrnn_do_print as do_print
-            from ssm.inference._test_fivo_vrnn import vrnn_define_test as define_test
-            from ssm.inference._test_fivo_vrnn import vrnn_do_plot as do_plot
-            from ssm.inference._test_fivo_vrnn import vrnn_get_true_target_marginal as get_marginals
-
-        else:
-            raise NotImplementedError()
+        env, do_print, define_test, do_plot, get_marginals = do_config()
 
         # Define some holders that will be overwritten later.
         true_nlml = 0.0
