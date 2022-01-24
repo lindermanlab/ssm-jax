@@ -362,48 +362,79 @@ def _smc_forward_pass(key,
 
     print('[WARNING]: Hello, im an uncompiled SMC sweep. ')
 
+    DOING_VRNN = 'VRNN' in str(type(model))
+
     # Generate the initial distribution.
     initial_distribution, initial_q_state = initialization_distribution()
 
     # Initialize the sweep using the initial distribution.
     key, subkey1, subkey2 = jr.split(key, num=3)
-    initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
 
     # Resample particles under the zeroth observation.
     # TODO - make this tidier.
-    if 'VRNN' in str(type(model)):
-        _init_p = [_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(model.initial_distribution()._model, initial_particles)]
-        initial_p_log_probability = _init_p[0].sum(axis=1) + _init_p[1]
+    if DOING_VRNN:
 
-        _init_q = [_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(initial_distribution._model, initial_particles)]
-        initial_q_log_probability = _init_q[0].sum(axis=1) + _init_q[1]
+        initial_particles = initial_distribution[0]  # .sample(seed=key, sample_shape=(num_particles, ), )
+        initial_hidden_state = initial_distribution[1]
+
+        # _init_p = [_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(model.initial_distribution()._model, initial_particles)]
+        # initial_p_log_probability = _init_p[0] + _init_p[1] + _init_p[2]
+        #
+        # _init_q = [_m.log_prob(_p).sum(axis=-1) for _m, _p in zip(initial_distribution._model, initial_particles)]
+        # initial_q_log_probability = _init_q[0] + _init_q[1] + _init_q[2]
+
+        initial_p_log_probability = 0.0  # initial_distribution.log_prob(initial_particles)
+        initial_q_log_probability = 0.0  # initial_distribution.log_prob(initial_particles)
+
     else:
+
+        initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
+
         initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
         initial_q_log_probability = initial_distribution.log_prob(initial_particles)
 
     initial_r_log_probability = tilt(initial_particles, 0) / tilt_temperature
 
     # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
-    initial_y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
-                                             lambda _: np.zeros((num_particles,)),
-                                             lambda _: model.emissions_distribution(initial_particles).log_prob(dataset[0]),
-                                             None)
+    if DOING_VRNN:
+        initial_y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
+                                                 lambda _: np.zeros((num_particles,)),
+                                                 lambda _: np.ones((num_particles, )) * model.emissions_distribution((initial_hidden_state, initial_particles)).log_prob(dataset[0]),
+                                                 None)
+    else:
+        initial_y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[0])),
+                                                 lambda _: np.zeros((num_particles,)),
+                                                 lambda _: model.emissions_distribution(initial_particles).log_prob(dataset[0]),
+                                                 None)
 
     # Sum up all the terms.
     initial_incremental_log_weights = initial_p_log_probability - initial_q_log_probability + \
                                       initial_r_log_probability + initial_y_log_probability
 
     # Do an initial resampling step.
-    initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
-        do_resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
-                    resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
+    if DOING_VRNN:
+        initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
+            do_resample(subkey2, initial_incremental_log_weights, (
+                jax.tree_map(lambda _p: np.repeat(np.expand_dims(_p, 0), num_particles, axis=0), initial_hidden_state),
+                np.repeat(np.expand_dims(initial_particles, 0), num_particles, axis=0)),
+                        resampling_criterion,
+                        resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
+    else:
+        initial_resampled_particles, _, accumulated_log_weights, initial_resampled = \
+            do_resample(subkey2, initial_incremental_log_weights, initial_particles, resampling_criterion,
+                        resampling_function, use_stop_gradient_resampling=use_stop_gradient_resampling)
 
     initial_log_weights_pre_resamp = initial_incremental_log_weights
     initial_log_weights_post_resamp = accumulated_log_weights
 
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
-        key, particles, accumulated_log_weights, q_state = carry
+
+        if DOING_VRNN:
+            key, particles, accumulated_log_weights, q_state, hidden_state = carry
+        else:
+            key, particles, accumulated_log_weights, q_state = carry
+
         key, subkey1, subkey2 = jr.split(key, num=3)
 
         # TODO - this is kinda messy.
@@ -412,24 +443,28 @@ def _smc_forward_pass(key,
             covariates = (
                             np.repeat(np.expand_dims(dataset[t - 1], 0), num_particles, axis=0),
                           )
+            p_dist, new_hidden_state = model.dynamics_distribution((hidden_state, particles), covariates=covariates)  # NOTE - hijacking covariates to pass PREVIOUS AND CURRENT OBS in.
+            q_dist, q_state = proposal((hidden_state, particles), t, p_dist, q_state, covariates)
+            new_particles = q_dist[0].sample(seed=subkey1)
+
         else:
             covariates = None
-
-        # Compute the p and q distributions.
-        p_dist = model.dynamics_distribution(particles, covariates=covariates)  # NOTE - hijacking covariates to pass PREVIOUS AND CURRENT OBS in.
-        q_dist, q_state = proposal(particles, t, p_dist, q_state, covariates)
-
-        # Sample the new particles.
-        new_particles = q_dist.sample(seed=subkey1)
+            p_dist = model.dynamics_distribution(particles)
+            q_dist, q_state = proposal(particles, t, p_dist, q_state, covariates)
+            new_particles = q_dist.sample(seed=subkey1)
 
         # Compute the incremental importance weight.
         # TODO - need to somehow pass over this and if there are any deterministic distributions don't score those.
-        if 'VRNN' in str(type(model)):
-            _p = [_m.log_prob(_p) for _m, _p in zip(p_dist._model, new_particles)]
-            p_log_probability = _p[0] + _p[1]
+        if DOING_VRNN:
+            # _p = [_m.log_prob(_p) for _m, _p in zip(p_dist._model, new_particles)]
+            # p_log_probability = _p[0] + _p[1] + _p[2]
+            #
+            # _q = [_m.log_prob(_p) for _m, _p in zip(q_dist._model, new_particles)]
+            # q_log_probability = _q[0] + _q[1] + _p[2]
 
-            _q = [_m.log_prob(_p) for _m, _p in zip(q_dist._model, new_particles)]
-            q_log_probability = _q[0] + _q[1]
+            p_log_probability = p_dist.log_prob(new_particles)
+            q_log_probability = q_dist[0].log_prob(new_particles)
+
         else:
             p_log_probability = p_dist.log_prob(new_particles)
             q_log_probability = q_dist.log_prob(new_particles)
@@ -443,11 +478,18 @@ def _smc_forward_pass(key,
                                  lambda *_args: tilt(new_particles, t),
                                  None) / tilt_temperature
 
-        # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
-        y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
-                                         lambda _: np.zeros((num_particles, )),
-                                         lambda _: model.emissions_distribution(new_particles).log_prob(dataset[t]),
-                                         None)
+        if DOING_VRNN:
+            # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
+            y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
+                                             lambda _: np.zeros((num_particles, )),
+                                             lambda _: model.emissions_distribution((new_hidden_state, new_particles)).log_prob(dataset[t]),
+                                             None)
+        else:
+            # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
+            y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
+                                             lambda _: np.zeros((num_particles, )),
+                                             lambda _: model.emissions_distribution(new_particles).log_prob(dataset[t]),
+                                             None)
 
         # Sum up the different terms,
         incremental_log_weights = p_log_probability - q_log_probability + \
@@ -458,7 +500,11 @@ def _smc_forward_pass(key,
         accumulated_log_weights += incremental_log_weights
 
         # Close over the resampling function.
-        closed_do_resample = lambda _crit: do_resample(subkey2, accumulated_log_weights, new_particles, _crit,
+        if DOING_VRNN:
+            particles_to_resample = (new_hidden_state, new_particles)
+        else:
+            particles_to_resample = new_particles
+        closed_do_resample = lambda _crit: do_resample(subkey2, accumulated_log_weights, particles_to_resample, _crit,
                                                        resampling_function,
                                                        use_stop_gradient_resampling=use_stop_gradient_resampling)
 
@@ -474,26 +520,35 @@ def _smc_forward_pass(key,
         #  this means that the particles at time t are distributed according to the weights in the
         #  final distribution object.  This needs to be updated on the main SMC branch, although i
         #  don't think that this makes a difference.
-        return ((key, resampled_particles, resampled_log_weights, q_state),
-                (resampled_particles, accumulated_log_weights, resampled_log_weights, should_resample, ancestors, q_state))
+        if DOING_VRNN:
+            return ((key, resampled_particles[1], resampled_log_weights, q_state, resampled_particles[0]),
+                    (resampled_particles, accumulated_log_weights, resampled_log_weights, should_resample, ancestors, q_state))
+        else:
+            return ((key, resampled_particles, resampled_log_weights, q_state),
+                    (resampled_particles, accumulated_log_weights, resampled_log_weights, should_resample, ancestors, q_state))
 
     # Scan over the dataset.
-    _, (filtering_particles, log_weights_pre_resamp, log_weights_post_resamp, resampled, ancestors, q_states) = jax.lax.scan(
-        smc_step,
-        (key, initial_resampled_particles, initial_log_weights_post_resamp, initial_q_state),
-        np.arange(1, len(dataset)))
+    if DOING_VRNN:
+        _, (filtering_particles, log_weights_pre_resamp, log_weights_post_resamp, resampled, ancestors, q_states) = jax.lax.scan(
+            smc_step,
+            (key, initial_resampled_particles[1], initial_log_weights_post_resamp, initial_q_state, initial_resampled_particles[0]),
+            np.arange(1, len(dataset)))
+
+        # TODO - this is crappy, we are going to remove the rnn hidden state here and just return the Z-values.
+        #  Not sure if/why this is the best thing to do, but we need to do something...
+        initial_resampled_particles = initial_resampled_particles[1]
+        filtering_particles = filtering_particles[1]
+    else:
+        _, (filtering_particles, log_weights_pre_resamp, log_weights_post_resamp, resampled, ancestors, q_states) = jax.lax.scan(
+            smc_step,
+            (key, initial_resampled_particles, initial_log_weights_post_resamp, initial_q_state),
+            np.arange(1, len(dataset)))
 
     # if np.any(np.isnan(log_weights_post_resamp)):
     #     carry = (key, initial_resampled_particles, initial_log_weights_post_resamp, initial_q_state)
     #     for _t in np.arange(1, len(dataset)):
     #         carry, _ = smc_step(carry, _t)
     #     raise RuntimeError()
-
-    # TODO - this is crappy, we are going to remove the rnn hidden state here and just return the Z-values.
-    #  Not sure if/why this is the best thing to do, but we need to do something...
-    if "VRNN" in str(type(model)):
-        initial_resampled_particles = initial_resampled_particles[1]
-        filtering_particles = filtering_particles[1]
 
     # Need to prepend the initial timestep.
     filtering_particles = np.concatenate((initial_resampled_particles[None, :], filtering_particles))

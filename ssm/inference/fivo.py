@@ -106,10 +106,10 @@ def do_fivo_sweep(_param_vals,
 
         _smc_posteriors = jax.vmap(_single_fivo_sweep_closed)(_datasets, _masks, jr.split(_key, len(_datasets)))
 
-    # Compute the mean of the log marginal.
-    _lml = np.mean(_smc_posteriors.log_normalizer)
+    # Compute the mean of the log marginal - THIS IS THE FIVO BOUND.
+    _fivo_bound = np.mean(_smc_posteriors.log_normalizer)
 
-    return - _lml, _smc_posteriors
+    return - _fivo_bound, _smc_posteriors
 
 
 def _do_single_fivo_sweep(_param_vals,

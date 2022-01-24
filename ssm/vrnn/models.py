@@ -138,11 +138,12 @@ class VRNN(SSM):
         initial_rnn_state = self._rnn_obj.initialize_carry(jr.PRNGKey(0), batch_dims=(), size=self.rnn_state_dim)  # np.zeros(self.rnn_state_dim)
         initial_z_state = np.zeros(self.latent_dim)
 
-        # Construct a joint distribution so that we have a single object.
-        initial_dist = tfd.JointDistributionSequential((tfd.Deterministic(initial_rnn_state),
-                                                        tfd.Deterministic(initial_z_state)), )
+        # # Construct a joint distribution so that we have a single object.
+        # initial_dist = tfd.JointDistributionSequential((tfd.Deterministic(initial_rnn_state[0]),
+        #                                                 tfd.Deterministic(initial_rnn_state[1]),
+        #                                                 tfd.Deterministic(initial_z_state)), )
 
-        return initial_dist
+        return initial_z_state, initial_rnn_state
 
     def _dynamics(self, state, covariates, metadata=None):
         r"""
@@ -158,7 +159,8 @@ class VRNN(SSM):
 
         assert metadata is None, "Metadata is not provisioned in the dynamics."
 
-        # Grab the previous rnn state.
+        # # Grab the previous rnn state.
+        # prev_rnn_state = (state[0], state[1])
         prev_rnn_state = state[0]
 
         # Get and decode the previous latent state.
@@ -234,15 +236,27 @@ class VRNN(SSM):
         # cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, in_axes=(0, ))()
         # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, cell.initialize_carry(jr.PRNGKey(0), batch_dims=(n_particles,), size=self.rnn_state_dim), np.zeros((n_particles, 25,)))
 
-        # Debug attempt # 11 + A.R.
-        n_particles = len(input_rnn)
-        cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, in_axes=(0, ))()
-        new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, (np.zeros_like(prev_rnn_state[..., 0, :]), np.zeros_like(prev_rnn_state[..., 1, :])), np.zeros_like(input_rnn))
+        # # Debug attempt # 11 + A.R.
+        # n_particles = len(input_rnn)
+        # cell = nn.vmap(nn.LSTMCell, variable_axes={'params': None}, split_rngs={"params": False}, in_axes=(0, ))()
+        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, (np.zeros_like(prev_rnn_state[..., 0, :]), np.zeros_like(prev_rnn_state[..., 1, :])), np.zeros_like(input_rnn))
+
+        # # Debug attempt # 12 post julia.
+        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, (np.zeros_like(prev_rnn_state[..., 0, :]), np.zeros_like(prev_rnn_state[..., 1, :])), np.zeros_like(input_rnn))
+
+        # # # Pulling apart distribution # 13 post julia.  # TODO - no input.
+        # new_rnn_carry, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, prev_rnn_state, np.zeros_like(input_rnn))
+
+        # # Pulling apart distribution # 13 post julia.  # TODO - no input.
+        new_rnn_full, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, prev_rnn_state, input_rnn)
 
 
-        # # Make the deterministic distribution from the outputs of the RNN.
-        new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
-        new_rnn_state_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry), reinterpreted_batch_ndims=2)  # Was giving a [] event dim.
+        # # # Make the deterministic distribution from the outputs of the RNN.
+        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
+        # new_rnn_state_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry), reinterpreted_batch_ndims=2)  # Was giving a [] event dim.
+
+        # new_rnn_carry_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry[0]), reinterpreted_batch_ndims=1)  # Was giving a [] event dim.
+        # new_rnn_hidden_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry[1]), reinterpreted_batch_ndims=1)  # Was giving a [] event dim.
 
         # Call the prior local parameter generation functions.
         prior_dist_local_params = self._prior_obj(new_rnn_hidden_state)
@@ -253,10 +267,11 @@ class VRNN(SSM):
         # Construct the latent distribution itself.
         prior_latent_dist = tfd.MultivariateNormalDiag(prior_mean, np.sqrt(np.exp(prior_log_var)))
 
-        # Construct a joint distribution so that we have a single object.
-        joint_dist = tfd.JointDistributionSequential((new_rnn_state_dist, prior_latent_dist))
+        # # # Construct a joint distribution so that we have a single object.
+        # joint_dist = tfd.JointDistributionSequential((new_rnn_carry_dist, new_rnn_hidden_dist, prior_latent_dist))
+        # # joint_dist = tfd.JointDistributionSequential((new_rnn_state_dist, prior_latent_dist))
 
-        return joint_dist
+        return prior_latent_dist, new_rnn_full
 
     def _emissions(self, state, covariates, metadata):
         """
@@ -273,12 +288,12 @@ class VRNN(SSM):
         assert metadata is None, "Metadata is not provisioned in the dynamics."
 
         # Pull apart the previous state.
-        rnn_state = state[0]
+        rnn_carry = state[0]
         latent = state[1]
         latent_dec = self._decoder_latent_obj(latent)
 
         # Construct the input to the emissions distribution.
-        input_full_decoder = np.concatenate((rnn_state[..., 1, :], latent_dec, ), axis=-1)
+        input_full_decoder = np.concatenate((rnn_carry[1], latent_dec, ), axis=-1)
 
         # Construct the emissions distribution itself.
         emissions_local_parameters = self._decoder_full_obj(input_full_decoder)
@@ -291,12 +306,6 @@ class VRNN(SSM):
             emissions_dist = tfd.MultivariateNormalDiag(emissions_mean, np.sqrt(np.exp(emissions_log_var)))
 
         elif self.output_type == 'BERNOULLI':
-
-            # emissions_local_parameters = np.reshape(emissions_local_parameters, (*emissions_local_parameters.shape[:-1], 2, -1))
-            # emissions_0 = emissions_local_parameters[..., 0, :]
-            # emissions_1 = emissions_local_parameters[..., 1, :]
-            # emissions_odds_logit = emissions_1 - emissions_0
-            # emissions_dist = tfd.Independent(tfd.Bernoulli(emissions_odds_logit), reinterpreted_batch_ndims=1)
 
             emissions_odds_logit = emissions_local_parameters
             emissions_dist = tfd.Independent(tfd.Bernoulli(emissions_odds_logit), reinterpreted_batch_ndims=1)
@@ -344,7 +353,6 @@ class VRNN(SSM):
                               state,
                               covariates=None,
                               metadata=None):
-        # assert covariates is not None, 'Inputs must come in through `covariates`.'
         return self._dynamics(state, covariates, metadata)
 
     def emissions_distribution(self,
@@ -529,14 +537,19 @@ if __name__ == '__main__':
             self._rnn_obj = self.rebuild_rnn(self.rnn_params)
 
         def apply(self, _data, _carry):
+
+            _rnn_carry = _carry.sample(seed=jr.PRNGKey(0))
             _iterate_jit = jax.jit(self._rnn_obj.apply)
             _iterate_jit_vmap = jax.vmap(_iterate_jit, in_axes=(None, 0, None))
-            _next_carry_jit, _hs = _iterate_jit_vmap(self.rnn_params, (_carry[..., 0, :], _carry[..., 1, :]), _data)
+            _next_carry_jit, _hs = _iterate_jit_vmap(self.rnn_params, (_rnn_carry[..., 0, :], _rnn_carry[..., 1, :]), _data)
 
             # _next_carry_jit, _hs = self._rnn_obj((_carry[..., 0, :], _carry[..., 1, :]), _data)
 
             _next_carry_jit = np.stack(_next_carry_jit).transpose(1, 0, 2)
-            return _next_carry_jit, _hs
+
+            _next_carry_dist = tfd.Independent(tfd.Deterministic(_next_carry_jit), reinterpreted_batch_ndims=1)
+
+            return _next_carry_dist, _hs
 
         def step(self, _carry, _t):
             _particles_carry, _data = _carry
@@ -550,26 +563,31 @@ if __name__ == '__main__':
 
             _particles_carry = np.stack(_particles_carry).transpose(1, 0, 2)
 
-            _final_carry, _ = jax.lax.scan(self.step,
-                                           (_particles_carry, _data),
+            _particles_carry_dist = tfd.Independent(tfd.Deterministic(_particles_carry), reinterpreted_batch_ndims=1)
+
+            _final_carry, _history = jax.lax.scan(self.step,
+                                           (_particles_carry_dist, _data),
                                            np.arange(len(_data)))
-            return _final_carry
+
+            _val = _history[-1].sum()
+
+            return _val
 
 
-    particles_carry = np.stack(GLOBAL_particles_carry).transpose(1, 0, 2)
+    # particles_carry = np.stack(GLOBAL_particles_carry).transpose(1, 0, 2)
     rebuild_rnn = lambda _p: rnn_cell.bind(_p)
-    foo = Foo(init_params, rebuild_rnn)
-    next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
-    next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
-    next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
-    assert np.all(np.isclose(next_carry_nonjit[0][0], next_carry_class[0][:, 0])), "Class not equal non-Jit."
+    # foo = Foo(init_params, rebuild_rnn)
+    # next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
+    # next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
+    # next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
+    # assert np.all(np.isclose(next_carry_nonjit[0][0], next_carry_class[0][:, 0])), "Class not equal non-Jit."
 
     # Now take the grad.
     def loss_fn(_params, _rebuild_rnn, _data):
 
         _foo = Foo(_params, _rebuild_rnn)
-        _final_carry = _foo.do_sweep(_data)
-        _loss = np.mean(np.abs(_final_carry[0][0]))
+        _final_val = _foo.do_sweep(_data)
+        _loss = np.mean(np.abs(_final_val))
 
         return _loss
 

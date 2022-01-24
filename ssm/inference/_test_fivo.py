@@ -40,7 +40,7 @@ default_verbosity = Verbosity.DEBUG
 # Disable jit for inspection.
 DISABLE_JIT = False
 
-DEFAULT_MODEL = 'VRNN'
+DEFAULT_MODEL = 'GDM'
 
 # Import and configure WandB.
 try:

@@ -64,7 +64,7 @@ def gdm_get_config():
     parser.add_argument('--emissions-dim', default=1, type=int)
 
     parser.add_argument('--num-trials', default=100000, type=int)
-    parser.add_argument('--num-val-dataset-fraction', default=0.01, type=int)
+    parser.add_argument('--num-val-dataset-fraction', default=0.001, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--validation-particles', default=1000, type=int)
@@ -93,23 +93,23 @@ def gdm_get_config():
     return config
 
 
-def gdm_define_test(key, env):
+def define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset, dataset_masks = gdm_define_true_model_and_data(subkey, env)
+    true_model, true_states, dataset, dataset_masks = define_true_model_and_data(subkey, env)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, get_model_params, rebuild_model_fn = gdm_define_test_model(subkey, true_model, env)
+    model, get_model_params, rebuild_model_fn = define_test_model(subkey, true_model, env)
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = gdm_define_proposal(subkey, model, dataset, env)
+    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, dataset, env)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, dataset, env)
+    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, dataset, env)
 
     # Build up the train/val splits.
     num_val_datasets = int(len(dataset) * env.config.num_val_dataset_fraction)
@@ -194,7 +194,7 @@ class GdmTilt(tilts.IndependentGaussianTilt):
         return nn_util.vectorize_pytree(tilt_inputs)
 
 
-def gdm_define_tilt(subkey, model, dataset, env):
+def define_tilt(subkey, model, dataset, env):
     """
 
     Args:
@@ -278,7 +278,7 @@ class GdmProposal(proposals.IndependentGaussianProposal):
             return vmapped(*_proposal_inputs)
 
 
-def gdm_define_proposal(subkey, model, dataset, env):
+def define_proposal(subkey, model, dataset, env):
     """
 
     Args:
@@ -333,7 +333,7 @@ def gdm_define_proposal(subkey, model, dataset, env):
     return proposal, proposal_params, rebuild_prop_fn
 
 
-def gdm_get_true_target_marginal(model, data):
+def get_true_target_marginal(model, data):
     """
     Take in a model and some data and return the tfd distribution representing the marginals of true posterior.
     Args:
@@ -372,7 +372,7 @@ def gdm_get_true_target_marginal(model, data):
     return dist
 
 
-def gdm_define_true_model_and_data(key, env):
+def define_true_model_and_data(key, env):
     """
 
     Args:
@@ -421,7 +421,7 @@ def gdm_define_true_model_and_data(key, env):
     return true_model, true_states, dataset, dataset_masks
 
 
-def gdm_define_test_model(key, true_model, env):
+def define_test_model(key, true_model, env):
     """
 
     Args:
@@ -475,7 +475,7 @@ def gdm_define_test_model(key, true_model, env):
     return default_model, get_free_model_params_fn, rebuild_model_fn
 
 
-def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params, param_figs):
+def do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params, param_figs):
 
     fsize = (12, 8)
     idx_to_str = lambda _idx: ['Model (p): ', 'Proposal (q): ', 'Tilt (r): '][_idx]
@@ -512,7 +512,7 @@ def gdm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_pa
     return param_figs
 
 
-def gdm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
+def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
     """
     Do menial print stuff.
     :param _step:

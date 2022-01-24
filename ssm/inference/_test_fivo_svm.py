@@ -18,7 +18,7 @@ import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 
 
-def svm_get_config():
+def get_config():
     """
 
     Returns:
@@ -64,7 +64,7 @@ def svm_get_config():
     parser.add_argument('--emissions-dim', default=1, type=int)
 
     parser.add_argument('--num-trials', default=100000, type=int)  # NOTE - try with a single trial.
-    parser.add_argument('--num-val-dataset-fraction', default=0.01, type=int)
+    parser.add_argument('--num-val-dataset-fraction', default=0.001, type=int)
 
     parser.add_argument('--dset-to-plot', default=0, type=int)
     parser.add_argument('--validation-particles', default=250, type=int)
@@ -93,7 +93,7 @@ def svm_get_config():
     return config
 
 
-def svm_define_test(key, env):
+def define_test(key, env):
     """
 
     Args:
@@ -106,7 +106,7 @@ def svm_define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset, dataset_masks = svm_define_true_model_and_data(subkey, env)
+    true_model, true_states, dataset, dataset_masks = define_true_model_and_data(subkey, env)
 
     if len(dataset.shape) == 2:
         print('\nWARNING: Expanding dataset dim.\n')
@@ -114,15 +114,15 @@ def svm_define_test(key, env):
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, get_model_params, rebuild_model_fn = svm_define_test_model(subkey, true_model, env)
+    model, get_model_params, rebuild_model_fn = define_test_model(subkey, true_model, env)
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = svm_define_proposal(subkey, model, dataset, env)
+    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, dataset, env)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = svm_define_tilt(subkey, model, dataset, env)
+    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, dataset, env)
 
     # Build up the train/val splits.
     num_val_datasets = int(len(dataset) * env.config.num_val_dataset_fraction)
@@ -139,7 +139,7 @@ def svm_define_test(key, env):
     return ret_model, ret_test, ret_prop, ret_tilt
 
 
-def svm_define_tilt(subkey, model, dataset, env):
+def define_tilt(subkey, model, dataset, env):
     """
 
     Args:
@@ -215,7 +215,7 @@ def svm_define_tilt(subkey, model, dataset, env):
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def svm_define_proposal(subkey, model, dataset, env):
+def define_proposal(subkey, model, dataset, env):
     """
 
     Args:
@@ -307,7 +307,7 @@ def svm_define_proposal(subkey, model, dataset, env):
     return proposal, proposal_params, rebuild_prop_fn
 
 
-def svm_get_true_target_marginal(model, data):
+def get_true_target_marginal(model, data):
     """
     SVM doesn't yet have an EM solution implemented.
     Args:
@@ -320,7 +320,7 @@ def svm_get_true_target_marginal(model, data):
     return None
 
 
-def svm_define_true_model_and_data(key, env):
+def define_true_model_and_data(key, env):
     """
 
     Args:
@@ -350,7 +350,7 @@ def svm_define_true_model_and_data(key, env):
     return true_model, true_states, dataset, dataset_masks
 
 
-def svm_define_test_model(key, true_model, env):
+def define_test_model(key, true_model, env):
     """
 
     Args:
@@ -407,7 +407,7 @@ def svm_define_test_model(key, true_model, env):
     return default_model, get_free_model_params_fn, rebuild_model_fn
 
 
-def svm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
+def do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
                 param_figs):
     """
     NOTE - removed proposal and tilt parameters here as they will be too complex.
@@ -459,7 +459,7 @@ def svm_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_pa
     return param_figs
 
 
-def svm_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
+def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
     """
 
     Args:
