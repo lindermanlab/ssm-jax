@@ -126,10 +126,13 @@ def do_config():
         env.config.git_branch = git_branch
         env.config.git_is_dirty = git_is_dirty
 
+    # Set up the first key
+    key = jr.PRNGKey(env.config.seed)
+
     # Do some final bits.
     if len(env.config.free_parameters) == 0: print('\nWARNING: NO FREE MODEL PARAMETERS...\n')
     pprint(env.config)
-    return env, do_print, define_test, do_plot, get_marginals
+    return env, key, do_print, define_test, do_plot, get_marginals
 
 
 def main():
@@ -140,22 +143,11 @@ def main():
     with possibly_disable_jit(DISABLE_JIT):
 
         # Set up the experiment and log to WandB
-        env, do_print, define_test, do_plot, get_marginals = do_config()
+        env, key, do_print, define_test, do_plot, get_marginals = do_config()
 
         # Define some holders that will be overwritten later.
-        true_nlml = 0.0
-        em_log_marginal_likelihood = 0.0
-        pred_em_nlml = 0.0
-        filt_fig = None
-        sweep_fig_filter = None
-        sweep_fig_smooth = None
-        true_bpf_nlml = 0.0
-        true_bpf_kls = None
-        true_bpf_upc = None
-        true_bpf_ess = None
-
-        # Set up the first key
-        key = jr.PRNGKey(env.config.seed)
+        true_nlml, em_log_marginal_likelihood, pred_em_nlml, true_bpf_nlml = 0.0, 0.0, 0.0, 0.0
+        filt_fig, sweep_fig_filter, sweep_fig_smooth, true_bpf_kls, true_bpf_upc, true_bpf_ess = None, None, None, None, None, None
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -169,6 +161,10 @@ def main():
         proposal, proposal_params, rebuild_prop_fn = ret_vals[2]            # Unpack proposal.
         tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                    # Unpack tilt.
 
+        # Compile some of the fixed SMC args into a single dict.
+        smc_fixed_args = {'use_stop_gradient_resampling': env.config.use_sgr,
+                          'resampling_criterion': env.config.resampling_criterion, }
+
         # In here we can re-build models from saves if we want to.
         try:
             if env.config.load_path is not None:
@@ -180,9 +176,6 @@ def main():
         except:
             pass
 
-
-        # --------------------------------------------------------------------------------------------------------------------------------------------
-
         # Build up the optimizer.
         opt = fivo.define_optimizer(p_params=get_model_free_params(model),
                                     q_params=proposal_params,
@@ -192,11 +185,7 @@ def main():
                                     lr_r=env.config.lr_r,
                                     )
 
-        # Jit the smc subroutine for completeness.
-        smc_jit = jax.jit(smc, static_argnums=(7, 8))
-
-        smc_fixed_args = {'use_stop_gradient_resampling': env.config.use_sgr,
-                          'resampling_criterion': env.config.resampling_criterion, }
+        # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Close over constant parameters.
         def do_fivo_sweep_closed(_key, _params, _num_particles, _datasets, _masks, _temperature=1.0):
@@ -216,36 +205,6 @@ def main():
                                       _num_particles,
                                       **_smc_args
                                       )
-
-        # Jit this badboy.
-        do_fivo_sweep_jitted = \
-            jax.jit(do_fivo_sweep_closed, static_argnums=(2, ))
-
-        # Convert into value and grad.
-        do_fivo_sweep_val_and_grad = \
-            jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
-
-        # --------------------------------------------------------------------------------------------------------------------------------------------
-
-        # Test the initial models.
-        key, subkey = jr.split(key)
-        true_nlml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_nlml, initial_fivo_bound = \
-            fivo.initial_validation(env,
-                                    key,
-                                    true_model,
-                                    validation_datasets,
-                                    validation_dataset_masks,
-                                    true_states,
-                                    opt,
-                                    do_fivo_sweep_jitted,
-                                    smc_jit,
-                                    num_particles=env.config.validation_particles,
-                                    dset_to_plot=env.config.dset_to_plot,
-                                    init_model=model,
-                                    do_print=do_print,
-                                    do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
-
-        # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Wrap another call to fivo for validation.
         @jax.jit
@@ -270,8 +229,41 @@ def main():
                                                                       _temperature=1.0, )
             return _sweep_posteriors.log_normalizer, _val_fivo_bound
 
+        # Jit the smc subroutine for completeness.
+        smc_jit = jax.jit(smc, static_argnums=(7, 8))
+
+        # Jit this badboy.
+        do_fivo_sweep_jitted = \
+            jax.jit(do_fivo_sweep_closed, static_argnums=(2, ))
+
+        # Convert into value and grad.
+        do_fivo_sweep_val_and_grad = \
+            jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
+
         single_bpf_true_eval_small_vmap = jax.vmap(_single_bpf_true_eval_small)
         single_fivo_eval_small_vmap = jax.vmap(_single_fivo_eval_small, in_axes=(0, None))
+
+        # --------------------------------------------------------------------------------------------------------------------------------------------
+
+        # Test the initial models.
+        key, subkey = jr.split(key)
+        true_nlml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_nlml, initial_fivo_bound = \
+            fivo.initial_validation(env,
+                                    key,
+                                    true_model,
+                                    validation_datasets,
+                                    validation_dataset_masks,
+                                    true_states,
+                                    opt,
+                                    do_fivo_sweep_jitted,
+                                    smc_jit,
+                                    num_particles=env.config.validation_particles,
+                                    dset_to_plot=env.config.dset_to_plot,
+                                    init_model=model,
+                                    do_print=do_print,
+                                    do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
+
+        # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Define some storage.
         param_hist = [[], [], []]  # Model, proposal, tilt.
@@ -288,13 +280,9 @@ def main():
         # Decide if we are going to anneal the tilt.
         # This is done by dividing the log tilt value by a temperature.
         if env.config.temper > 0.0:
-            temper_param = env.config.temper
-
-            # tilt_temperatures = - (1.0 - (temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1))) + 1.0
-
-            tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1)))) + 1.0
-
             print('\n\nCAUTION: USING TILT TEMPERING. \n\n')
+            temper_param = env.config.temper
+            tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1)))) + 1.0
         else:
             tilt_temperatures = np.ones(env.config.opt_steps + 1,) * 1.0
 
@@ -302,19 +290,20 @@ def main():
 
         # Set up a buffer for doing an alternate VI loop.
         VI_USE_VI_GRAD = env.config.vi_use_tilt_gradient and (opt[2] is not None)
-        VI_BUFFER_LENGTH = env.config.vi_buffer_length * env.config.datasets_per_batch * env.config.num_particles
-        VI_MINIBATCH_SIZE = env.config.vi_minibatch_size
-        VI_EPOCHS = env.config.vi_epochs
-
-        # Use this update frequency to roughly match that in FIVO-AUX.
-        VI_FREQUENCY = int(VI_EPOCHS * np.floor(VI_BUFFER_LENGTH / VI_MINIBATCH_SIZE))
-
-        # Define defaults.
-        VI_STATE_BUFFER = []
-        VI_OBS_BUFFER = []
-        VI_MASK_BUFFER = []
-
         if VI_USE_VI_GRAD:
+
+            VI_BUFFER_LENGTH = env.config.vi_buffer_length * env.config.datasets_per_batch * env.config.num_particles
+            VI_MINIBATCH_SIZE = env.config.vi_minibatch_size
+            VI_EPOCHS = env.config.vi_epochs
+
+            # Use this update frequency to roughly match that in FIVO-AUX.
+            VI_FREQUENCY = int(VI_EPOCHS * np.floor(VI_BUFFER_LENGTH / VI_MINIBATCH_SIZE))
+
+            # Define defaults.
+            VI_STATE_BUFFER = []
+            VI_OBS_BUFFER = []
+            VI_MASK_BUFFER = []
+
             print()
             print('VI HYPERPARAMETERS:')
             print('\tVI_BUFFER_LENGTH:', VI_BUFFER_LENGTH)
