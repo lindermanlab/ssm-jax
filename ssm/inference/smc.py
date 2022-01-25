@@ -462,7 +462,7 @@ def _smc_forward_pass(key,
         # Resample particles depending on the resampling function chosen.
         # We don't want to resample on the final timestep, so dont...
         resampled_particles, ancestors, resampled_log_weights, should_resample = \
-            jax.lax.cond(False,  # TODO: t == (len(dataset) - 1),
+            jax.lax.cond(False or np.any(mask[t] == 0),  # TODO: removed final resampling step and added mask evaluation.
                          lambda *args: closed_do_resample(never_resample_criterion),
                          lambda *args: closed_do_resample(resampling_criterion),
                          None)
