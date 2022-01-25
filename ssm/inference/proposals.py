@@ -278,6 +278,8 @@ def rebuild_proposal(proposal, proposal_structure):
         elif proposal_structure == 'VRNN':
 
             def _proposal(particles, t, p_dist, q_state, *inputs):
+                q_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
+
                 raise NotImplementedError()
 
         else:

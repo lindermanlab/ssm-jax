@@ -272,6 +272,14 @@ def _single_smc(key,
     # Now do the backwards pass to generate the smoothing distribution.
     smoothing_particles = _smc_backward_pass(filtering_particles, ancestry, verbosity)
 
+    # Check the shapes are correct
+    shape_equality = jax.tree_map(lambda _a, _b: _a.shape == _b.shape, smoothing_particles, filtering_particles)
+    assert all(jax.tree_flatten(shape_equality)[0]), \
+        "Filtering and smoothing shapes are inconsistent... (Filtering: {}, Smoothing: {}).".format(
+            jax.tree_map(lambda _a: _a.shape, filtering_particles),
+            jax.tree_map(lambda _a: _a.shape, smoothing_particles)
+        )
+
     # Now inscribe the results into an SMCPosterior object for modularity.
     smc_posterior = SMCPosterior.from_params(smoothing_particles,
                                              accumulated_log_incr_weights,
@@ -412,17 +420,14 @@ def _smc_forward_pass(key,
 
         p_dist = model.dynamics_distribution(particles, covariates)
         q_dist, q_state = proposal(particles, t, p_dist, q_state, covariates)
+        new_particles = q_dist.sample(seed=_subkey1)
 
-        # Compute the incremental importance weight.
-        # TODO - need to somehow pass over this and if there are any deterministic distributions don't score those.
-        if DOING_VRNN:
-            new_hidden_state = q_dist[0]
-            new_particles = q_dist[1].sample(seed=_subkey1)
-            p_log_probability = p_dist[1].log_prob(new_particles)
-            q_log_probability = q_dist[1].log_prob(new_particles)
-
+        # TODO - this is a bit grotty.  Assumes that if there is a joint distribution, all the deterministic stuff is in the first
+        #  element, and that everything thereafter is a "stochastic distribution".
+        if type(p_dist) is tfd.JointDistributionSequential:
+            p_log_probability = p_dist._model[1].log_prob(new_particles[1])
+            q_log_probability = q_dist._model[1].log_prob(new_particles[1])
         else:
-            new_particles = q_dist.sample(seed=_subkey1)
             p_log_probability = p_dist.log_prob(new_particles)
             q_log_probability = q_dist.log_prob(new_particles)
 
@@ -435,18 +440,11 @@ def _smc_forward_pass(key,
                                  lambda *_args: tilt(new_particles, t),
                                  None) / tilt_temperature
 
-        if DOING_VRNN:
-            # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
-            y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
-                                             lambda _: np.zeros((num_particles, )),
-                                             lambda _: model.emissions_distribution((new_hidden_state, new_particles)).log_prob(dataset[t]),
-                                             None)
-        else:
-            # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
-            y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
-                                             lambda _: np.zeros((num_particles, )),
-                                             lambda _: model.emissions_distribution(new_particles).log_prob(dataset[t]),
-                                             None)
+        # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
+        y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
+                                         lambda _: np.zeros((num_particles, )),
+                                         lambda _: model.emissions_distribution(new_particles).log_prob(dataset[t]),
+                                         None)
 
         # Sum up the different terms,
         incremental_log_weights = p_log_probability - q_log_probability + \
@@ -457,11 +455,7 @@ def _smc_forward_pass(key,
         accumulated_log_weights += incremental_log_weights
 
         # Close over the resampling function.
-        if DOING_VRNN:
-            particles_to_resample = (new_hidden_state, new_particles)
-        else:
-            particles_to_resample = new_particles
-        closed_do_resample = lambda _crit: do_resample(_subkey2, accumulated_log_weights, particles_to_resample, _crit,
+        closed_do_resample = lambda _crit: do_resample(_subkey2, accumulated_log_weights, new_particles, _crit,
                                                        resampling_function,
                                                        use_stop_gradient_resampling=use_stop_gradient_resampling)
 
@@ -486,25 +480,13 @@ def _smc_forward_pass(key,
         (subkey3, initial_resampled_particles, initial_log_weights_post_resamp, initial_q_state),
         np.arange(1, len(dataset)))
 
-    if DOING_VRNN:
-        # TODO - this is crappy, we are going to remove the rnn hidden state here and just return the Z-values.
-        #  Not sure if/why this is the best thing to do, but we need to do something...
-        initial_resampled_particles = initial_resampled_particles[1]
-        filtering_particles = filtering_particles[1]
-
-    # if np.any(np.isnan(log_weights_post_resamp)):
-    #     carry = (key, initial_resampled_particles, initial_log_weights_post_resamp, initial_q_state)
-    #     for _t in np.arange(1, len(dataset)):
-    #         carry, _ = smc_step(carry, _t)
-    #     raise RuntimeError()
-
     # Need to prepend the initial timestep.
-    filtering_particles = np.concatenate((initial_resampled_particles[None, :], filtering_particles))
-    log_weights_pre_resamp = np.concatenate((initial_log_weights_pre_resamp[None, :], log_weights_pre_resamp))
-    log_weights_post_resamp = np.concatenate((initial_log_weights_post_resamp[None, :], log_weights_post_resamp))
-    resampled = np.concatenate((np.asarray([initial_resampled]), resampled))
-    ancestors = np.concatenate((np.arange(num_particles)[None, :], ancestors))
-    q_states = np.concatenate((np.asarray([initial_q_state]), q_states)) if q_states is not None else None
+    filtering_particles = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), jax.tree_map(lambda _a: _a[None, :], initial_resampled_particles), filtering_particles)
+    log_weights_pre_resamp = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), jax.tree_map(lambda _a: _a[None, :], initial_log_weights_pre_resamp), log_weights_pre_resamp)
+    log_weights_post_resamp = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), jax.tree_map(lambda _a: _a[None, :], initial_log_weights_post_resamp), log_weights_post_resamp)
+    resampled = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), np.asarray([initial_resampled]), resampled)
+    ancestors = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), np.arange(num_particles)[None, :], ancestors)
+    q_states = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), np.asarray([initial_q_state]), q_states) if q_states is not None else None
 
     # We now need to mask out the weights from outside the trajectory.
     masked_log_weights_pre_resamp = np.expand_dims(mask, 1) * log_weights_pre_resamp
@@ -521,11 +503,8 @@ def _smc_forward_pass(key,
         raise NotImplementedError("This code isn't ready yet.  There are still too many issues with indexing etc.")
         # z_hat = z_hat + _compute_resampling_grad()
 
-    # If we are using the VRNN, normalize this to the length of the trace.
-    # TODO - make this neater somehow.
-    if "VRNN" in str(type(model)):
-        # Normalize the quantity to be in terms of nats/step for the VRNN case.
-        l_tilde /= np.sum(mask)
+    # Normalize by the length of the trace.
+    l_tilde /= np.sum(mask)
         
     return filtering_particles, l_tilde, ancestors, resampled, log_weights_post_resamp
 
@@ -556,7 +535,7 @@ def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosi
         ancestor = carry
 
         # Grab the ancestor state.
-        next_smoothing_particles = jax.tree_map(lambda item: item[ancestor], filtering_particles[t-1])
+        next_smoothing_particles = jax.tree_map(lambda item: item[ancestor], jax.tree_map(lambda _fp: _fp[t-1], filtering_particles))
 
         # Update the ancestor indices according to the resampling.
         next_ancestor = jax.tree_map(lambda item: item[ancestor], ancestors[t-1])
@@ -566,12 +545,12 @@ def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosi
     _, (smoothing_particles, ) = jax.lax.scan(
         _backward_step,
         (ancestors[-1], ),
-        np.arange(1, len(filtering_particles)),
+        np.arange(1, len(ancestors)),
         reverse=True
     )
 
     # Append the final state to the return vector.
-    smoothing_particles = np.concatenate((smoothing_particles, filtering_particles[-1][np.newaxis]))
+    smoothing_particles = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), smoothing_particles, jax.tree_map(lambda _fp: _fp[-1][np.newaxis], filtering_particles), )
 
     return smoothing_particles
 

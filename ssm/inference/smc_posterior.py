@@ -22,7 +22,7 @@ class SMCPosterior(tfd.Distribution):
                  filtering_particles,
                  log_marginal_likelihood,
                  resampled,
-                 has_state_dim=True,
+                 # has_state_dim=True,
                  validate_args=False,
                  allow_nan_stats=True,
                  name="SMCPosterior", ):
@@ -36,7 +36,7 @@ class SMCPosterior(tfd.Distribution):
         self._filtering_particles = filtering_particles
         self._log_marginal_likelihood = log_marginal_likelihood
         self._resampled = resampled
-        self._has_state_dim = has_state_dim
+        # self._has_state_dim = has_state_dim
 
         # We would detect the dtype dynamically but that would break vmap
         # see https://github.com/tensorflow/probability/issues/1271
@@ -52,7 +52,8 @@ class SMCPosterior(tfd.Distribution):
                             filtering_particles=self._filtering_particles,
                             log_marginal_likelihood=self._log_marginal_likelihood,
                             resampled=self._resampled,
-                            has_state_dim=has_state_dim),
+                            # has_state_dim=has_state_dim
+                            ),
             name=name,
         )
 
@@ -101,44 +102,25 @@ class SMCPosterior(tfd.Distribution):
 
         """
 
-        # # Validate the args.
-        # assert smoothing_particles.shape[0] == log_weights.shape[0], \
-        #     "Must be the same number of timesteps."
-        # assert smoothing_particles.shape[1] == log_weights.shape[1], \
-        #     "Must be the same number of weights as particles."
-        #
-        # assert smoothing_particles.shape[0] == ancestry.shape[0], \
-        #     "[Error]: Ancestry length must match particles length."
-        # assert smoothing_particles.shape[1] == ancestry.shape[1], \
-        #     "[Error]: Ancestry dim must match n particles."
-        #
-        # assert filtering_particles.shape == smoothing_particles.shape, \
-        #     "[Error]: Filtering particles and smoothing particles must have same shape."
-
         # If the weights and the particles are the same shape, then there is no state dimension.
-        has_state_dim = log_weights.shape != smoothing_particles.shape
-        if has_state_dim:
-            smoothing_particles = np.moveaxis(smoothing_particles, -3, -2)
-            filtering_particles = np.moveaxis(filtering_particles, -3, -2)
-        else:
-            smoothing_particles = np.moveaxis(smoothing_particles, -2, -1)
-            filtering_particles = np.moveaxis(filtering_particles, -2, -1)
+        smoothing_particles = jax.tree_map(lambda _p: np.moveaxis(_p, -3, -2) if log_weights.shape != _p.shape else np.moveaxis(_p, -2, -1), smoothing_particles)
+        filtering_particles = jax.tree_map(lambda _p: np.moveaxis(_p, -3, -2) if log_weights.shape != _p.shape else np.moveaxis(_p, -2, -1), filtering_particles)
 
-        log_weights = np.moveaxis(log_weights, -2, -1)
-        ancestry = np.moveaxis(ancestry, -2, -1)
+        log_weights = jax.tree_map(lambda _p: np.moveaxis(_p, -2, -1), log_weights)
+        ancestry = jax.tree_map(lambda _p: np.moveaxis(_p, -2, -1), ancestry)
 
         return cls(smoothing_particles,
                    log_weights,
                    ancestry,
                    filtering_particles,
                    log_marginal_likelihood,
-                   resampled,
-                   has_state_dim)
+                   resampled,)
+                   # has_state_dim)
 
     def __len__(self):
         raise NotImplementedError("Len on this object is so ambiguous we disable it.")
 
-    def __getitem__(self, item):  # TODO - had to change this here, not sure why i didnt have to change it elsewhere.
+    def __getitem__(self, item):
         if len(self.log_normalizer.shape) == 0:
             return self
 
@@ -183,7 +165,7 @@ class SMCPosterior(tfd.Distribution):
         )
 
     def _event_shape_tensor(self):
-        return tf.TensorShape(self._smoothing_particles.shape[1:])
+        return jax.tree_map(lambda _p: tf.TensorShape(_p[1:]), self._smoothing_particles)
 
     def _event_shape(self):
         return self._event_shape_tensor()
@@ -193,7 +175,7 @@ class SMCPosterior(tfd.Distribution):
 
     @property
     def state_dimension(self):
-        return self._smoothing_particles.shape[-1]
+        return jax.tree_map(lambda _p: tf.TensorShape(_p.shape[-1]), self._smoothing_particles)
 
     @property
     def num_timesteps(self):
@@ -220,6 +202,10 @@ class SMCPosterior(tfd.Distribution):
         Returns:
 
         """
+
+        if type(self._smoothing_particles) == tuple:
+            raise NotImplementedError("Generation of full dist not currently supported for arbitrary PyTrees.")
+
         smc_mixture_dist = tfd.Categorical(logits=self.final_particle_weights_unnormalized)   # Weighting distribution.
         particle_dist = tfd.Deterministic(self._smoothing_particles)  # Convert into a set of deterministic dists.
 
@@ -230,6 +216,23 @@ class SMCPosterior(tfd.Distribution):
             smc_components_dist = tfd.Independent(particle_dist, reinterpreted_batch_ndims=1)
 
         return tfd.MixtureSameFamily(smc_mixture_dist, smc_components_dist)
+
+        # # Starting to try and facilitate PyTrees.
+        # smc_mixture_dist = tfd.Categorical(logits=self.final_particle_weights_unnormalized)   # Weighting distribution.
+        # smc_components_dist = \
+        #     jax.tree_map(lambda _p: tfd.Independent(tfd.Deterministic(_p),
+        #                                             reinterpreted_batch_ndims=1 if _p.shape == self._log_accumulated_weights.shape else 2),
+        #                  self._smoothing_particles)
+        #
+        # # TODO - this allows for depth-two PyTress to be converted.  Probably should find some more elegant way of doing it.
+        # if type(smc_components_dist) == tuple:
+        #     smc_components_dist_joint = tfd.JointDistributionSequential(tuple(_d if type(_d) != tuple else tfd.JointDistributionSequential(_d) for _d in smc_components_dist))
+        # else:
+        #     smc_components_dist_joint = smc_components_dist
+        #
+        # mixtures = tfd.MixtureSameFamily(smc_mixture_dist, smc_components_dist_joint)
+        #
+        # return mixtures
 
     def _log_prob(self, data, **kwargs):
         """

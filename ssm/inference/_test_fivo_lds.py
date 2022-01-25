@@ -91,7 +91,7 @@ def get_config():
     if config['tilt_structure'] == 'NONE' or config['tilt_structure'] is None:
         config['temper'] = 0.0
 
-    return config
+    return config, do_print, define_test, do_plot, get_true_target_marginal
 
 
 def define_test(key, env):

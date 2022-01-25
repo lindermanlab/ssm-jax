@@ -116,6 +116,7 @@ class VRNN(SSM):
 
     def _initial_condition(self, covariates=None, metadata=None):
         """
+        # TODO - current this part is deterministic initialization, double check that this is okay.
 
         Args:
             covariates:     Not used.  Must be None.
@@ -128,7 +129,7 @@ class VRNN(SSM):
         assert covariates is None, "Covariates are not provisioned in the initial state."
         assert metadata is None, "Metadata is not provisioned in the initial state."
 
-        # TODO - current this part is deterministic initialization...
+        # Initialize the state.  Note that this is normally deterministic so just use a dummy key here.
         initial_h_state = self._rnn_obj.initialize_carry(jr.PRNGKey(0), batch_dims=(), size=self.rnn_state_dim)
         initial_h_dists = jax.tree_map(lambda _state: tfd.Independent(tfd.Deterministic(_state), reinterpreted_batch_ndims=1), initial_h_state)
         initial_h_dist = tfd.JointDistributionSequential(initial_h_dists)
@@ -139,7 +140,7 @@ class VRNN(SSM):
         # Construct a joint distribution so that we have a single object.
         initial_dist = tfd.JointDistributionSequential((initial_h_dist, initial_z_dist), )
 
-        return initial_dist  # initial_z_state, initial_rnn_state
+        return initial_dist
 
     def _dynamics(self, state, covariates, metadata=None):
         r"""
@@ -157,41 +158,35 @@ class VRNN(SSM):
 
         # # Grab the previous rnn state.
         # prev_rnn_state = (state[0], state[1])
-        prev_rnn_state = state[0]
+        prev_rnn_h = state[0]
 
         # Get and decode the previous latent state.
-        prev_latent = state[1]
-        prev_latent_dec = self._decoder_latent_obj(prev_latent)
+        prev_rnn_z = state[1]
+        prev_rnn_z_dec = self._decoder_latent_obj(prev_rnn_z)
 
         # Encode the PREVIOUS observation.
         prev_obs = covariates[0]
         prev_obs_enc = self._encoder_data_obj(prev_obs)
 
         # Iterate the RNN.
-        input_rnn = np.concatenate((prev_latent_dec, prev_obs_enc), axis=-1)
-        new_rnn_full, new_rnn_hidden_state = self._rnn_obj.apply(self._params_rnn, prev_rnn_state, input_rnn)
+        input_rnn = np.concatenate((prev_rnn_z_dec, prev_obs_enc), axis=-1)
+        new_rnn_z, new_rnn_z_exposed = self._rnn_obj.apply(self._params_rnn, prev_rnn_h, input_rnn)
 
-        # # # Make the deterministic distribution from the outputs of the RNN.
-        # new_rnn_carry = np.stack(new_rnn_carry).transpose(1, 0, 2)
-        # new_rnn_state_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry), reinterpreted_batch_ndims=2)  # Was giving a [] event dim.
-
-        # new_rnn_carry_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry[0]), reinterpreted_batch_ndims=1)  # Was giving a [] event dim.
-        # new_rnn_hidden_dist = tfd.Independent(tfd.Deterministic(new_rnn_carry[1]), reinterpreted_batch_ndims=1)  # Was giving a [] event dim.
-
-        # Call the prior local parameter generation functions.
-        prior_dist_local_params = self._prior_obj(new_rnn_hidden_state)
-        prior_dist_local_params = np.reshape(prior_dist_local_params, (*prior_dist_local_params.shape[:-1], 2, -1))
-        prior_mean = prior_dist_local_params[..., 0, :]
-        prior_log_var = prior_dist_local_params[..., 1, :]
+        # Call the *prior* local parameter generation functions.
+        rnn_z_dist_local_params = self._prior_obj(new_rnn_z_exposed)
+        rnn_z_dist_local_params = np.reshape(rnn_z_dist_local_params, (*rnn_z_dist_local_params.shape[:-1], 2, -1))
+        rnn_z_mean = rnn_z_dist_local_params[..., 0, :]
+        rnn_z_log_var = rnn_z_dist_local_params[..., 1, :]
 
         # Construct the latent distribution itself.
-        prior_latent_dist = tfd.MultivariateNormalDiag(prior_mean, np.sqrt(np.exp(prior_log_var)))
+        rnn_z_dist = tfd.MultivariateNormalDiag(rnn_z_mean, np.sqrt(np.exp(rnn_z_log_var)))
 
         # # # Construct a joint distribution so that we have a single object.
-        # joint_dist = tfd.JointDistributionSequential((new_rnn_carry_dist, new_rnn_hidden_dist, prior_latent_dist))
-        # # joint_dist = tfd.JointDistributionSequential((new_rnn_state_dist, prior_latent_dist))
+        rnn_h_dists = jax.tree_map(lambda _state: tfd.Independent(tfd.Deterministic(_state), reinterpreted_batch_ndims=1), new_rnn_z)
+        rnn_h_dist = tfd.JointDistributionSequential(rnn_h_dists)
+        rnn_dist = tfd.JointDistributionSequential((rnn_h_dist, rnn_z_dist), )
 
-        return new_rnn_full, prior_latent_dist
+        return rnn_dist
 
     def _emissions(self, state, covariates, metadata):
         """
@@ -208,12 +203,12 @@ class VRNN(SSM):
         assert metadata is None, "Metadata is not provisioned in the dynamics."
 
         # Pull apart the previous state.
-        rnn_carry = state[0]
-        latent = state[1]
-        latent_dec = self._decoder_latent_obj(latent)
+        rnn_h = state[0]
+        rnn_z = state[1]
+        latent_dec = self._decoder_latent_obj(rnn_z)
 
         # Construct the input to the emissions distribution.
-        input_full_decoder = np.concatenate((rnn_carry[1], latent_dec, ), axis=-1)
+        input_full_decoder = np.concatenate((rnn_h[1], latent_dec, ), axis=-1)
 
         # Construct the emissions distribution itself.
         emissions_local_parameters = self._decoder_full_obj(input_full_decoder)

@@ -18,7 +18,7 @@ import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 
 
-def gdm_get_config():
+def get_config():
     """
 
     Returns:
@@ -90,7 +90,7 @@ def gdm_get_config():
     assert config['latent_dim'] == 1
     assert config['emissions_dim'] == 1
 
-    return config
+    return config, do_print, define_test, do_plot, get_true_target_marginal
 
 
 def define_test(key, env):
