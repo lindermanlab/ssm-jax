@@ -50,13 +50,17 @@ def log_params(_param_hist, _cur_params):
     """
 
     # MODEL.
-    if _cur_params[0] is not None:
-        _p = _cur_params[0]._asdict()
-        _p_flat = {}
-        for _k in _p.keys():
-            _p_flat[_k] = dc(onp.array(_p[_k].flatten()))
-        _param_hist[0].append(_p_flat)
-    else:
+    try:
+        if _cur_params[0] is not None:
+            _p = _cur_params[0]._asdict()
+            _p_flat = {}
+            for _k in _p.keys():
+                _p_flat[_k] = dc(onp.array(_p[_k].flatten()))
+            _param_hist[0].append(_p_flat)
+        else:
+            _param_hist[0].append(None)
+    except:
+        print('[WARNING]: Failed logging parameter values.')
         _param_hist[0].append(None)
 
     # PROPOSAL.
@@ -351,6 +355,10 @@ def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_
     Returns:
 
     """
+
+    if env.config.model == 'VRNN':
+        print('[WARNING]: UPC not implemented yet.')
+        return np.zeros((dataset.shape[0], dataset.shape[1])), np.zeros((dataset.shape[0], dataset.shape[1]))
 
     def calculate_unique_particle_counts(_particles):
         """
