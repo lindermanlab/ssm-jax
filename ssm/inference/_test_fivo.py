@@ -24,6 +24,7 @@ import ssm.utils as utils
 import ssm.inference.fivo as fivo
 from tensorflow_probability.substrates.jax import distributions as tfd
 import ssm.inference.fivo_vi as fivo_vi
+import ssm.inference.fivo_util as fivo_util
 
 # If we are on Mac, assume it is a local run
 LOCAL_SYSTEM = (('mac' in platform.platform()) or ('Mac' in platform.platform()))
@@ -50,94 +51,14 @@ except:
     USE_WANDB = False
     print('[Soft Warning]:  Couldnt configure WandB.')
 
-# Start the timer.
-_st = dt()
-_verbose_clock_print = True
-clock = lambda __st, __str: utils.clock(__st, __str, _verbose_clock_print)
-
-
-def do_config():
-    """
-
-    Returns:
-
-    """
-
-    # Quickly hack finding the model and importing the right config.
-    import sys
-    try:
-        model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
-    except:
-        model = 'GDM'
-        print('No model specified, defaulting to: ', model)
-
-    if 'LDS' in model:
-        from ssm.inference._test_fivo_lds import get_config as get_config
-    elif 'GDM' in model:
-        from ssm.inference._test_fivo_gdm import get_config as get_config
-    elif 'SVM' in model:
-        from ssm.inference._test_fivo_svm import get_config as get_config
-    else:
-        raise NotImplementedError()
-
-    # Go and get the model-specific config.
-    config, do_print, define_test, do_plot, get_marginals = get_config()
-
-    # Define the parameter names that we are going to learn.
-    # This has to be a tuple of strings that index which args we will pull out.
-    if config['free_parameters'] is None or config['free_parameters'] == '':
-        config['free_parameters'] = ()
-    else:
-        config['free_parameters'] = tuple(config['free_parameters'].replace(' ', '').split(','))
-
-    # Do some type conversions.
-    config['use_sgr'] = bool(config['use_sgr'])
-
-    # Get everything.
-    if USE_WANDB:
-        # Set up WandB
-        env = wandb.init(project=PROJECT, entity=USERNAME, group=config['log_group'], config=config)
-    else:
-        log_group = 'none'
-        env = SimpleNamespace(**{'config': SimpleNamespace(**config),
-                                 'log_group': log_group})
-
-    # Set up some WandB stuff.
-    env.config.wandb_group = env.config.log_group
-    env.config.use_wandb = bool(USE_WANDB)
-    env.config.wandb_project = PROJECT
-    env.config.local_system = LOCAL_SYSTEM
-
-    # Grab some git information.
-    try:
-        repo = git.Repo(search_parent_directories=True)
-        env.config.git_commit = repo.head.object.hexsha
-        env.config.git_branch = repo.active_branch
-        env.config.git_is_dirty = repo.is_dirty()
-    except:
-        print('Failed to grab git info...')
-        env.config.git_commit = 'NoneFound'
-        env.config.git_branch = 'NoneFound'
-        env.config.git_is_dirty = 'NoneFound'
-
-    # Set up the first key
-    key = jr.PRNGKey(env.config.seed)
-
-    # Do some final bits.
-    if len(env.config.free_parameters) == 0: print('\nWARNING: NO FREE MODEL PARAMETERS...\n')
-    pprint(env.config)
-    return env, key, do_print, define_test, do_plot, get_marginals
-
 
 def main():
-
-    global _st
 
     # Give the option of disabling JIT to allow for better inspection and debugging.
     with possibly_disable_jit(DISABLE_JIT):
 
         # Set up the experiment and log to WandB
-        env, key, do_print, define_test, do_plot, get_marginals = do_config()
+        env, key, do_print, define_test, do_plot, get_marginals = fivo.do_fivo_config(USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM)
 
         # Define some holders that will be overwritten later.
         true_nlml, em_log_marginal_likelihood, pred_em_nlml, true_bpf_nlml = 0.0, 0.0, 0.0, 0.0
@@ -150,7 +71,7 @@ def main():
         ret_vals = define_test(subkey, env)
 
         # Unpack that big mess of stuff.
-        true_model, true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks = ret_vals[0]                  # Unpack true model.
+        true_model, true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks = ret_vals[0]  # Unpack true model
         model, get_model_free_params, rebuild_model_fn = ret_vals[1]    # Unpack test model.
         proposal, proposal_params, rebuild_prop_fn = ret_vals[2]        # Unpack proposal.
         tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                # Unpack tilt.
@@ -165,6 +86,15 @@ def main():
                 tilt_params = loaded_params[2]
         except:
             pass
+
+        # Decide if we are going to anneal the tilt.
+        # This is done by dividing the log tilt value by a temperature.
+        if env.config.temper > 0.0:
+            temper_param = env.config.temper
+            tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1)))) + 1.0
+            print('\n\n[WARNING]: USING TILT TEMPERING. \n\n')
+        else:
+            tilt_temperatures = np.ones(env.config.opt_steps + 1,) * 1.0
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -207,19 +137,20 @@ def main():
         # Test the initial models.
         key, subkey = jr.split(key)
         true_nlml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_nlml, initial_fivo_bound = \
-            fivo.initial_validation(env, key,
-                                    true_model,
-                                    validation_datasets,
-                                    validation_dataset_masks,
-                                    true_states,
-                                    opt,
-                                    do_fivo_sweep_jitted,
-                                    smc_jit,
-                                    num_particles=env.config.validation_particles,
-                                    dset_to_plot=env.config.dset_to_plot,
-                                    init_model=model,
-                                    do_print=do_print,
-                                    do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
+            fivo_util.initial_validation(env,
+                                         key,
+                                         true_model,
+                                         validation_datasets,
+                                         validation_dataset_masks,
+                                         true_states,
+                                         opt,
+                                         do_fivo_sweep_jitted,
+                                         smc_jit,
+                                         num_particles=env.config.validation_particles,
+                                         dset_to_plot=env.config.dset_to_plot,
+                                         init_model=model,
+                                         do_print=do_print,
+                                         do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -247,6 +178,35 @@ def main():
         single_bpf_true_eval_small_vmap = jax.vmap(_single_bpf_true_eval_small)
         single_fivo_eval_small_vmap = jax.vmap(_single_fivo_eval_small, in_axes=(0, None))
 
+        # --------------------------------------------------------------------------------------------------------------------------------------------
+
+        # Set up a buffer for doing an alternate VI loop.
+        VI_USE_VI_GRAD = env.config.vi_use_tilt_gradient and (opt[2] is not None)
+        if VI_USE_VI_GRAD:
+            VI_BUFFER_LENGTH = env.config.vi_buffer_length * env.config.datasets_per_batch * env.config.num_particles
+            VI_MINIBATCH_SIZE = env.config.vi_minibatch_size
+            VI_EPOCHS = env.config.vi_epochs
+
+            # Use this update frequency to roughly match that in FIVO-AUX.
+            VI_FREQUENCY = int(VI_EPOCHS * np.floor(VI_BUFFER_LENGTH / VI_MINIBATCH_SIZE))
+
+            # Define defaults.
+            VI_STATE_BUFFER = []
+            VI_OBS_BUFFER = []
+            VI_MASK_BUFFER = []
+
+            # Jit the update function/
+            do_vi_tilt_update_jit = jax.jit(fivo_vi.do_vi_tilt_update, static_argnums=(1, 3, 4, 8, 9))
+
+            print('\nVI HYPERPARAMETERS:')
+            print('\tVI_BUFFER_LENGTH:', VI_BUFFER_LENGTH)
+            print('\tVI_MINIBATCH_SIZE:', VI_MINIBATCH_SIZE)
+            print('\tVI_EPOCHS:', VI_EPOCHS)
+            print('\tVI_FREQUENCY:', VI_FREQUENCY)
+            print('\tVI_USE_VI_GRAD:', VI_USE_VI_GRAD, '\n')
+
+        # --------------------------------------------------------------------------------------------------------------------------------------------
+
         # Define some storage.
         param_hist = [[], [], []]  # Model, proposal, tilt.
         val_hist = [[], [], []]  # Model, proposal, tilt.
@@ -255,49 +215,7 @@ def main():
         smoothed_training_loss = 0.0
 
         # Back up the true parameters.
-        true_hist = [[], [], []]  # Model, proposal, tilt.
-        true_hist = fivo.log_params(true_hist,
-                                    [get_model_free_params(true_model), None, None],)
-
-        # Decide if we are going to anneal the tilt.
-        # This is done by dividing the log tilt value by a temperature.
-        if env.config.temper > 0.0:
-            temper_param = env.config.temper
-
-            # tilt_temperatures = - (1.0 - (temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1))) + 1.0
-
-            tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1)))) + 1.0
-
-            print('\n\nCAUTION: USING TILT TEMPERING. \n\n')
-        else:
-            tilt_temperatures = np.ones(env.config.opt_steps + 1,) * 1.0
-
-        # --------------------------------------------------------------------------------------------------------------------------------------------
-
-        # Set up a buffer for doing an alternate VI loop.
-        VI_USE_VI_GRAD = env.config.vi_use_tilt_gradient and (opt[2] is not None)
-        VI_BUFFER_LENGTH = env.config.vi_buffer_length * env.config.datasets_per_batch * env.config.num_particles
-        VI_MINIBATCH_SIZE = env.config.vi_minibatch_size
-        VI_EPOCHS = env.config.vi_epochs
-
-        # Use this update frequency to roughly match that in FIVO-AUX.
-        VI_FREQUENCY = int(VI_EPOCHS * np.floor(VI_BUFFER_LENGTH / VI_MINIBATCH_SIZE))
-
-        # Define defaults.
-        VI_STATE_BUFFER = []
-        VI_OBS_BUFFER = []
-
-        if VI_USE_VI_GRAD:
-            print()
-            print('VI HYPERPARAMETERS:')
-            print('\tVI_BUFFER_LENGTH:', VI_BUFFER_LENGTH)
-            print('\tVI_MINIBATCH_SIZE:', VI_MINIBATCH_SIZE)
-            print('\tVI_EPOCHS:', VI_EPOCHS)
-            print('\tVI_FREQUENCY:', VI_FREQUENCY)
-            print('\tVI_USE_VI_GRAD:', VI_USE_VI_GRAD)
-            print()
-
-            do_vi_tilt_update_jit = jax.jit(fivo_vi.do_vi_tilt_update, static_argnums=(1, 3, 4, 8, 9))
+        true_hist = fivo_util.log_params([[], [], []], [get_model_free_params(true_model), None, None],)  # Model, proposal, tilt.
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -309,7 +227,6 @@ def main():
             idx = jr.randint(key=subkey, shape=(env.config.datasets_per_batch, ), minval=0, maxval=len(train_datasets))
             batched_dataset = train_datasets.at[idx].get()
             batched_dataset_masks = train_dataset_masks.at[idx].get()
-
             temperature = tilt_temperatures[_step]
 
             # Do the sweep and compute the gradient.
@@ -322,12 +239,6 @@ def main():
                                                                                  batched_dataset_masks,
                                                                                  temperature)
 
-            # Quickly calculate a smoothed training loss for quick and dirty plotting.
-            if smoothed_training_loss == 0.0:
-                smoothed_training_loss = pred_fivo_bound
-            else:
-                smoothed_training_loss = 0.1 * pred_fivo_bound + 0.9 * smoothed_training_loss
-
             # ----------------------------------------------------------------------------------------------------------------------------------------
 
             # Apply the gradient update.
@@ -339,7 +250,7 @@ def main():
                     _opt = fivo.apply_gradient(grad, tuple((opt[0], opt[1])), )
                     opt = tuple((*_opt, opt[2]))  # Recapitulate the full optimizer.
             else:
-                print('Warning: Skipped step: ', _step, min(smc_posteriors.log_normalizer), pred_fivo_bound)
+                print('[WARNING]: Skipped step: ', _step, min(smc_posteriors.log_normalizer), pred_fivo_bound)
 
             # If we are using the VI tilt gradient and it is a VI epoch, do that step.
             key, subkey = jr.split(key)
@@ -350,10 +261,12 @@ def main():
                     VI_BUFFER_FULL = True
                     del VI_STATE_BUFFER[0]
                     del VI_OBS_BUFFER[0]
+                    del VI_MASK_BUFFER[0]
                 else:
                     VI_BUFFER_FULL = False
                 VI_STATE_BUFFER.append(smc_posteriors.weighted_particles[0])
                 VI_OBS_BUFFER.append(batched_dataset)
+                VI_MASK_BUFFER.append(batched_dataset)
 
                 if (_step % VI_FREQUENCY == 0 and VI_BUFFER_FULL) or _step == 1:
                     _vi_opt, final_vi_elbo, vi_gradient_steps = do_vi_tilt_update_jit(subkey,
@@ -363,6 +276,7 @@ def main():
                                                                                       rebuild_tilt_fn,
                                                                                       VI_STATE_BUFFER,
                                                                                       VI_OBS_BUFFER,
+                                                                                      VI_MASK_BUFFER,
                                                                                       opt[2],
                                                                                       _epochs=VI_EPOCHS,
                                                                                       _sgd_batch_size=VI_MINIBATCH_SIZE)
@@ -370,13 +284,16 @@ def main():
 
             # ----------------------------------------------------------------------------------------------------------------------------------------
 
+            # Do some validation and logging stuff.
+
+            # Quickly calculate a smoothed training loss for quick and dirty plotting.
+            smoothed_training_loss = 0.1 * pred_fivo_bound + 0.9 * smoothed_training_loss if smoothed_training_loss != np.nan else pred_fivo_bound
+
             # Do some validation and give some output.
-            val_interval = 2500
-            plot_interval = 2500
-            if (_step % val_interval == 0) or (_step == 1):
+            if (_step % env.config.validation_interval == 0) or (_step == 1):
 
                 # Capture the parameters.
-                param_hist = fivo.log_params(param_hist, cur_params)
+                param_hist = fivo_util.log_params(param_hist, cur_params)
 
                 # Do a FIVO-AUX sweep.
                 key, subkey = jr.split(key)
@@ -402,28 +319,28 @@ def main():
 
                 # Test the KLs.
                 key, subkey = jr.split(key)
-                true_bpf_kls, pred_smc_kls = fivo.compare_kls(get_marginals,
-                                                              env,
-                                                              opt,
-                                                              validation_datasets,
-                                                              validation_dataset_masks,
-                                                              true_model,
-                                                              subkey,
-                                                              do_fivo_sweep_jitted,
-                                                              smc_jit,
-                                                              true_bpf_kls=true_bpf_kls)  # Force re-running this.
+                true_bpf_kls, pred_smc_kls = fivo_util.compare_kls(get_marginals,
+                                                                   env,
+                                                                   opt,
+                                                                   validation_datasets,
+                                                                   validation_dataset_masks,
+                                                                   true_model,
+                                                                   subkey,
+                                                                   do_fivo_sweep_jitted,
+                                                                   smc_jit,
+                                                                   true_bpf_kls=true_bpf_kls)  # Force re-running this.
 
                 # Compare the number of unique particles.
                 key, subkey = jr.split(key)
-                true_bpf_upc, pred_smc_upc = fivo.compare_unqiue_particle_counts(env,
-                                                                                 opt,
-                                                                                 validation_datasets,
-                                                                                 validation_dataset_masks,
-                                                                                 true_model,
-                                                                                 subkey,
-                                                                                 do_fivo_sweep_jitted,
-                                                                                 smc_jit,
-                                                                                 true_bpf_upc=true_bpf_upc)  # Force re-running this.
+                true_bpf_upc, pred_smc_upc = fivo_util.compare_unqiue_particle_counts(env,
+                                                                                      opt,
+                                                                                      validation_datasets,
+                                                                                      validation_dataset_masks,
+                                                                                      true_model,
+                                                                                      subkey,
+                                                                                      do_fivo_sweep_jitted,
+                                                                                      smc_jit,
+                                                                                      true_bpf_upc=true_bpf_upc)  # Force re-running this.
 
                 # # Compare the effective sample size.
                 # key, subkey = jr.split(key)
@@ -438,7 +355,7 @@ def main():
                 #                                               true_bpf_ess=true_bpf_ess)
 
                 # Do some plotting if we are plotting.
-                if env.config.PLOT and ((_step % plot_interval == 0) or (_step == 1)):
+                if env.config.PLOT and ((_step % (env.config.plot_interval * env.config.validation_interval) == 0) or (_step == 1)):
 
                     # # Do some plotting.
                     # sweep_fig_filter = _plot_single_sweep(
@@ -455,8 +372,8 @@ def main():
                     #     obs=datasets[env.config.dset_to_plot])
 
                     key, subkey = jr.split(key)
-                    fivo.compare_sweeps(env, opt, validation_datasets, validation_dataset_masks, true_model, rebuild_model_fn, rebuild_prop_fn,
-                                        rebuild_tilt_fn, subkey, do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=2, true_states=true_states)
+                    fivo_util.compare_sweeps(env, opt, validation_datasets, validation_dataset_masks, true_model, rebuild_model_fn, rebuild_prop_fn,
+                                             rebuild_tilt_fn, subkey, do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=2, true_states=true_states)
 
                     param_figures = do_plot(param_hist,
                                             nlml_hist,
@@ -466,8 +383,7 @@ def main():
                                             param_figures)
 
                 # Log the validation step.
-                val_hist = fivo.log_params(val_hist,
-                                           cur_params,)
+                val_hist = fivo_util.log_params(val_hist, cur_params,)
 
                 # Save out to a temporary location.
                 if (env.config.save_path is not None) and (env.config.load_path is None):
@@ -554,22 +470,22 @@ def main():
                           #                        'pred':        np.var(pred_smc_ess, axis=0), },
                           #         },
                           }
-                utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb, _commit=False)
 
                 # If we are not on the local system, push less frequently (or WandB starts to cry).
-                if not env.config.local_system:
-                    if (_step % 10000 == 0) or (_step == 1):
+                if env.config.use_wandb:
+                    utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb, _commit=False)
+
+                    if not env.config.local_system:
+                        if ((_step % (env.config.validation_interval * env.config.log_to_wandb_interval)) == 0) or (_step == 1):
+                            utils.log_to_wandb()
+                    else:
                         utils.log_to_wandb()
-                else:
-                    utils.log_to_wandb()
 
                 # Do some printing.
-                try:
-                    if VI_USE_VI_GRAD:
-                        print("VI: Step {:>5d}:  Final VI NEG-ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
-                              format(_step, final_vi_elbo, vi_gradient_steps, VI_FREQUENCY))
-                except:
-                    pass
+                if VI_USE_VI_GRAD:
+                    print("VI: Step {:>5d}:  Final VI NEG-ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
+                          format(_step, final_vi_elbo, vi_gradient_steps, VI_FREQUENCY))
+
                 do_print(_step,
                          true_model,
                          opt,
@@ -579,17 +495,18 @@ def main():
                          em_log_marginal_likelihood)
 
         # Do some final validation.
-        fivo.final_validation(get_marginals,
-                              env,
-                              opt,
-                              validation_datasets,
-                              true_model,
-                              rebuild_model_fn,
-                              rebuild_prop_fn,
-                              rebuild_tilt_fn,
-                              key,
-                              do_fivo_sweep_jitted,
-                              smc_jit)
+        fivo_util.final_validation(get_marginals,
+                                   env,
+                                   opt,
+                                   validation_datasets,
+                                   validation_dataset_masks,
+                                   true_model,
+                                   rebuild_model_fn,
+                                   rebuild_prop_fn,
+                                   rebuild_tilt_fn,
+                                   key,
+                                   do_fivo_sweep_jitted,
+                                   smc_jit)
 
 
 if __name__ == '__main__':

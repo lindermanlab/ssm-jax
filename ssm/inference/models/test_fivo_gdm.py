@@ -28,10 +28,11 @@ def get_config():
     # Set up the experiment.
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--dataset', default='default', type=str)
+    parser.add_argument('--synthetic-data', default=1, type=int)
+
     parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # CSV.  # {'always_resample', 'never_resample'}.
-
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
-
     parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
     parser.add_argument('--free-parameters', default='dynamics_bias', type=str)              # CSV.  # 'dynamics_bias'
@@ -73,8 +74,10 @@ def get_config():
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--model', default='GDM', type=str)
     parser.add_argument('--seed', default=10, type=int)
-    parser.add_argument('--log-group', default='debug', type=str)               # {'debug', 'gdm-v1.0'}
-
+    parser.add_argument('--log-group', default='debug-gdm', type=str)               # {'debug', 'gdm-v1.0'}
+    parser.add_argument('--validation-interval', default=2500, type=int)
+    parser.add_argument('--plot-interval', default=1, type=int)
+    parser.add_argument('--log-to-wandb-interval', default=1, type=int)
     parser.add_argument('--PLOT', default=1, type=int)
 
     config = parser.parse_args().__dict__
@@ -303,13 +306,9 @@ def define_proposal(subkey, model, dataset, env):
     w_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
     head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
-
-    # b_init = lambda *args: ((0.1 * jax.nn.initializers.normal()(*args) + 1))  # For when not using variance
-    b_init = lambda *args: (10.0 * jax.nn.initializers.normal()(*args))
-    # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=w_init, bias_init=b_init)
     head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=b_init)
 
-    # Check whether we have a valid number of proposals.
+    # Use as many proposals as there are observation points.
     n_props = len(dataset[0])
 
     # Define the proposal itself.
@@ -330,6 +329,9 @@ def define_proposal(subkey, model, dataset, env):
 def get_true_target_marginal(model, data):
     """
     Take in a model and some data and return the tfd distribution representing the marginals of true posterior.
+
+    NOTE - this assumes that `\alpha = 0`.
+
     Args:
         model:
         data:
@@ -337,10 +339,6 @@ def get_true_target_marginal(model, data):
     Returns:
 
     """
-
-    #
-    # NOTE - this assumes that `\alpha = 0`.
-    #
 
     assert len(data.shape) == 3
 
@@ -409,6 +407,7 @@ def define_true_model_and_data(key, env):
     # For the GDM example we zero out all but the last elements.
     datasets = datasets.at[:, :-1].set(np.nan)
 
+    # All datapoints are observed.
     masks = np.ones((num_trials, T+1))
 
     return true_model, true_states, datasets, masks

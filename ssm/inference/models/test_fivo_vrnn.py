@@ -29,31 +29,30 @@ def get_config():
     # Set up the experiment.
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--PLOT', default=0, type=int)  # TODO - note always disable plotting on the VRNN example.
-
-    parser.add_argument('--DATASET', default='pianorolls', type=str)  # TODO - only pianorolls is set up.
+    parser.add_argument('--dataset', default='pianorolls', type=str)  # TODO - only pianorolls is set up.
     parser.add_argument('--synthetic-data', default=0, type=int)
 
     parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # CSV.  # {'always_resample', 'never_resample'}.
-
     parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}.
-
     parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
     # {'params_rnn', 'params_prior', 'params_decoder_latent', 'params_decoder_full', 'params_encoder_data'}.
-    parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data',
-                        type=str)  # CSV.
+    parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data', type=str)  # CSV.
 
     parser.add_argument('--proposal-structure', default='BOOTSTRAP', type=str)  # {None/'NONE'/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='SINGLE_WINDOW',
-                        type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}
+    parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}
     parser.add_argument('--proposal-window-length', default=2, type=int)  # {int, None}.
-    parser.add_argument('--proposal-fn-family', default='AFFINE', type=str)  # {'AFFINE', 'MLP'}.
+    parser.add_argument('--proposal-fn-family', default='VRNN', type=str)  # {'VRNN'}.
 
     parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT', 'VRNN'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--tilt-window-length', default=2, type=int)  # {int, None}.
-    parser.add_argument('--tilt-fn-family', default='AFFINE', type=str)  # {'AFFINE', 'MLP'}.
+    parser.add_argument('--tilt-fn-family', default='VRNN', type=str)  # {'VRNN'}.
+
+    parser.add_argument('--vi-use-tilt-gradient', default=0, type=int)  # {0, 1}.
+    parser.add_argument('--vi-buffer-length', default=10, type=int)  #
+    parser.add_argument('--vi-minibatch-size', default=16, type=int)  #
+    parser.add_argument('--vi-epochs', default=1, type=int)  #
 
     parser.add_argument('--num-particles', default=4, type=int)
     parser.add_argument('--datasets-per-batch', default=3, type=int)
@@ -63,39 +62,35 @@ def get_config():
     parser.add_argument('--lr-q', default=0.0001, type=float)
     parser.add_argument('--lr-r', default=0.0001, type=float)
 
+    parser.add_argument('--T', default=29, type=int)  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=5, type=int)
     parser.add_argument('--emissions-dim', default=11, type=int)
+
+    # Additional VRNN args.
     parser.add_argument('--latent-enc-dim', default=12, type=int)
     parser.add_argument('--obs-enc-dim', default=13, type=int)
     parser.add_argument('--rnn-state-dim', default=64, type=int)
 
-    parser.add_argument('--T', default=29, type=int)  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--num-trials', default=100000, type=int)
     parser.add_argument('--num-val-dataset-fraction', default=0.2, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--validation-particles', default=250, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
-
     parser.add_argument('--load-path', default=None, type=str)  # './params_vrnn_tmp.p'
     parser.add_argument('--save-path', default=None, type=str)  # './params_vrnn_tmp.p'
     parser.add_argument('--model', default='VRNN', type=str)
     parser.add_argument('--seed', default=10, type=int)
-    parser.add_argument('--log-group', default='debug', type=str)  # {'debug', 'gdm-v1.0'}
-
-    parser.add_argument('--vi-use-tilt-gradient', default=0, type=int)  # {0, 1}.
-    parser.add_argument('--vi-buffer-length', default=10, type=int)  #
-    parser.add_argument('--vi-minibatch-size', default=16, type=int)  #
-    parser.add_argument('--vi-epochs', default=1, type=int)  #
+    parser.add_argument('--log-group', default='debug-vrnn', type=str)  # Overwrite from outside.
+    parser.add_argument('--validation-interval', default=2500, type=int)
+    parser.add_argument('--plot-interval', default=1, type=int)
+    parser.add_argument('--log-to-wandb-interval', default=1, type=int)
+    parser.add_argument('--PLOT', default=0, type=int)  # Note always disable plotting on the VRNN example.
 
     config = parser.parse_args().__dict__
 
     # Make sure this one is formatted correctly.
     config['model'] = 'VRNN'
-
-    # Force the tilt temperature to zero if we are not using tilts.  this is just bookkeeping, really.
-    if config['tilt_structure'] == 'NONE' or config['tilt_structure'] is None:
-        config['temper'] = 0.0
 
     assert not config['vi_use_tilt_gradient'], "NO IDEA IF THIS WILL WORK YET..."
     assert len(config['free_parameters'].split(',')) == 5, "NOT OPTIMIZING ALL VRNN PARAMETERS..."
@@ -116,7 +111,7 @@ def define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset, dataset_masks = define_true_model_and_data(subkey, env)
+    true_model, true_states, datasets, dataset_masks = define_true_model_and_data(subkey, env)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
@@ -124,17 +119,17 @@ def define_test(key, env):
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, dataset, env)
+    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, datasets, env)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, dataset, env)
+    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, datasets, env)
 
     # Build up the train/val splits.
-    num_val_datasets = int(len(dataset) * env.config.num_val_dataset_fraction)
-    validation_datasets = dataset[:num_val_datasets]
+    num_val_datasets = int(len(datasets) * env.config.num_val_dataset_fraction)
+    validation_datasets = datasets[:num_val_datasets]
     validation_dataset_masks = dataset_masks[:num_val_datasets]
-    train_datasets = dataset[num_val_datasets:]
+    train_datasets = datasets[num_val_datasets:]
     train_dataset_masks = dataset_masks[num_val_datasets:]
 
     # Return this big pile of stuff.
@@ -237,21 +232,7 @@ def define_proposal(subkey, model, dataset, env):
     stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist,)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
-    # If we are using RESQ, define a kernel that basically does nothing to begin with.
-    if env.config.proposal_structure == 'RESQ':
-        kernel_init = lambda *args: nn.initializers.lecun_normal()(*args) * 0.1
-    else:
-        kernel_init = None
-
-    trunk_fn = None
-    head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=kernel_init)
-    head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=nn.initializers.zeros)
-
-    # trunk_fn = nn_util.MLP([6, ], output_layer_relu=True)
-    # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
-    # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
-
-    # configure the tilt.
+    # Configure the proposal structure.
     if env.config.proposal_type == 'PERSTEP_ALLOBS':
         proposal_cls = proposals.IndependentGaussianProposal
         n_props = len(dataset[0])
@@ -279,6 +260,21 @@ def define_proposal(subkey, model, dataset, env):
         proposal_cls = proposals.IGWindowProposal
         n_props = 1
         proposal_window_length = env.config.proposal_window_length
+
+    else:
+        raise NotImplementedError()
+
+    # Fork on the specified definition of the proposal.
+    if env.config.proposal_fn_family == 'VRNN':
+        raise NotImplementedError()
+
+        # trunk_fn = None
+        # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=kernel_init)
+        # head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=nn.initializers.zeros)
+        #
+        # # trunk_fn = nn_util.MLP([6, ], output_layer_relu=True)
+        # # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
+        # # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
     else:
         raise NotImplementedError()
