@@ -500,7 +500,7 @@ def do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params
                     plt.tight_layout()
                     plt.pause(0.00001)
 
-                plt.savefig('./lds_param_{}.pdf'.format(_p))
+                plt.savefig('./figs/lds_param_{}.pdf'.format(_p))
 
     return param_figs
 
@@ -520,7 +520,7 @@ def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log
     Returns:
 
     """
-    _str = 'Step: {:> 7d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred FIVO bound {:> 8.3f}'.\
+    _str = 'Step: {:> 7d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred neg FIVO bound {:> 8.3f}'.\
         format(_step, true_lml, pred_lml, pred_fivo_bound)
     if em_log_marginal_likelihood is not None:
         _str += '  EM Neg-LML: {:> 8.3f}'.format(em_log_marginal_likelihood)

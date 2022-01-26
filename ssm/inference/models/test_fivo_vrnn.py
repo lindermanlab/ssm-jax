@@ -29,12 +29,12 @@ def get_config():
     # Set up the experiment.
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dataset', default='pianorolls', type=str)  # TODO - only pianorolls is set up.
-    parser.add_argument('--synthetic-data', default=0, type=int)
+    parser.add_argument('--dataset', default='pianorolls', type=str, help="Dataset to apply method to.  {'pianorolls'}. ")
+    parser.add_argument('--synthetic-data', default=0, type=int, help="Generate and use synthetic data for testing/debugging.")
 
-    parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # CSV.  # {'always_resample', 'never_resample'}.
-    parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}.
-    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--resampling-criterion', default='always_resample', type=str, help="{'always_resample', 'never_resample'}")
+    parser.add_argument('--use-sgr', default=1, type=int, help="{0, 1}.")
+    parser.add_argument('--temper', default=0.0, type=float, help="{0.0 to disable,  >0.1 to temper}")
 
     # {'params_rnn', 'params_prior', 'params_decoder_latent', 'params_decoder_full', 'params_encoder_data'}.
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data', type=str)  # CSV.
@@ -49,43 +49,45 @@ def get_config():
     parser.add_argument('--tilt-window-length', default=2, type=int)  # {int, None}.
     parser.add_argument('--tilt-fn-family', default='VRNN', type=str)  # {'VRNN'}.
 
-    parser.add_argument('--vi-use-tilt-gradient', default=0, type=int)  # {0, 1}.
-    parser.add_argument('--vi-buffer-length', default=10, type=int)  #
-    parser.add_argument('--vi-minibatch-size', default=16, type=int)  #
-    parser.add_argument('--vi-epochs', default=1, type=int)  #
+    parser.add_argument('--vi-use-tilt-gradient', default=0, type=int, help="Learn tilt using VI.")
+    parser.add_argument('--vi-buffer-length', default=10, type=int, help="Number of optimization steps' data to store as VI buffer.  Linked to --batch-size.")
+    parser.add_argument('--vi-minibatch-size', default=16, type=int, help="Size of VI minibatches when learning tilt with VI.")
+    parser.add_argument('--vi-epochs', default=1, type=int, help="Number of VI epochs to perform when learning tilt with VI.")
 
-    parser.add_argument('--num-particles', default=4, type=int)
-    parser.add_argument('--datasets-per-batch', default=3, type=int)
-    parser.add_argument('--opt-steps', default=100000, type=int)
+    parser.add_argument('--num-particles', default=10, type=int, help="Number of particles per sweep during learning.")
+    parser.add_argument('--datasets-per-batch', default=2, type=int, help="Number of datasets averaged across per FIVO step.")
+    parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
 
-    parser.add_argument('--lr-p', default=0.0001, type=float)
-    parser.add_argument('--lr-q', default=0.0001, type=float)
-    parser.add_argument('--lr-r', default=0.0001, type=float)
+    parser.add_argument('--lr-p', default=0.01, type=float, help="Learning rate of model parameters.")
+    parser.add_argument('--lr-q', default=0.0001, type=float, help="Learning rate of proposal parameters.")
+    parser.add_argument('--lr-r', default=0.0001, type=float, help="Learning rate of tilt parameters.")
 
-    parser.add_argument('--T', default=29, type=int)  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
-    parser.add_argument('--latent-dim', default=5, type=int)
-    parser.add_argument('--emissions-dim', default=11, type=int)
+    # VRNN architecture args.
+    parser.add_argument('--latent-dim', default=64, type=int, help="Dimension of z latent variable.")
+    parser.add_argument('--latent-enc-dim', default=None, type=int, help="Dimension of encoded latent z variable. (None -> latent-dim)")
+    parser.add_argument('--obs-enc-dim', default=None, type=int, help="Dimension of encoded observations. (None -> latent-dim)")
+    parser.add_argument('--rnn-state-dim', default=None, type=int, help="Dimension of the deterministic RNN. (None -> latent-dim)")
+    parser.add_argument('--fcnet-hidden-sizes', default=None, type=str,
+                        help="Layer widths of MLPs. CSV of widths, i.e. '10,10'. (None -> [latent-dim]). ")
 
-    # Additional VRNN args.
-    parser.add_argument('--latent-enc-dim', default=12, type=int)
-    parser.add_argument('--obs-enc-dim', default=13, type=int)
-    parser.add_argument('--rnn-state-dim', default=64, type=int)
+    parser.add_argument('--T', default=10, type=int, help="Length of sequences.  (Overwritten for real data)")
+    parser.add_argument('--emissions-dim', default=1, type=int, help="Dimension of observed value (Overwritten for real data)")
+    parser.add_argument('--num-trials', default=100000, type=int, help="Number of datasets to generate.  (Overwritten for real data)")
 
-    parser.add_argument('--num-trials', default=100000, type=int)
-    parser.add_argument('--num-val-dataset-fraction', default=0.2, type=int)
+    parser.add_argument('--num-val-dataset-fraction', default=0.2, type=int, help="Fraction of num-trials to designate as validation datasets.")
 
-    parser.add_argument('--dset-to-plot', default=2, type=int)
-    parser.add_argument('--validation-particles', default=250, type=int)
-    parser.add_argument('--sweep-test-particles', default=10, type=int)
-    parser.add_argument('--load-path', default=None, type=str)  # './params_vrnn_tmp.p'
-    parser.add_argument('--save-path', default=None, type=str)  # './params_vrnn_tmp.p'
-    parser.add_argument('--model', default='VRNN', type=str)
-    parser.add_argument('--seed', default=10, type=int)
-    parser.add_argument('--log-group', default='debug-vrnn', type=str)  # Overwrite from outside.
-    parser.add_argument('--validation-interval', default=2500, type=int)
-    parser.add_argument('--plot-interval', default=1, type=int)
-    parser.add_argument('--log-to-wandb-interval', default=1, type=int)
-    parser.add_argument('--PLOT', default=0, type=int)  # Note always disable plotting on the VRNN example.
+    parser.add_argument('--dset-to-plot', default=2, type=int, help="Index of dataset to visualize.")
+    parser.add_argument('--validation-particles', default=250, type=int, help="'Large' number of particles for asymptotic evaluation.")
+    parser.add_argument('--sweep-test-particles', default=10, type=int, help="'Small' number of particles for finite-particle evalaution.")
+    parser.add_argument('--load-path', default=None, type=str, help="File path to load model from.")  # './params_vrnn_tmp.p'
+    parser.add_argument('--save-path', default=None, type=str, help="File path to save model to.")  # './params_vrnn_tmp.p'
+    parser.add_argument('--model', default='VRNN', type=str, help="Don't change here.")
+    parser.add_argument('--seed', default=10, type=int, help="Seed for initialization.")
+    parser.add_argument('--log-group', default='debug-vrnn', type=str, help="WandB group to log to.  Overwrite from outside.")
+    parser.add_argument('--validation-interval', default=2500, type=int, help='Interval in optimization steps to validate at.')
+    parser.add_argument('--plot-interval', default=1, type=int, help="Multiples of --validation-interval to plot at.")
+    parser.add_argument('--log-to-wandb-interval', default=1, type=int, help="Multiples of --validation-interval to push to WandB remote at.")
+    parser.add_argument('--PLOT', default=0, type=int, help="Whether to make plots online.  Always disable plotting for the VRNN.")
 
     config = parser.parse_args().__dict__
 
@@ -305,7 +307,7 @@ def load_piano_data():
         dataset_sparse = pickle.load(f)
 
     PAD_FLAG = 0.0
-    MAX_LENGTH = 200
+    MAX_LENGTH = 1000
 
     min_note = 21
     max_note = 108
@@ -334,9 +336,9 @@ def load_piano_data():
     dataset_masks = np.asarray(dataset_masks)
     true_states = None  # There are no true states!
 
-    print('\n\nWARNING trimming data further. \n\n')
-    dataset = dataset[:, :20]
-    dataset_masks = dataset_masks[:, :20]
+    # print('\n\n[WARNING]: trimming data further. \n\n')
+    # dataset = dataset[:, :20]
+    # dataset_masks = dataset_masks[:, :20]
 
     dataset_means = dataset_sparse['train_mean']
 
@@ -353,14 +355,8 @@ def define_true_model_and_data(key, env):
 
     """
 
-    RNN_CELL_TYPE = nn.LSTMCell
-
-    # Pull out the sizes of things,
-    latent_dim = env.config.latent_dim
-    latent_encoded_dim = env.config.latent_enc_dim
-    emissions_encoded_dim = env.config.obs_enc_dim
-    rnn_state_dim = env.config.rnn_state_dim
-    num_trials = env.config.num_trials  # If using real data, this will be ignored.
+    # If using real data, this will be ignored.
+    num_trials = env.config.num_trials
 
     if env.config.synthetic_data:
         emissions_dim = env.config.emissions_dim
@@ -373,13 +369,32 @@ def define_true_model_and_data(key, env):
 
     else:
 
-        if env.config.DATASET == 'pianorolls':
+        if env.config.dataset == 'pianorolls':
             dataset, dataset_masks, true_states, dataset_means = load_piano_data()
             emissions_dim = dataset.shape[-1]
             output_type = 'BERNOULLI'
         else:
             raise NotImplementedError()
 
+    # Build up the VRNN.
+    RNN_CELL_TYPE = nn.LSTMCell
+
+    latent_dim = env.config.latent_dim
+    emissions_encoded_dim = env.config.obs_enc_dim if env.config.obs_enc_dim is not None else latent_dim
+    latent_encoded_dim = env.config.latent_enc_dim if env.config.latent_enc_dim is not None else latent_dim
+    rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else latent_dim
+
+    # Determine the size of the MLP link functions.
+    if env.config.fcnet_hidden_sizes is None:
+        fcnet_hidden_sizes = [latent_dim]
+    else:
+        if type(env.config.fcnet_hidden_sizes) == str:
+            fcnet_hidden_sizes = tuple(int(_s) for _s in ('10,10'.replace(' ', '').split(',')))
+        else:
+            fcnet_hidden_sizes = env.config.fcnet_hidden_sizes
+
+    # We have to do something a bit funny to the full decoder to make sure that it is approximately correct.
+    output_bias_init = lambda *_args: np.log(dataset_means)
     kernel_init = lambda *args: nn.initializers.xavier_normal()(*args)  # * 0.001
 
     # Define some dummy place holders.
@@ -389,18 +404,14 @@ def define_true_model_and_data(key, env):
     val_data_encoded = np.zeros(emissions_encoded_dim)
 
     # Build up each of the functions.
-    prior = nn.Dense(2 * latent_dim, kernel_init=kernel_init)
-    latent_decoder = nn.Dense(latent_encoded_dim, kernel_init=kernel_init)
-    data_encoder = nn.Dense(emissions_encoded_dim, kernel_init=kernel_init)
-
-    # We have to do something a bit funny to the full decoder to make sure that it is approximately correct.
-    output_kernel_init = lambda *_args: nn.initializers.lecun_normal()(*_args) * 0.1
-    output_bias_init = lambda *_args: np.log(dataset_means)
+    prior = nn_util.MLP(fcnet_hidden_sizes + [2 * latent_dim], kernel_init=kernel_init)
+    latent_decoder = nn_util.MLP(fcnet_hidden_sizes + [latent_encoded_dim], kernel_init=kernel_init)
+    data_encoder = nn_util.MLP(fcnet_hidden_sizes + [emissions_encoded_dim], kernel_init=kernel_init)
 
     if output_type == 'BERNOULLI':
-        full_decoder = nn.Dense(emissions_dim, kernel_init=output_kernel_init, bias_init=output_bias_init)
+        full_decoder = nn_util.MLP(fcnet_hidden_sizes + [emissions_dim], kernel_init=kernel_init, bias_init=output_bias_init)
     elif output_type == 'GAUSSIAN':
-        full_decoder = nn.Dense(2 * emissions_dim, kernel_init=output_kernel_init, bias_init=output_bias_init)
+        full_decoder = nn_util.MLP(fcnet_hidden_sizes + [2 * emissions_dim], kernel_init=kernel_init, bias_init=output_bias_init)
     else:
         raise NotImplementedError()
 
@@ -558,7 +569,7 @@ def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log
     Returns:
 
     """
-    _str = 'Step: {:> 7d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred FIVO bound {:> 8.3f}'. \
+    _str = 'Step: {:> 7d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred neg FIVO bound {:> 8.3f}'. \
         format(_step, true_lml, pred_lml, pred_fivo_bound)
     if em_log_marginal_likelihood is not None:
         _str += '  EM Neg-LML: {:> 8.3f}'.format(em_log_marginal_likelihood)
