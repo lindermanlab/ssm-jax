@@ -40,17 +40,17 @@ def get_config():
     parser.add_argument('--proposal-structure', default='RESQ', type=str)           # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)       # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--proposal-window-length', default=5, type=int)            # {int, None}.
-    parser.add_argument('--proposal-fn-family', default='MLP', type=str)         # {'AFFINE', 'MLP'}.
+    parser.add_argument('--proposal-fn-family', default='AFFINE', type=str)         # {'AFFINE', 'MLP'}.
 
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)             # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)           # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--tilt-window-length', default=5, type=int)                # {int, None}.
-    parser.add_argument('--tilt-fn-family', default='MLP', type=str)             # {'AFFINE', 'MLP'}.
+    parser.add_argument('--tilt-fn-family', default='AFFINE', type=str)             # {'AFFINE', 'MLP'}.
 
-    parser.add_argument('--vi-use-tilt-gradient', default=1, type=int)  # {0, 1}.
-    parser.add_argument('--vi-buffer-length', default=10, type=int)  #
-    parser.add_argument('--vi-minibatch-size', default=16, type=int)  #
-    parser.add_argument('--vi-epochs', default=1, type=int)  #
+    parser.add_argument('--vi-use-tilt-gradient', default=1, type=int)
+    parser.add_argument('--vi-buffer-length', default=10, type=int)
+    parser.add_argument('--vi-minibatch-size', default=16, type=int)
+    parser.add_argument('--vi-epochs', default=1, type=int)
 
     parser.add_argument('--num-particles', default=4, type=int)
     parser.add_argument('--datasets-per-batch', default=8, type=int)

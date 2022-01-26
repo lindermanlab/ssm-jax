@@ -358,15 +358,16 @@ def define_true_model_and_data(key, env):
     latent_encoded_dim = env.config.latent_enc_dim
     emissions_encoded_dim = env.config.obs_enc_dim
     rnn_state_dim = env.config.rnn_state_dim
+    num_trials = env.config.num_trials  # If using real data, this will be ignored.
 
     if env.config.synthetic_data:
         emissions_dim = env.config.emissions_dim
         dataset_means = np.zeros((emissions_dim,))
         output_type = 'GAUSSIAN'
 
-        num_trials = env.config.num_trials
         T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
         dataset_masks = np.ones((num_trials, T + 1,))
+        dataset = None  # To be overwritten later.  just shut the linter up.
 
     else:
 
@@ -454,6 +455,9 @@ def define_true_model_and_data(key, env):
         key, subkey = jr.split(key)
         true_states, dataset = true_model.unconditional_sample(key=subkey, num_steps=T + 1, num_samples=num_trials)
         dataset_masks = np.ones(dataset.shape[0])
+
+    else:
+        true_states = None
 
     return true_model, true_states, dataset, dataset_masks
 
