@@ -23,6 +23,7 @@ from ssm.inference.smc import smc
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
 from tensorflow_probability.substrates.jax import distributions as tfd
+import ssm.inference.fivo_vi as fivo_vi
 
 # If we are on Mac, assume it is a local run
 LOCAL_SYSTEM = (('mac' in platform.platform()) or ('Mac' in platform.platform()))
@@ -296,7 +297,7 @@ def main():
             print('\tVI_USE_VI_GRAD:', VI_USE_VI_GRAD)
             print()
 
-            do_vi_tilt_update_jit = jax.jit(fivo.do_vi_tilt_update, static_argnums=(1, 3, 4, 8, 9))
+            do_vi_tilt_update_jit = jax.jit(fivo_vi.do_vi_tilt_update, static_argnums=(1, 3, 4, 8, 9))
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
