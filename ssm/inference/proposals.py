@@ -108,8 +108,8 @@ class IndependentGaussianProposal:
             params_at_t = jax.tree_map(lambda args: args[0], params)
         elif self.n_proposals == 2:
             params_at_t = jax.lax.cond(t == 0,
-                                       jax.tree_map(lambda args: args[0], params),
-                                       jax.tree_map(lambda args: args[1], params),
+                                       lambda *_: jax.tree_map(lambda args: args[0], params),
+                                       lambda *_: jax.tree_map(lambda args: args[1], params),
                                        None)
         else:
             params_at_t = jax.tree_map(lambda args: args[t], params)

@@ -42,14 +42,14 @@ default_verbosity = Verbosity.DEBUG
 DISABLE_JIT = False
 
 # Set the default model for local debugging.
-DEFAULT_MODEL = 'SVM'
+DEFAULT_MODEL = 'LDS'
 
 # Import and configure WandB.
 try:
     import wandb
     USE_WANDB = True
     USERNAME = 'andrewwarrington'
-    PROJECT = 'fivo-aux-gamma'
+    PROJECT = 'fivo-aux-delta'
 except:
     USE_WANDB = False
     print('[Soft Warning]:  Couldnt configure WandB.')
@@ -199,7 +199,7 @@ def main():
             VI_MASK_BUFFER = []
 
             # Jit the update function/
-            do_vi_tilt_update_jit = jax.jit(fivo_vi.do_vi_tilt_update, static_argnums=(1, 3, 4, 8, 9))
+            do_vi_tilt_update_jit = jax.jit(fivo_vi.do_vi_tilt_update, static_argnums=(1, 3, 4, 9, 10))
 
             print('\nVI HYPERPARAMETERS:')
             print('\tVI_BUFFER_LENGTH:', VI_BUFFER_LENGTH)
