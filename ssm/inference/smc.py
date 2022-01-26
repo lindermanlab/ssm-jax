@@ -368,7 +368,7 @@ def _smc_forward_pass(key,
             Full matrix of resampled ancestor indices.
     """
 
-    print('[test message]: Hello, im an uncompiled SMC sweep. ')
+    print('[WARNING]: Hello, im an uncompiled SMC sweep. ')
     DOING_VRNN = 'VRNN' in str(type(model))
 
     # Generate the initial distribution.
@@ -533,10 +533,10 @@ def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosi
         ancestor = carry
 
         # Grab the ancestor state.
-        next_smoothing_particles = jax.tree_map(lambda item: item[ancestor], filtering_particles[t-1])
+        next_smoothing_particles = jax.tree_map(lambda f_p: jax.tree_map(lambda f_p_s: f_p_s[ancestor], f_p[t-1]), filtering_particles)
 
         # Update the ancestor indices according to the resampling.
-        next_ancestor = jax.tree_map(lambda item: item[ancestor], ancestors[t-1])
+        next_ancestor = jax.tree_map(lambda anc: anc[ancestor], ancestors[t-1])
 
         return (next_ancestor, ), (next_smoothing_particles, )
 
@@ -548,18 +548,21 @@ def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosi
     )
 
     # Append the final state to the return vector.
-    smoothing_particles = np.concatenate((smoothing_particles, filtering_particles[-1][np.newaxis]))
+    # smoothing_particles = np.concatenate((smoothing_particles, filtering_particles[-1][np.newaxis]))
+    smoothing_particles = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), smoothing_particles, jax.tree_map(lambda _a: _a[-1][None, :], filtering_particles))
 
     return smoothing_particles
 
 
 def always_resample_criterion(unused_log_weights, unused_t):
     r"""A criterion that always resamples."""
+    tmp = 0
     return True
 
 
 def never_resample_criterion(unused_log_weights, unused_t):
     r"""A criterion that never resamples."""
+    tmp = 0
     return False
 
 

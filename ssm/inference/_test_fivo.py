@@ -42,7 +42,7 @@ default_verbosity = Verbosity.DEBUG
 DISABLE_JIT = False
 
 # Set the default model for local debugging.
-DEFAULT_MODEL = 'LDS'
+DEFAULT_MODEL = 'VRNN'
 
 # Import and configure WandB.
 try:

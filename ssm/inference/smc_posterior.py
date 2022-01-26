@@ -115,14 +115,20 @@ class SMCPosterior(tfd.Distribution):
         # assert filtering_particles.shape == smoothing_particles.shape, \
         #     "[Error]: Filtering particles and smoothing particles must have same shape."
 
+        def _has_state_dim(_p):
+            return log_weights.shape != _p.shape
+
+        def _permute(_p):
+            has_state_dim = _has_state_dim(_p)
+            if has_state_dim:
+                _p = np.moveaxis(_p, -3, -2)
+            else:
+                _p = np.moveaxis(_p, -2, -1)
+
         # If the weights and the particles are the same shape, then there is no state dimension.
-        has_state_dim = log_weights.shape != smoothing_particles.shape
-        if has_state_dim:
-            smoothing_particles = np.moveaxis(smoothing_particles, -3, -2)
-            filtering_particles = np.moveaxis(filtering_particles, -3, -2)
-        else:
-            smoothing_particles = np.moveaxis(smoothing_particles, -2, -1)
-            filtering_particles = np.moveaxis(filtering_particles, -2, -1)
+        has_state_dim = jax.tree_map(_has_state_dim, smoothing_particles)
+        smoothing_particles = jax.tree_map(_permute, smoothing_particles)
+        filtering_particles = jax.tree_map(_permute, filtering_particles)
 
         log_weights = np.moveaxis(log_weights, -2, -1)
         ancestry = np.moveaxis(ancestry, -2, -1)
@@ -220,6 +226,9 @@ class SMCPosterior(tfd.Distribution):
         Returns:
 
         """
+        if type(self._smoothing_particles) == tuple:
+            raise NotImplementedError("ERROR: this is not implemented for arbitrary PyTree types.")
+
         smc_mixture_dist = tfd.Categorical(logits=self.final_particle_weights_unnormalized)   # Weighting distribution.
         particle_dist = tfd.Deterministic(self._smoothing_particles)  # Convert into a set of deterministic dists.
 

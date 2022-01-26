@@ -116,7 +116,8 @@ class VRNN(SSM):
 
     def _initial_condition(self, covariates=None, metadata=None):
         """
-        # TODO - current this part is deterministic initialization, double check that this is okay.
+        NOTE - the hidden state part of the initialization is deterministic.  This is normally okay because it is initialized to zeros, but
+        we need to double check this in case more exotic initializations are required elsewhere.
 
         Args:
             covariates:     Not used.  Must be None.
@@ -156,24 +157,23 @@ class VRNN(SSM):
 
         assert metadata is None, "Metadata is not provisioned in the dynamics."
 
-        # # Grab the previous rnn state.
-        # prev_rnn_state = (state[0], state[1])
+        # # Grab the previous state bits.
         prev_rnn_h = state[0]
+        prev_rnn_z = state[1]
+        prev_obs = covariates[0]
 
         # Get and decode the previous latent state.
-        prev_rnn_z = state[1]
-        prev_rnn_z_dec = self._decoder_latent_obj(prev_rnn_z)
+        prev_rnn_z_dec = self._decoder_latent_obj.apply(self._params_decoder_latent, prev_rnn_z)
 
         # Encode the PREVIOUS observation.
-        prev_obs = covariates[0]
-        prev_obs_enc = self._encoder_data_obj(prev_obs)
+        prev_obs_enc = self._encoder_data_obj.apply(self._params_encoder_data, prev_obs)
 
         # Iterate the RNN.
         input_rnn = np.concatenate((prev_rnn_z_dec, prev_obs_enc), axis=-1)
         new_rnn_z, new_rnn_z_exposed = self._rnn_obj.apply(self._params_rnn, prev_rnn_h, input_rnn)
 
         # Call the *prior* local parameter generation functions.
-        rnn_z_dist_local_params = self._prior_obj(new_rnn_z_exposed)
+        rnn_z_dist_local_params = self._prior_obj.apply(self._params_prior, new_rnn_z_exposed)
         rnn_z_dist_local_params = np.reshape(rnn_z_dist_local_params, (*rnn_z_dist_local_params.shape[:-1], 2, -1))
         rnn_z_mean = rnn_z_dist_local_params[..., 0, :]
         rnn_z_log_var = rnn_z_dist_local_params[..., 1, :]
@@ -205,13 +205,15 @@ class VRNN(SSM):
         # Pull apart the previous state.
         rnn_h = state[0]
         rnn_z = state[1]
-        latent_dec = self._decoder_latent_obj(rnn_z)
+
+        # Decode the latent through the "prior".
+        latent_dec = self._decoder_latent_obj.apply(self._params_decoder_latent, rnn_z)
 
         # Construct the input to the emissions distribution.
         input_full_decoder = np.concatenate((rnn_h[1], latent_dec, ), axis=-1)
 
         # Construct the emissions distribution itself.
-        emissions_local_parameters = self._decoder_full_obj(input_full_decoder)
+        emissions_local_parameters = self._decoder_full_obj.apply(self._params_decoder_full, input_full_decoder)
 
         if self.output_type == 'GAUSSIAN':
 
