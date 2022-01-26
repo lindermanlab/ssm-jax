@@ -107,17 +107,17 @@ def do_config():
     env.config.wandb_project = PROJECT
     env.config.local_system = LOCAL_SYSTEM
 
-    # Grab some git information.
-    try:
-        repo = git.Repo(search_parent_directories=True)
-        env.config.git_commit = repo.head.object.hexsha
-        env.config.git_branch = repo.active_branch
-        env.config.git_is_dirty = repo.is_dirty()
-    except:
-        print('Failed to grab git info...')
-        env.config.git_commit = 'NoneFound'
-        env.config.git_branch = 'NoneFound'
-        env.config.git_is_dirty = 'NoneFound'
+    # # Grab some git information.
+    # try:
+    #     repo = git.Repo(search_parent_directories=True)
+    #     env.config.git_commit = repo.head.object.hexsha
+    #     env.config.git_branch = repo.active_branch
+    #     env.config.git_is_dirty = repo.is_dirty()
+    # except:
+    #     print('Failed to grab git info...')
+    #     env.config.git_commit = 'NoneFound'
+    #     env.config.git_branch = 'NoneFound'
+    #     env.config.git_is_dirty = 'NoneFound'
 
     # Do some final bits.
     if len(env.config.free_parameters) == 0: print('\nWARNING: NO FREE MODEL PARAMETERS...\n')
@@ -179,12 +179,10 @@ def main():
         ret_vals = define_test(subkey, env)
 
         # Unpack that big mess of stuff.
-        true_model, true_states, dataset = ret_vals[0]                  # Unpack true model.
+        true_model, true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks = ret_vals[0]                  # Unpack true model.
         model, get_model_free_params, rebuild_model_fn = ret_vals[1]    # Unpack test model.
         proposal, proposal_params, rebuild_prop_fn = ret_vals[2]        # Unpack proposal.
         tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                # Unpack tilt.
-
-        validation_datasets = dataset[:env.config.num_val_datasets]
 
         # In here we can re-build models from saves if we want to.
         try:
@@ -209,16 +207,17 @@ def main():
                                     )
 
         # Jit the smc subroutine for completeness.
-        smc_jit = jax.jit(smc, static_argnums=(6, 7))
+        smc_jit = jax.jit(smc, static_argnums=(7, 8))
 
         # Close over constant parameters.
-        do_fivo_sweep_closed = lambda _key, _params, _num_particles, _datasets, _temperature=1.0: \
+        do_fivo_sweep_closed = lambda _key, _params, _num_particles, _datasets, _masks, _temperature=1.0: \
             fivo.do_fivo_sweep(_params,
                                _key,
                                rebuild_model_fn,
                                rebuild_prop_fn,
                                rebuild_tilt_fn,
                                _datasets,
+                               _masks,
                                _num_particles,
                                **{'use_stop_gradient_resampling': env.config.use_sgr,
                                   'tilt_temperature': _temperature,
@@ -240,6 +239,7 @@ def main():
             fivo.initial_validation(env, key,
                                     true_model,
                                     validation_datasets,
+                                    validation_dataset_masks,
                                     true_states,
                                     opt,
                                     do_fivo_sweep_jitted,
@@ -258,6 +258,7 @@ def main():
             _sweep_posteriors = smc_jit(_subkey,
                                         true_model,
                                         validation_datasets,
+                                        validation_dataset_masks,
                                         num_particles=env.config.sweep_test_particles,
                                         resampling_criterion=env.config.resampling_criterion)
             return _sweep_posteriors.log_normalizer
@@ -268,6 +269,7 @@ def main():
             _val_fivo_bound, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
                                                                       _params,
                                                                       _datasets=validation_datasets,
+                                                                      _masks=validation_dataset_masks,
                                                                       _num_particles=env.config.sweep_test_particles,)
             return _sweep_posteriors.log_normalizer, _val_fivo_bound
 
@@ -333,8 +335,9 @@ def main():
 
             # Batch the data.
             key, subkey = jr.split(key)
-            idx = jr.randint(key=subkey, shape=(env.config.datasets_per_batch, ), minval=0, maxval=len(dataset))
-            batched_dataset = dataset.at[idx].get()
+            idx = jr.randint(key=subkey, shape=(env.config.datasets_per_batch, ), minval=0, maxval=len(train_datasets))
+            batched_dataset = train_datasets.at[idx].get()
+            batched_dataset_masks = train_dataset_masks.at[idx].get()
 
             temperature = tilt_temperatures[_step]
 
@@ -345,6 +348,7 @@ def main():
                                                                                  fivo.get_params_from_opt(opt),
                                                                                  env.config.num_particles,
                                                                                  batched_dataset,
+                                                                                 batched_dataset_masks,
                                                                                  temperature)
 
             # Quickly calculate a smoothed training loss for quick and dirty plotting.
@@ -408,7 +412,8 @@ def main():
                 pred_fivo_bound_to_print, pred_sweep = do_fivo_sweep_jitted(subkey,
                                                                             fivo.get_params_from_opt(opt),
                                                                             _num_particles=env.config.validation_particles,
-                                                                            _datasets=validation_datasets)
+                                                                            _datasets=validation_datasets,
+                                                                            _masks=validation_dataset_masks)
                 pred_nlml = - utils.lexp(pred_sweep.log_normalizer)
                 nlml_hist.append(dc(pred_nlml))
 
@@ -430,6 +435,7 @@ def main():
                                                               env,
                                                               opt,
                                                               validation_datasets,
+                                                              validation_dataset_masks,
                                                               true_model,
                                                               subkey,
                                                               do_fivo_sweep_jitted,
@@ -441,6 +447,7 @@ def main():
                 true_bpf_upc, pred_smc_upc = fivo.compare_unqiue_particle_counts(env,
                                                                                  opt,
                                                                                  validation_datasets,
+                                                                                 validation_dataset_masks,
                                                                                  true_model,
                                                                                  subkey,
                                                                                  do_fivo_sweep_jitted,
@@ -468,17 +475,17 @@ def main():
                     #     true_states[env.config.dset_to_plot],
                     #     tag='{} Filtering.'.format(_step),
                     #     fig=sweep_fig_filter,
-                    #     obs=dataset[env.config.dset_to_plot])
+                    #     obs=datasets[env.config.dset_to_plot])
                     # sweep_fig_smooth = _plot_single_sweep(
                     #     pred_sweep[env.config.dset_to_plot].weighted_smoothing_particles,
                     #     true_states[env.config.dset_to_plot],
                     #     tag='{} Smoothing.'.format(_step),
                     #     fig=sweep_fig_smooth,
-                    #     obs=dataset[env.config.dset_to_plot])
+                    #     obs=datasets[env.config.dset_to_plot])
 
                     key, subkey = jr.split(key)
-                    fivo.compare_sweeps(env, opt, validation_datasets, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, subkey,
-                                        do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=2, true_states=true_states)
+                    fivo.compare_sweeps(env, opt, validation_datasets, validation_dataset_masks, true_model, rebuild_model_fn, rebuild_prop_fn,
+                                        rebuild_tilt_fn, subkey, do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=2, true_states=true_states)
 
                     param_figures = do_plot(param_hist,
                                             nlml_hist,

@@ -20,6 +20,7 @@ default_verbosity = Verbosity.DEBUG
 def smc(key,
         model,
         dataset,
+        masks,
         initialization_distribution=None,
         proposal=None,
         tilt=None,
@@ -121,11 +122,11 @@ def smc(key,
     if resampling_criterion is None:
         resampling_criterion = always_resample_criterion
     if resampling_function is None:
-        resampling_function = systematic_resampling
+        resampling_function = multinomial_resampling  # TODO - changed from: systematic_resampling
 
     # Close over the static arguments.
-    single_smc_closed = lambda _k, _d: \
-        _single_smc(_k, model, _d, initialization_distribution, proposal, tilt, num_particles,
+    single_smc_closed = lambda _k, _d, _m: \
+        _single_smc(_k, model, _d, _m, initialization_distribution, proposal, tilt, num_particles,
                     resampling_criterion, resampling_function, tilt_temperature, use_stop_gradient_resampling,
                     use_resampling_gradients, verbosity=verbosity)
 
@@ -134,14 +135,15 @@ def smc(key,
     # If there is a batch dimension, then we will vmap over the leading dim.
     if dataset.ndim == 3:
         key = jr.split(key, len(dataset))
-        return vmap(single_smc_closed)(key, dataset)
+        return vmap(single_smc_closed)(key, dataset, masks)
     else:
-        return single_smc_closed(key, dataset)
+        return single_smc_closed(key, dataset, masks)
 
 
 def _single_smc(key,
                 model,
                 dataset,
+                mask,
                 initialization_distribution,
                 proposal,
                 tilt,
@@ -200,7 +202,7 @@ def _single_smc(key,
         resampling_criterion (function, No size, default=always_resample_criterion):
             Boolean function for whether to resample.
 
-        resampling_function (function, No size, default=systematic_resampling):
+        resampling_function (function, No size, default=multinomial_resampling):
             Resampling function.
 
         use_stop_gradient_resampling (bool, No size, default=False):
@@ -244,7 +246,7 @@ def _single_smc(key,
     # This function also returns the iterated state of the proposal, and so there is no
     # initial proposal state if we are using p.
     if proposal is None:
-        proposal = lambda *args: (model.dynamics_distribution(args[0]), None)
+        proposal = lambda *args: (model.dynamics_distribution(args[0], covariates=args[4]), None)
 
     # If no explicit proposal is provided, default to a log-value of zero.
     if tilt is None:
@@ -255,6 +257,7 @@ def _single_smc(key,
         _smc_forward_pass(key,
                           model,
                           dataset,
+                          mask,
                           initialization_distribution,
                           proposal,
                           tilt,
@@ -268,6 +271,14 @@ def _single_smc(key,
 
     # Now do the backwards pass to generate the smoothing distribution.
     smoothing_particles = _smc_backward_pass(filtering_particles, ancestry, verbosity)
+
+    # Check the shapes are correct
+    shape_equality = jax.tree_map(lambda _a, _b: _a.shape == _b.shape, smoothing_particles, filtering_particles)
+    assert all(jax.tree_flatten(shape_equality)[0]), \
+        "Filtering and smoothing shapes are inconsistent... (Filtering: {}, Smoothing: {}).".format(
+            jax.tree_map(lambda _a: _a.shape, filtering_particles),
+            jax.tree_map(lambda _a: _a.shape, smoothing_particles)
+        )
 
     # Now inscribe the results into an SMCPosterior object for modularity.
     smc_posterior = SMCPosterior.from_params(smoothing_particles,
@@ -283,6 +294,7 @@ def _single_smc(key,
 def _smc_forward_pass(key,
                       model,
                       dataset,
+                      mask,
                       initialization_distribution,
                       proposal,
                       tilt,
@@ -357,13 +369,14 @@ def _smc_forward_pass(key,
     """
 
     print('[test message]: Hello, im an uncompiled SMC sweep. ')
+    DOING_VRNN = 'VRNN' in str(type(model))
 
     # Generate the initial distribution.
     initial_distribution, initial_q_state = initialization_distribution()
 
     # Initialize the sweep using the initial distribution.
-    key, subkey1, subkey2 = jr.split(key, num=3)
-    initial_particles = initial_distribution.sample(seed=key, sample_shape=(num_particles, ), )
+    key, subkey0, subkey1, subkey2 = jr.split(key, num=4)
+    initial_particles = initial_distribution.sample(seed=subkey0, sample_shape=(num_particles, ), )
 
     # Resample particles under the zeroth observation.
     initial_p_log_probability = model.initial_distribution().log_prob(initial_particles)
@@ -390,26 +403,38 @@ def _smc_forward_pass(key,
 
     # Define the scan-compatible SMC iterate function.
     def smc_step(carry, t):
-        key, particles, accumulated_log_weights, q_state = carry
-        key, subkey1, subkey2 = jr.split(key, num=3)
+        _key, particles, accumulated_log_weights, q_state = carry
+        _key, _subkey1, _subkey2 = jr.split(_key, num=3)
+
+        # TODO - this is kinda messy.
+        if DOING_VRNN:
+            # Compile the previous observation as covariates.
+            covariates = (np.repeat(np.expand_dims(dataset[t - 1], 0), num_particles, axis=0), )
+        else:
+            covariates = None
 
         # Compute the p and q distributions.
-        p_dist = model.dynamics_distribution(particles)
-        q_dist, q_state = proposal(particles, t, p_dist, q_state)
+        p_dist = model.dynamics_distribution(particles, covariates)
+        q_dist, q_state = proposal(particles, t, p_dist, q_state, covariates)
 
         # Sample the new particles.
-        new_particles = q_dist.sample(seed=subkey1)
+        new_particles = q_dist.sample(seed=_subkey1)
 
-        # Compute the incremental importance weight.
-        p_log_probability = p_dist.log_prob(new_particles)
-        q_log_probability = q_dist.log_prob(new_particles)
+        # TODO - this is a bit grotty.  Assumes that if there is a joint distribution, all the deterministic stuff is in the first
+        #  element, and that everything thereafter is a "stochastic distribution".
+        if type(p_dist) is tfd.JointDistributionSequential:
+            p_log_probability = p_dist._model[1].log_prob(new_particles[1])
+            q_log_probability = q_dist._model[1].log_prob(new_particles[1])
+        else:
+            p_log_probability = p_dist.log_prob(new_particles)
+            q_log_probability = q_dist.log_prob(new_particles)
 
         # Assume there is a previous tilt.
         r_previous = tilt(particles, t-1) / tilt_temperature
 
         # There is no tilt at the final timestep.
         r_current = jax.lax.cond(t == (len(dataset)-1),
-                                 lambda *_args: np.zeros(len(new_particles)),
+                                 lambda *_args: np.zeros((num_particles, )),
                                  lambda *_args: tilt(new_particles, t),
                                  None) / tilt_temperature
 
@@ -428,14 +453,14 @@ def _smc_forward_pass(key,
         accumulated_log_weights += incremental_log_weights
 
         # Close over the resampling function.
-        closed_do_resample = lambda _crit: do_resample(subkey2, accumulated_log_weights, new_particles, _crit,
+        closed_do_resample = lambda _crit: do_resample(_subkey2, accumulated_log_weights, new_particles, _crit,
                                                        resampling_function,
                                                        use_stop_gradient_resampling=use_stop_gradient_resampling)
 
         # Resample particles depending on the resampling function chosen.
         # We don't want to resample on the final timestep, so dont...
         resampled_particles, ancestors, resampled_log_weights, should_resample = \
-            jax.lax.cond(False,  # TODO: t == (len(dataset) - 1),
+            jax.lax.cond(False or np.any(mask[t] == 0),  # TODO: removed final resampling step and added mask evaluation.
                          lambda *args: closed_do_resample(never_resample_criterion),
                          lambda *args: closed_do_resample(resampling_criterion),
                          None)
@@ -444,7 +469,7 @@ def _smc_forward_pass(key,
         #  this means that the particles at time t are distributed according to the weights in the
         #  final distribution object.  This needs to be updated on the main SMC branch, although i
         #  don't think that this makes a difference.
-        return ((key, resampled_particles, resampled_log_weights, q_state),
+        return ((_key, resampled_particles, resampled_log_weights, q_state),
                 (resampled_particles, accumulated_log_weights, resampled_log_weights, should_resample, ancestors, q_state))
 
     # Scan over the dataset.
@@ -454,19 +479,25 @@ def _smc_forward_pass(key,
         np.arange(1, len(dataset)))
 
     # Need to prepend the initial timestep.
-    filtering_particles = np.concatenate((initial_resampled_particles[None, :], filtering_particles))
-    log_weights_pre_resamp = np.concatenate((initial_log_weights_pre_resamp[None, :], log_weights_pre_resamp))
-    log_weights_post_resamp = np.concatenate((initial_log_weights_post_resamp[None, :], log_weights_post_resamp))
-    resampled = np.concatenate((np.asarray([initial_resampled]), resampled))
-    ancestors = np.concatenate((np.arange(num_particles)[None, :], ancestors))
-    q_states = np.concatenate((np.asarray([initial_q_state]), q_states)) if q_states is not None else None
+    filtering_particles = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), jax.tree_map(lambda _a: _a[None, :], initial_resampled_particles), filtering_particles)
+    log_weights_pre_resamp = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), jax.tree_map(lambda _a: _a[None, :], initial_log_weights_pre_resamp), log_weights_pre_resamp)
+    log_weights_post_resamp = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), jax.tree_map(lambda _a: _a[None, :], initial_log_weights_post_resamp), log_weights_post_resamp)
+    resampled = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), np.asarray([initial_resampled]), resampled)
+    ancestors = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), np.arange(num_particles)[None, :], ancestors)
+    q_states = jax.tree_map(lambda _a, _b: np.concatenate((_a, _b)), np.asarray([initial_q_state]), q_states) if q_states is not None else None
+
+    # We now need to mask out the weights from outside the trajectory.
+    masked_log_weights_pre_resamp = np.expand_dims(mask, 1) * log_weights_pre_resamp
 
     # Average over particle dimension.
-    p_hats = spsp.logsumexp(log_weights_pre_resamp, axis=1) - np.log(num_particles)
+    p_hats = spsp.logsumexp(masked_log_weights_pre_resamp, axis=1) - np.log(num_particles)
 
     # Compute the log marginal likelihood.
     # Note that this needs to force the last accumulated incremental weight to be used.
     l_tilde = np.sum(p_hats[:-1] * resampled[:-1]) + p_hats[-1]
+
+    # Normalize by the length of the trace.
+    l_tilde /= np.sum(mask)
 
     # If we are using the resampling gradients, modify the marginal likelihood to contain that gradient information.
     if use_resampling_gradients:
@@ -512,7 +543,7 @@ def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosi
     _, (smoothing_particles, ) = jax.lax.scan(
         _backward_step,
         (ancestors[-1], ),
-        np.arange(1, len(filtering_particles)),
+        np.arange(1, len(ancestors)),
         reverse=True
     )
 
@@ -621,7 +652,7 @@ def do_resample(key,
                 log_weights,
                 particles,
                 resampling_criterion=always_resample_criterion,
-                resampling_function=systematic_resampling,
+                resampling_function=multinomial_resampling,
                 num_particles=None,
                 use_stop_gradient_resampling=False):
     r"""Do resampling.
@@ -643,7 +674,7 @@ def do_resample(key,
         resampling_criterion (function, No size, default=always_resample_criterion):
             Boolean function for whether to resample.
 
-        resampling_function (function, No size, default=systematic_resampling):
+        resampling_function (function, No size, default=multinomial_resampling):
             Resampling function.
 
         num_particles (int, No size, default=len(log_weights)):
@@ -738,7 +769,7 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
         single_sweep_lsd = particles[1]
         single_sweep_usd = particles[2]
 
-    ts = np.arange(len(true_states))
+    ts = np.arange(len(single_sweep_median))
 
     if fig is not None:
         plt.figure(fig.number)
@@ -750,7 +781,8 @@ def _plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=N
         plt.plot(ts, single_sweep_median[:, _i], c=_c, label=gen_label(_i, 'Predicted'))
         plt.fill_between(ts, single_sweep_lsd[:, _i], single_sweep_usd[:, _i], color=_c, alpha=0.1)
 
-        plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
+        if true_states is not None:
+            plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
 
     # Enable plotting obs here.
     # if obs is not None:

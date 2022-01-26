@@ -32,7 +32,7 @@ def gdm_get_config():
 
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
 
-    parser.add_argument('--temper', default=1.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
     parser.add_argument('--free-parameters', default='dynamics_bias', type=str)              # CSV.  # 'dynamics_bias'
 
@@ -52,7 +52,7 @@ def gdm_get_config():
     parser.add_argument('--vi-epochs', default=1, type=int)  #
 
     parser.add_argument('--num-particles', default=4, type=int)
-    parser.add_argument('--datasets-per-batch', default=32, type=int)
+    parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--lr-p', default=0.001, type=float)
@@ -64,10 +64,10 @@ def gdm_get_config():
     parser.add_argument('--emissions-dim', default=1, type=int)
 
     parser.add_argument('--num-trials', default=100000, type=int)
-    parser.add_argument('--num-val-datasets', default=1000, type=int)
+    parser.add_argument('--num-val-datasets', default=100, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
-    parser.add_argument('--validation-particles', default=1000, type=int)
+    parser.add_argument('--validation-particles', default=250, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
     parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
@@ -93,7 +93,7 @@ def gdm_define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset = gdm_define_true_model_and_data(subkey, env)
+    true_model, true_states, datasets, masks = gdm_define_true_model_and_data(subkey, env)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
@@ -101,14 +101,19 @@ def gdm_define_test(key, env):
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = gdm_define_proposal(subkey, model, dataset, env)
+    proposal, proposal_params, rebuild_prop_fn = gdm_define_proposal(subkey, model, datasets, env)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, dataset, env)
+    tilt, tilt_params, rebuild_tilt_fn = gdm_define_tilt(subkey, model, datasets, env)
+
+    validation_datasets = np.asarray(dc(datasets[:env.config.num_val_datasets]))
+    validation_masks = np.asarray(dc(masks[:env.config.num_val_datasets]))
+    train_datasets = np.asarray(dc(datasets[env.config.num_val_datasets:]))
+    train_masks = np.asarray(dc(masks[env.config.num_val_datasets:]))
 
     # Return this big pile of stuff.
-    ret_model = (true_model, true_states, dataset)
+    ret_model = (true_model, true_states, train_datasets, train_masks, validation_datasets, validation_masks)
     ret_test = (model, get_model_params, rebuild_model_fn)
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
@@ -240,7 +245,7 @@ class GdmProposal(proposals.IndependentGaussianProposal):
     """
 
     # Define the required method for building the inputs.
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
@@ -399,12 +404,14 @@ def gdm_define_true_model_and_data(key, env):
 
     # Sample some data.
     key, subkey = jr.split(key)
-    true_states, dataset = true_model.sample(key=subkey, num_steps=T+1, num_samples=num_trials)
+    true_states, datasets = true_model.sample(key=subkey, num_steps=T+1, num_samples=num_trials)
 
     # For the GDM example we zero out all but the last elements.
-    dataset = dataset.at[:, :-1].set(np.nan)
+    datasets = datasets.at[:, :-1].set(np.nan)
 
-    return true_model, true_states, dataset
+    masks = np.ones((num_trials, T+1))
+
+    return true_model, true_states, datasets, masks
 
 
 def gdm_define_test_model(key, true_model, env):

@@ -46,6 +46,7 @@ def do_fivo_sweep(_param_vals,
                   _rebuild_proposal,
                   _rebuild_tilt,
                   _datasets,
+                  _masks,
                   _num_particles,
                   **_smc_kw_args):
     """
@@ -89,19 +90,21 @@ def do_fivo_sweep(_param_vals,
                                                 _rebuild_proposal,
                                                 _rebuild_tilt,
                                                 _datasets,
+                                                _masks,
                                                 _num_particles,
                                                 **_smc_kw_args)
     else:
-        _single_fivo_sweep_closed = lambda _single_dataset: _do_single_fivo_sweep(_param_vals,
-                                                                                  _key,
-                                                                                  _rebuild_model,
-                                                                                  _rebuild_proposal,
-                                                                                  _rebuild_tilt,
-                                                                                  _single_dataset,
-                                                                                  _num_particles,
-                                                                                  **_smc_kw_args)
+        _single_fivo_sweep_closed = lambda _single_dataset, _single_mask: _do_single_fivo_sweep(_param_vals,
+                                                                                                _key,
+                                                                                                _rebuild_model,
+                                                                                                _rebuild_proposal,
+                                                                                                _rebuild_tilt,
+                                                                                                _single_dataset,
+                                                                                                _single_mask,
+                                                                                                _num_particles,
+                                                                                                **_smc_kw_args)
 
-        _smc_posteriors = jax.vmap(_single_fivo_sweep_closed)(_datasets)
+        _smc_posteriors = jax.vmap(_single_fivo_sweep_closed)(_datasets, _masks)
 
     # Compute the mean of the log marginal.
     _lml = np.mean(_smc_posteriors.log_normalizer)
@@ -115,6 +118,7 @@ def _do_single_fivo_sweep(_param_vals,
                           _rebuild_proposal,
                           _rebuild_tilt,
                           _single_dataset,
+                          _single_mask,
                           _num_particles,
                           **_smc_kw_args):
     """
@@ -152,7 +156,10 @@ def _do_single_fivo_sweep(_param_vals,
     _tilt = _rebuild_tilt(_param_vals[2], _single_dataset, _model)
 
     # Do the sweep.
-    _smc_posteriors = smc(_key, _model, _single_dataset,
+    _smc_posteriors = smc(_key,
+                          _model,
+                          _single_dataset,
+                          masks=_single_mask,
                           proposal=_proposal,
                           initialization_distribution=initial_distribution,
                           tilt=_tilt,
@@ -462,7 +469,7 @@ def log_params(_param_hist, _cur_params):
     return _param_hist
 
 
-def initial_validation(env, key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
+def initial_validation(env, key, true_model, dataset, masks, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
                        num_particles=1000, dset_to_plot=0, init_model=None, GLOBAL_PLOT=True, do_print=None, do_plot=True):
     """
 
@@ -500,20 +507,21 @@ def initial_validation(env, key, true_model, dataset, true_states, opt, do_fivo_
 
     # Test BPF in the true model..
     key, subkey = jr.split(key)
-    true_bpf_posterior = _smc_jit(subkey, true_model, dataset, num_particles=num_particles, resampling_criterion=env.config.resampling_criterion)
+    true_bpf_posterior = _smc_jit(subkey, true_model, dataset, masks, num_particles=num_particles, resampling_criterion=env.config.resampling_criterion)
     true_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
 
     if init_model is not None:
         # Test BPF in the initial model..
         key, subkey = jr.split(key)
-        init_bpf_posterior = _smc_jit(subkey, init_model, dataset, num_particles=num_particles)
+        init_bpf_posterior = _smc_jit(subkey, init_model, dataset, masks, num_particles=num_particles)
         initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
 
     # Test SMC in the initial model.
     key, subkey = jr.split(key)
     initial_fivo_bound, init_smc_posterior = do_fivo_sweep_jitted(subkey, get_params_from_opt(opt),
                                                                   _num_particles=num_particles,
-                                                                  _datasets=dataset)
+                                                                  _datasets=dataset,
+                                                                  _masks=masks)
     initial_lml = -utils.lexp(init_smc_posterior.log_normalizer)
 
     # # Dump any odd and ends of test code in here.
@@ -580,7 +588,7 @@ def initial_validation(env, key, true_model, dataset, true_states, opt, do_fivo_
     return true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
 
 
-def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_kls=None):
+def compare_kls(get_marginals, env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_kls=None):
     """
 
     Args:
@@ -647,14 +655,15 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
     # Compare the KLs of the smoothing distributions.
     if true_bpf_kls is None:
         key, subkey = jr.split(key)
-        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, num_particles=num_particles)
+        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, mask, num_particles=num_particles)
         true_bpf_kls = compute_marginal_kls(true_bpf_posterior.weighted_smoothing_particles)
 
     key, subkey = jr.split(key)
     _, pred_smc_posterior = do_fivo_sweep_jitted(subkey,
                                                  get_params_from_opt(opt),
                                                  _num_particles=num_particles,
-                                                 _datasets=dataset)
+                                                 _datasets=dataset,
+                                                 _masks=mask)
     pred_smc_kls = compute_marginal_kls(pred_smc_posterior.weighted_smoothing_particles)
 
     if plot and env.config.PLOT:
@@ -694,7 +703,7 @@ def compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep
     return true_bpf_kls, pred_smc_kls
 
 
-def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_upc=None):
+def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_upc=None):
     """
 
     Args:
@@ -733,14 +742,15 @@ def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_s
     # Compare the KLs of the smoothing distributions.
     if true_bpf_upc is None:
         key, subkey = jr.split(key)
-        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, num_particles=num_particles)
+        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, mask, num_particles=num_particles)
         true_bpf_upc = calculate_unique_particle_counts(true_bpf_posterior.weighted_smoothing_particles)
 
     key, subkey = jr.split(key)
     _, pred_smc_posterior = do_fivo_sweep_jitted(subkey,
                                                  get_params_from_opt(opt),
                                                  _num_particles=num_particles,
-                                                 _datasets=dataset)
+                                                 _datasets=dataset,
+                                                 _masks=mask)
     pred_smc_upc = calculate_unique_particle_counts(pred_smc_posterior.weighted_smoothing_particles)
 
     if plot and env.config.PLOT:
@@ -763,7 +773,7 @@ def compare_unqiue_particle_counts(env, opt, dataset, true_model, key, do_fivo_s
     return true_bpf_upc, pred_smc_upc
 
 
-def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted,
+def compare_sweeps(env, opt, dataset, mask, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted,
                    tag='', nrep=10, true_states=None, num_particles=None):
     """
 
@@ -797,6 +807,7 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
     final_val_posterior_bpf_true = smc_jitted(subkey,
                                               true_model,
                                               dataset,
+                                              mask,
                                               num_particles=num_particles)
 
     # SMC with tilt.
@@ -804,7 +815,8 @@ def compare_sweeps(env, opt, dataset, true_model, rebuild_model_fn, rebuild_prop
     _, final_val_posterior_fivo_aux = do_fivo_sweep_jitted(subkey,
                                                            get_params_from_opt(opt),
                                                            _num_particles=num_particles,
-                                                           _datasets=dataset,)
+                                                           _datasets=dataset,
+                                                           _masks=mask)
 
     # CODE for plotting lineages.
     for _dset_idx in range(nrep):
@@ -862,6 +874,7 @@ def final_validation(get_marginals,
                      env,
                      opt,
                      dataset,
+                     mask,
                      true_model,
                      rebuild_model_fn,
                      rebuild_prop_fn,

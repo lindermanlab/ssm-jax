@@ -80,7 +80,7 @@ class IndependentGaussianProposal:
         return jax.vmap(self.proposal.init, in_axes=(0, None))\
             (jr.split(key, self.n_proposals), self._dummy_processed_input)
 
-    def apply(self, params, dataset, model, particles, t, p_dist, q_state):
+    def apply(self, params, dataset, model, particles, t, p_dist, q_state, *inputs):
         """
 
         Args:
@@ -109,7 +109,7 @@ class IndependentGaussianProposal:
         else:
             params_at_t = jax.tree_map(lambda args: args[t], params)
 
-        proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state)
+        proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state, *inputs)
         q_dist = self.proposal.apply(params_at_t, proposal_inputs)
 
         # # TODO - Can force the optimal proposal here for the default GDM example..
@@ -137,7 +137,7 @@ class IndependentGaussianProposal:
 
         return q_dist, None
 
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
@@ -172,7 +172,7 @@ class IGPerStepProposal(IndependentGaussianProposal):
 
 class IGSingleObsProposal(IndependentGaussianProposal):
 
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
         """
 
         """
@@ -195,7 +195,7 @@ class IGWindowProposal(IndependentGaussianProposal):
     # window_length = 2
 
     # We need to define the method for generating the inputs.
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, *_inputs):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
         """
 
         """
@@ -257,14 +257,14 @@ def rebuild_proposal(proposal, proposal_structure):
         # Proposal takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
         if proposal_structure == 'DIRECT':
 
-            def _proposal(particles, t, p_dist, q_state):
-                z_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state)
+            def _proposal(particles, t, p_dist, q_state, *inputs):
+                z_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
                 return z_dist, new_q_state
 
         elif proposal_structure == 'RESQ':
 
-            def _proposal(particles, t, p_dist, q_state):
-                q_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state)
+            def _proposal(particles, t, p_dist, q_state, *inputs):
+                q_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
                 z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist.mean() + q_dist.mean(),
                                                               covariance_matrix=q_dist.covariance())
                 return z_dist, new_q_state
