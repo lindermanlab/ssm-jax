@@ -71,16 +71,16 @@ def do_config():
         print('No model specified, defaulting to: ', model)
 
     if 'LDS' in model:
-        from ssm.inference._test_fivo_lds import lds_get_config as get_config
+        from ssm.inference._test_fivo_lds import get_config as get_config
     elif 'GDM' in model:
-        from ssm.inference._test_fivo_gdm import gdm_get_config as get_config
+        from ssm.inference._test_fivo_gdm import get_config as get_config
     elif 'SVM' in model:
-        from ssm.inference._test_fivo_svm import svm_get_config as get_config
+        from ssm.inference._test_fivo_svm import get_config as get_config
     else:
         raise NotImplementedError()
 
     # Go and get the model-specific config.
-    config = get_config()
+    config, do_print, define_test, do_plot, get_marginals = get_config()
 
     # Define the parameter names that we are going to learn.
     # This has to be a tuple of strings that index which args we will pull out.
@@ -107,22 +107,25 @@ def do_config():
     env.config.wandb_project = PROJECT
     env.config.local_system = LOCAL_SYSTEM
 
-    # # Grab some git information.
-    # try:
-    #     repo = git.Repo(search_parent_directories=True)
-    #     env.config.git_commit = repo.head.object.hexsha
-    #     env.config.git_branch = repo.active_branch
-    #     env.config.git_is_dirty = repo.is_dirty()
-    # except:
-    #     print('Failed to grab git info...')
-    #     env.config.git_commit = 'NoneFound'
-    #     env.config.git_branch = 'NoneFound'
-    #     env.config.git_is_dirty = 'NoneFound'
+    # Grab some git information.
+    try:
+        repo = git.Repo(search_parent_directories=True)
+        env.config.git_commit = repo.head.object.hexsha
+        env.config.git_branch = repo.active_branch
+        env.config.git_is_dirty = repo.is_dirty()
+    except:
+        print('Failed to grab git info...')
+        env.config.git_commit = 'NoneFound'
+        env.config.git_branch = 'NoneFound'
+        env.config.git_is_dirty = 'NoneFound'
+
+    # Set up the first key
+    key = jr.PRNGKey(env.config.seed)
 
     # Do some final bits.
     if len(env.config.free_parameters) == 0: print('\nWARNING: NO FREE MODEL PARAMETERS...\n')
     pprint(env.config)
-    return env
+    return env, key, do_print, define_test, do_plot, get_marginals
 
 
 def main():
@@ -133,44 +136,11 @@ def main():
     with possibly_disable_jit(DISABLE_JIT):
 
         # Set up the experiment and log to WandB
-        env = do_config()
-
-        # Import the right functions.
-        if 'GDM' in env.config.model:
-            from ssm.inference._test_fivo_gdm import gdm_do_print as do_print
-            from ssm.inference._test_fivo_gdm import gdm_define_test as define_test
-            from ssm.inference._test_fivo_gdm import gdm_do_plot as do_plot
-            from ssm.inference._test_fivo_gdm import gdm_get_true_target_marginal as get_marginals
-
-        elif 'LDS' in env.config.model:
-            from ssm.inference._test_fivo_lds import lds_do_print as do_print
-            from ssm.inference._test_fivo_lds import lds_define_test as define_test
-            from ssm.inference._test_fivo_lds import lds_do_plot as do_plot
-            from ssm.inference._test_fivo_lds import lds_get_true_target_marginal as get_marginals
-
-        elif 'SVM' in env.config.model:
-            from ssm.inference._test_fivo_svm import svm_do_print as do_print
-            from ssm.inference._test_fivo_svm import svm_define_test as define_test
-            from ssm.inference._test_fivo_svm import svm_do_plot as do_plot
-            from ssm.inference._test_fivo_svm import svm_get_true_target_marginal as get_marginals
-
-        else:
-            raise NotImplementedError()
+        env, key, do_print, define_test, do_plot, get_marginals = do_config()
 
         # Define some holders that will be overwritten later.
-        true_nlml = 0.0
-        em_log_marginal_likelihood = 0.0
-        pred_em_nlml = 0.0
-        filt_fig = None
-        sweep_fig_filter = None
-        sweep_fig_smooth = None
-        true_bpf_nlml = 0.0
-        true_bpf_kls = None
-        true_bpf_upc = None
-        true_bpf_ess = None
-
-        # Set up the first key
-        key = jr.PRNGKey(env.config.seed)
+        true_nlml, em_log_marginal_likelihood, pred_em_nlml, true_bpf_nlml = 0.0, 0.0, 0.0, 0.0
+        filt_fig, sweep_fig_filter, sweep_fig_smooth, true_bpf_kls, true_bpf_upc, true_bpf_ess = None, None, None, None, None, None,
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 

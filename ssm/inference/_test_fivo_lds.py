@@ -18,7 +18,7 @@ import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 
 
-def lds_get_config():
+def get_config():
     """
 
     Returns:
@@ -86,7 +86,7 @@ def lds_get_config():
     return config
 
 
-def lds_define_test(key, env):
+def define_test(key, env):
     """
 
     Args:
@@ -99,29 +99,34 @@ def lds_define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, dataset = lds_define_true_model_and_data(subkey, env)
+    true_model, true_states, datasets, masks = define_true_model_and_data(subkey, env)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
-    model, get_model_params, rebuild_model_fn = lds_define_test_model(subkey, true_model, env)
+    model, get_model_params, rebuild_model_fn = define_test_model(subkey, true_model, env)
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = lds_define_proposal(subkey, model, dataset, env)
+    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, dataset, env)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = lds_define_tilt(subkey, model, dataset, env)
+    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, dataset, env)
+
+    validation_datasets = np.asarray(dc(datasets[:env.config.num_val_datasets]))
+    validation_masks = np.asarray(dc(masks[:env.config.num_val_datasets]))
+    train_datasets = np.asarray(dc(datasets[env.config.num_val_datasets:]))
+    train_masks = np.asarray(dc(masks[env.config.num_val_datasets:]))
 
     # Return this big pile of stuff.
-    ret_model = (true_model, true_states, dataset)
+    ret_model = (true_model, true_states, train_datasets, train_masks, validation_datasets, validation_masks)
     ret_test = (model, get_model_params, rebuild_model_fn)
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
     return ret_model, ret_test, ret_prop, ret_tilt
 
 
-def lds_define_tilt(subkey, model, dataset, env):
+def define_tilt(subkey, model, dataset, env):
     """
 
     Args:
@@ -191,7 +196,7 @@ def lds_define_tilt(subkey, model, dataset, env):
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def lds_define_proposal(subkey, model, dataset, env):
+def define_proposal(subkey, model, dataset, env):
     """
 
     Args:
@@ -279,7 +284,7 @@ def lds_define_proposal(subkey, model, dataset, env):
     return proposal, proposal_params, rebuild_prop_fn
 
 
-def lds_get_true_target_marginal(model, data):
+def get_true_target_marginal(model, data):
     """
     Take in a model and some data and return the tfd distribution representing the marginals of true posterior.
     Args:
@@ -303,7 +308,7 @@ def lds_get_true_target_marginal(model, data):
     return pred_em_marginal
 
 
-def lds_define_true_model_and_data(key, env):
+def define_true_model_and_data(key, env):
     """
 
     Args:
@@ -369,12 +374,15 @@ def lds_define_true_model_and_data(key, env):
 
     # Sample some data.
     key, subkey = jr.split(key)
-    true_states, dataset = true_model.sample(key=subkey, num_steps=T+1, num_samples=num_trials)
+    true_states, datasets = true_model.sample(key=subkey, num_steps=T+1, num_samples=num_trials)
 
-    return true_model, true_states, dataset
+    # Set up the mask as all visible.
+    masks = np.ones((num_trials, T+1))
+
+    return true_model, true_states, datasets, masks
 
 
-def lds_define_test_model(key, true_model, env):
+def define_test_model(key, true_model, env):
     """
 
     Args:
@@ -436,7 +444,7 @@ def lds_define_test_model(key, true_model, env):
     return default_model, get_free_model_params_fn, rebuild_model_fn
 
 
-def lds_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
+def do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params,
                 param_figs):
     """
     NOTE - removed proposal and tilt parameters here as they will be too complex.
@@ -488,7 +496,7 @@ def lds_do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_pa
     return param_figs
 
 
-def lds_do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
+def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
     """
 
     Args:
