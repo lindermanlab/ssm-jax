@@ -245,8 +245,10 @@ def define_proposal(subkey, model, dataset, env):
 
     # Define the proposal that we will use.
     # Stock proposal input form is (dataset, model, particles, t, p_dist, ).
-    dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
-    dummy_p_dist = model.dynamics_distribution(dummy_particles)
+    n_dummy_particles = 2
+    dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(n_dummy_particles, ), )
+    dummy_obs = np.repeat(np.expand_dims(dataset[0, 0], 0), n_dummy_particles, axis=0)
+    dummy_p_dist = model.dynamics_distribution(dummy_particles, covariates=(dummy_obs, ))
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # Configure the proposal structure.
@@ -268,7 +270,7 @@ def define_proposal(subkey, model, dataset, env):
     if env.config.proposal_fn_family == 'MLP':
 
         fcnet_hidden_sizes = env.config.fcnet_hidden_sizes
-        trunk_fn = nn_util.MLP(fcnet_hidden_sizes, output_layer_relu=True)
+        trunk_fn = nn_util.MLP(fcnet_hidden_sizes, output_layer_activation=True)
         head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
         head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0])
 

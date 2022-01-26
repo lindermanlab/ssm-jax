@@ -387,7 +387,11 @@ class VrnnFilteringProposal(proposals.IndependentGaussianProposal):
 
         _model_latent_shape = (_model.latent_dim, )
 
-        _is_batched = (_model_latent_shape != _particles.shape)
+        if type(_hidden_state) == tuple:
+            _is_batched = (_model_latent_shape != _hidden_state[0].shape)
+        else:
+            _is_batched = (_model_latent_shape != _hidden_state.shape)
+
         if not _is_batched:
             return nn_util.vectorize_pytree(_proposal_inputs)
         else:
