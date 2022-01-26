@@ -12,12 +12,15 @@ import flax.linen as nn
 from jax.tree_util import register_pytree_node_class
 from ssm.base import SSM
 from ssm.utils import Verbosity, random_rotation, make_named_tuple, ensure_has_batch_dim, auto_batch
+from ssm import nn_util
 
 import tensorflow_probability.substrates.jax as tfp
 tfd = tfp.distributions
 
 from ssm.distributions import MultivariateNormalBlockTridiag
 SVMPosterior = MultivariateNormalBlockTridiag
+
+import ssm.inference.proposals as proposals
 
 
 def _iterate_rnn(_rnn_obj, _params, _prev_rnn_state, _input_rnn):
@@ -357,213 +360,37 @@ class VRNN(SSM):
         return state_history[1], obs_history
 
 
-# def define_vrnn_proposal(_key,
-#                          _dataset,
-#                          _vrnn: VRNN):
-#
-#     trunk_fn = None
-#     head_mean_fn = nn.Dense(val_latent)
-#     head_log_var_fn = nn.Dense(val_latent)
-#
-#     particles = val_rnn_state
-#     q_state = val_data_encoded
-#
-#     # Format: (dataset, model, particles, t, p_dist, q_state)
-#     dummy_particles = np.repeat(np.expand_dims(val_rnn_state, 0), 2)
-#     dummy_p_dist = _vrnn.dynamics_distribution(dummy_particles, )
-#     stock_proposal_input = (_dataset, _vrnn, dummy_particles, 0, dummy_p_dist)
-#
-#     return proposals.IndependentGaussianProposal(1, )
+class VrnnFilteringProposal(proposals.IndependentGaussianProposal):
+    r"""
+    Filtering proposal as initially described in the VRNN paper.
 
+    Takes as input the encoded observation and the current rnn state:
+        $z_t | x_t \sim N ( \mu_t , diag(\sigma_t^2) )$
 
-# def define_vrnn_model(_key):
-#
-#     kernel_init = lambda *args: nn.initializers.lecun_normal()(*args) * 0.0001
-#
-#     rnn = nn.Dense(rnn_state_dim, kernel_init=kernel_init)
-#     prior = nn.Dense(2 * latent_dim, kernel_init=kernel_init)
-#     latent_decoder = nn.Dense(latent_encoded_dim, kernel_init=kernel_init)
-#     full_decoder = nn.Dense(2 * emissions_dim, kernel_init=kernel_init)
-#     data_encoder = nn.Dense(emissions_encoded_dim, kernel_init=kernel_init)
-#
-#     input_prior = val_rnn_state
-#     input_rnn = np.concatenate((val_rnn_state, val_latent_decoded, val_data_encoded))
-#     input_latent_decoder = val_latent
-#     input_full_decoder = np.concatenate((val_rnn_state, val_latent_decoded))
-#     input_data_encoder = val_obs
-#
-#     _key, *subkeys = jr.split(_key, num=6)
-#     params_rnn = rnn.init(subkeys[0], input_rnn)
-#     params_prior = prior.init(subkeys[1], input_prior)
-#     params_latent_decoder = latent_decoder.init(subkeys[2], input_latent_decoder)
-#     params_full_decoder = full_decoder.init(subkeys[3], input_full_decoder)
-#     params_data_encoder = data_encoder.init(subkeys[4], input_data_encoder)
-#
-#     rebuild_rnn = lambda _params: rnn.bind(_params)
-#     rebuild_prior = lambda _params: prior.bind(_params)
-#     rebuild_latent_decoder = lambda _params: latent_decoder.bind(_params)
-#     rebuild_full_decoder = lambda _params: full_decoder.bind(_params)
-#     rebuild_data_encoder = lambda _params: data_encoder.bind(_params)
-#
-#     return VRNN(latent_dim,
-#                 emissions_dim,
-#                 latent_encoded_dim,
-#                 emissions_encoded_dim,
-#                 rnn_state_dim,
-#                 rebuild_rnn,
-#                 rebuild_prior,
-#                 rebuild_latent_decoder,
-#                 rebuild_full_decoder,
-#                 rebuild_data_encoder,
-#                 params_rnn,
-#                 params_prior,
-#                 params_latent_decoder,
-#                 params_full_decoder,
-#                 params_data_encoder, )
+    where:
+        $[\mu_t \sigma_t^2] = \phi_{\tau}^{enc} ( \phi_{\tau}^x (x_t) )$
 
+    Essentially the same as `proposals.IGSingleObsProposal` but where only the first
+    element of `particles` is picked off in the input.
 
-if __name__ == '__main__':
+    """
 
-    GLOBAL_data = jr.uniform(key=jr.PRNGKey(2), shape=(5, 11, 2))
-    n_particles = 20
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
+        """
 
-    rnn_cell = nn.LSTMCell()
-    GLOBAL_carry = rnn_cell.initialize_carry(jr.PRNGKey(0), batch_dims=(), size=15)
-    init_params = rnn_cell.init(jr.PRNGKey(1), GLOBAL_carry, GLOBAL_data[0, 0])
-    rnn_cell = rnn_cell.bind(init_params)
+        """
+        assert self.proposal_window_length == 1, "ERROR: Must have a single-length window."
 
-    GLOBAL_particles_carry = jax.tree_map(lambda _a: np.repeat(np.expand_dims(_a, 0), n_particles, axis=0), GLOBAL_carry)
+        # This proposal gets the single datapoint and the current particles.
+        _hidden_state = _particles[0]
+        _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset, _t), _hidden_state)
 
-    # Do it in non-jit land.
-    next_carry_nonjit = rnn_cell(GLOBAL_particles_carry, GLOBAL_data[0, 0])
+        _model_latent_shape = (_model.latent_dim, )
 
-    # Now do it in jit land.
-    iterate_jit = jax.jit(rnn_cell.apply)
-    iterate_jit_vmap = jax.vmap(iterate_jit, in_axes=(None, 0, None))
-    next_carry_jit = iterate_jit_vmap(init_params, GLOBAL_particles_carry, GLOBAL_data[0, 0])
-    next_carry_jit = iterate_jit_vmap(init_params, GLOBAL_particles_carry, GLOBAL_data[0, 0])
-    next_carry_jit = iterate_jit_vmap(init_params, GLOBAL_particles_carry, GLOBAL_data[0, 0])
-    assert np.all(np.isclose(next_carry_nonjit[0][0], next_carry_jit[0][0])), "JIT not equal non-Jit."
-
-    # now wrap it in a class
-    class Foo():
-
-        def __init__(self, _rnn_params, _rebuild_rnn):
-            self.rnn_params = _rnn_params
-            self.rebuild_rnn = _rebuild_rnn
-            self._rnn_obj = self.rebuild_rnn(self.rnn_params)
-
-        def apply(self, _data, _carry):
-
-            _rnn_carry = _carry.sample(seed=jr.PRNGKey(0))
-            _iterate_jit = jax.jit(self._rnn_obj.apply)
-            _iterate_jit_vmap = jax.vmap(_iterate_jit, in_axes=(None, 0, None))
-            _next_carry_jit, _hs = _iterate_jit_vmap(self.rnn_params, (_rnn_carry[..., 0, :], _rnn_carry[..., 1, :]), _data)
-
-            # _next_carry_jit, _hs = self._rnn_obj((_carry[..., 0, :], _carry[..., 1, :]), _data)
-
-            _next_carry_jit = np.stack(_next_carry_jit).transpose(1, 0, 2)
-
-            _next_carry_dist = tfd.Independent(tfd.Deterministic(_next_carry_jit), reinterpreted_batch_ndims=1)
-
-            return _next_carry_dist, _hs
-
-        def step(self, _carry, _t):
-            _particles_carry, _data = _carry
-            _iterated, _hs = self.apply(_data[_t], _particles_carry)
-            return (_iterated, _data), (_hs)
-
-        def do_sweep(self, _data):
-            print('Uncompiled sweep.')
-            _carry = rnn_cell.initialize_carry(jr.PRNGKey(0), batch_dims=(), size=15)
-            _particles_carry = jax.tree_map(lambda _a: np.repeat(np.expand_dims(_a, 0), n_particles, axis=0), _carry)
-
-            _particles_carry = np.stack(_particles_carry).transpose(1, 0, 2)
-
-            _particles_carry_dist = tfd.Independent(tfd.Deterministic(_particles_carry), reinterpreted_batch_ndims=1)
-
-            _final_carry, _history = jax.lax.scan(self.step,
-                                           (_particles_carry_dist, _data),
-                                           np.arange(len(_data)))
-
-            _val = _history[-1].sum()
-
-            return _val
-
-
-    # particles_carry = np.stack(GLOBAL_particles_carry).transpose(1, 0, 2)
-    rebuild_rnn = lambda _p: rnn_cell.bind(_p)
-    # foo = Foo(init_params, rebuild_rnn)
-    # next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
-    # next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
-    # next_carry_class = foo.apply(GLOBAL_data[0, 0], particles_carry)
-    # assert np.all(np.isclose(next_carry_nonjit[0][0], next_carry_class[0][:, 0])), "Class not equal non-Jit."
-
-    # Now take the grad.
-    def loss_fn(_params, _rebuild_rnn, _data):
-
-        _foo = Foo(_params, _rebuild_rnn)
-        _final_val = _foo.do_sweep(_data)
-        _loss = np.mean(np.abs(_final_val))
-
-        return _loss
-
-    loss_jitted = jax.jit(loss_fn, static_argnums=1)
-    loss_closed = lambda _params, _data: loss_jitted(_params, rebuild_rnn, _data)
-    loss_vmaped = jax.vmap(loss_closed, in_axes=(None, 0))
-
-    loss_valgrad = jax.value_and_grad(lambda _params, _data: np.mean(loss_vmaped(_params, _data)), argnums=0)
-
-    loss_j_1, grad_j_1 = loss_valgrad(init_params, GLOBAL_data[0:2])
-    loss_j_2, grad_j_2 = loss_valgrad(init_params, GLOBAL_data[1:3])
-
-    with jax.disable_jit():
-        loss_1, grad_1 = loss_valgrad(init_params, GLOBAL_data[0:2])
-        loss_2, grad_2 = loss_valgrad(init_params, GLOBAL_data[1:3])
-
-    p = 0
-
-
-# if __name__ == '__main__':
-#
-#     rnn_state_dim = 10
-#     latent_dim = 11
-#     emissions_dim = 12
-#     latent_encoded_dim = 5
-#     emissions_encoded_dim = 6
-#
-#     val_rnn_state = np.zeros(rnn_state_dim)
-#     val_obs = np.zeros(emissions_dim)
-#     val_latent = np.zeros(latent_dim)
-#     val_latent_decoded = np.zeros(latent_encoded_dim)
-#     val_data_encoded = np.zeros(emissions_encoded_dim)
-#
-#     key = jr.PRNGKey(0)
-#     key, subkey = jr.split(key)
-#     vrnn = define_vrnn_model(subkey)
-#
-#     # Do some jit tests.
-#     def fn(_key, _vrnn):
-#         return _vrnn.emissions_shape
-#
-#     jitted = jax.jit(fn)
-#
-#     a = jitted(jr.PRNGKey(0), vrnn)
-#     b = jitted(jr.PRNGKey(1), vrnn)
-#     c = jax.vmap(jitted, in_axes=(0, None))(jr.split(jr.PRNGKey(0), 10), vrnn, )
-#
-#     # Test some iteration stuff.
-#     key, subkey = jr.split(key)
-#     initial_particles = vrnn.initial_distribution().sample(seed=subkey)
-#
-#     # Generate the initial observations.  NOTE - the subroutine requires previous and current obs, so just duplicate.
-#     key, subkey = jr.split(key)
-#     initial_obs = (vrnn.emissions_distribution(initial_particles).sample(seed=subkey),
-#                    vrnn.emissions_distribution(initial_particles).sample(seed=subkey))
-#
-#     iterated = vrnn.dynamics_distribution(initial_particles, covariates=initial_obs)
-#
-#     print('Done')
-
-
+        _is_batched = (_model_latent_shape != _particles.shape)
+        if not _is_batched:
+            return nn_util.vectorize_pytree(_proposal_inputs)
+        else:
+            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
+            return _vmapped(*_proposal_inputs)
 

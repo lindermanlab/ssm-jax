@@ -155,7 +155,8 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
 
     # Test SMC in the initial model.
     key, subkey = jr.split(key)
-    initial_fivo_bound, init_smc_posterior = do_fivo_sweep_jitted(subkey, get_params_from_opt(opt),
+    initial_fivo_bound, init_smc_posterior = do_fivo_sweep_jitted(subkey,
+                                                                  get_params_from_opt(opt),
                                                                   _num_particles=num_particles,
                                                                   _datasets=dataset,
                                                                   _masks=masks)

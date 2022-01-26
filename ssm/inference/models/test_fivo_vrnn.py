@@ -11,7 +11,7 @@ import pickle
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
-from ssm.vrnn.models import VRNN
+from ssm.vrnn.models import VRNN, VrnnFilteringProposal
 import ssm.nn_util as nn_util
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
@@ -36,13 +36,15 @@ def get_config():
     parser.add_argument('--use-sgr', default=1, type=int, help="{0, 1}.")
     parser.add_argument('--temper', default=0.0, type=float, help="{0.0 to disable,  >0.1 to temper}")
 
+    parser.add_argument('--use-bootstrap-initial-distribution', default=1, type=int, help="Force sweeps to use the model for initialization.")
+
     # {'params_rnn', 'params_prior', 'params_decoder_latent', 'params_decoder_full', 'params_encoder_data'}.
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data', type=str)  # CSV.
 
-    parser.add_argument('--proposal-structure', default='BOOTSTRAP', type=str)  # {None/'NONE'/'BOOTSTRAP', 'DIRECT', 'RESQ', }
-    parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)  # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}
-    parser.add_argument('--proposal-window-length', default=2, type=int)  # {int, None}.
-    parser.add_argument('--proposal-fn-family', default='VRNN', type=str)  # {'VRNN'}.
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING'}
+    parser.add_argument('--proposal-window-length', default=1, type=int)  # {int, None}.
+    parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
     parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT', 'VRNN'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
@@ -96,6 +98,19 @@ def get_config():
 
     assert not config['vi_use_tilt_gradient'], "NO IDEA IF THIS WILL WORK YET..."
     assert len(config['free_parameters'].split(',')) == 5, "NOT OPTIMIZING ALL VRNN PARAMETERS..."
+
+    # Quickly do some type conversion here.
+    # Determine the size of the MLP link functions.
+    if config['fcnet_hidden_sizes'] is None:
+        config['fcnet_hidden_sizes'] = [config['latent_dim']]
+    else:
+        if type(config['fcnet_hidden_sizes']) == str:
+            config['fcnet_hidden_sizes'] = tuple(int(_s) for _s in ('10,10'.replace(' ', '').split(',')))
+        else:
+            try:
+                np.zeros(config['fcnet_hidden_sizes'])
+            except:
+                raise RuntimeError("Invalid size specification.")
 
     return config, do_print, define_test, do_plot, get_true_target_marginal
 
@@ -232,52 +247,30 @@ def define_proposal(subkey, model, dataset, env):
     # Stock proposal input form is (dataset, model, particles, t, p_dist, ).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
     dummy_p_dist = model.dynamics_distribution(dummy_particles)
-    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist,)
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # Configure the proposal structure.
-    if env.config.proposal_type == 'PERSTEP_ALLOBS':
-        proposal_cls = proposals.IndependentGaussianProposal
-        n_props = len(dataset[0])
-        proposal_window_length = None
+    if env.config.proposal_type == 'VRNN_FILTERING':
+        assert env.config.use_bootstrap_initial_distribution, "Error: must use bootstrap/model initialization in VRNN."
 
-    elif env.config.proposal_type == 'PERSTEP_SINGLEOBS':
-        proposal_cls = proposals.IGSingleObsProposal
-        n_props = len(dataset[0])
-        proposal_window_length = None
-
-    elif env.config.proposal_type == 'SINGLE_SINGLEOBS':
-        proposal_cls = proposals.IGSingleObsProposal
-        n_props = 1
-        proposal_window_length = None
-
-        # TODO - test this.
-        raise NotImplementedError()
-
-    elif env.config.proposal_type == 'PERSTEP_WINDOW':
-        proposal_cls = proposals.IGWindowProposal
-        n_props = len(dataset[0])
-        proposal_window_length = env.config.proposal_window_length
-
-    elif env.config.proposal_type == 'SINGLE_WINDOW':
-        proposal_cls = proposals.IGWindowProposal
-        n_props = 1
-        proposal_window_length = env.config.proposal_window_length
+        proposal_cls = VrnnFilteringProposal
+        n_props = 1  # NOTE - we always use the bootstrap so we just use a single proposal.
+        proposal_window_length = 1
+        dummy_q_state = None
 
     else:
         raise NotImplementedError()
 
-    # Fork on the specified definition of the proposal.
-    if env.config.proposal_fn_family == 'VRNN':
-        raise NotImplementedError()
+    # Not define the input given the structure of the proposal.
+    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist, dummy_q_state)
 
-        # trunk_fn = None
-        # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=kernel_init)
-        # head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=nn.initializers.zeros)
-        #
-        # # trunk_fn = nn_util.MLP([6, ], output_layer_relu=True)
-        # # head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
-        # # head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
+    # Fork on the specified definition of the proposal.
+    if env.config.proposal_fn_family == 'MLP':
+
+        fcnet_hidden_sizes = env.config.fcnet_hidden_sizes
+        trunk_fn = nn_util.MLP(fcnet_hidden_sizes, output_layer_relu=True)
+        head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
+        head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0])
 
     else:
         raise NotImplementedError()
@@ -383,15 +376,7 @@ def define_true_model_and_data(key, env):
     emissions_encoded_dim = env.config.obs_enc_dim if env.config.obs_enc_dim is not None else latent_dim
     latent_encoded_dim = env.config.latent_enc_dim if env.config.latent_enc_dim is not None else latent_dim
     rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else latent_dim
-
-    # Determine the size of the MLP link functions.
-    if env.config.fcnet_hidden_sizes is None:
-        fcnet_hidden_sizes = [latent_dim]
-    else:
-        if type(env.config.fcnet_hidden_sizes) == str:
-            fcnet_hidden_sizes = tuple(int(_s) for _s in ('10,10'.replace(' ', '').split(',')))
-        else:
-            fcnet_hidden_sizes = env.config.fcnet_hidden_sizes
+    fcnet_hidden_sizes = env.config.fcnet_hidden_sizes
 
     # We have to do something a bit funny to the full decoder to make sure that it is approximately correct.
     output_bias_init = lambda *_args: np.log(dataset_means)
@@ -493,7 +478,7 @@ def define_test_model(key, true_model, env):
 
     if len(env.config.free_parameters) > 0:
 
-        print('\n\n\n[WARNING]: This way of initializing parameters is crap.\n\n\n')
+        print('\n\n\n[WARNING]: This way of initializing parameters is crap.')
 
         # Get the default parameters from the true model.
         true_params = fivo.get_model_params_fn(true_model)

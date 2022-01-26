@@ -42,20 +42,18 @@ class IndependentGaussianProposal:
 
     """
 
-    def __init__(self, n_proposals, stock_proposal_input_without_q_state, dummy_output,
+    def __init__(self, n_proposals, stock_proposal_input, dummy_output,
                  trunk_fn=None, head_mean_fn=None, head_log_var_fn=None, proposal_window_length=None):
 
         # Work out the number of proposals.
-        assert (n_proposals == 1) or (n_proposals == 2) or (n_proposals == len(stock_proposal_input_without_q_state[0])), \
+        assert (n_proposals == 1) or (n_proposals == 2) or (n_proposals == len(stock_proposal_input[0])), \
             'Can only use a single proposal, two proposals (init and single window), or as many proposals as there are states.'
         self.n_proposals = n_proposals
 
         self.proposal_window_length = proposal_window_length
 
         # Re-build the full input that will be provided.
-        q_state = None
-        full_input = (*stock_proposal_input_without_q_state, q_state)
-        self._dummy_processed_input = self._proposal_input_generator(*full_input)[0]
+        self._dummy_processed_input = self._proposal_input_generator(*stock_proposal_input)[0]
         output_dim = nn_util.vectorize_pytree(dummy_output).shape[0]
 
         # Build out the function approximator.
@@ -168,19 +166,13 @@ class IndependentGaussianProposal:
             return _vmapped(*_proposal_inputs)
 
 
-class IGPerStepProposal(IndependentGaussianProposal):
-    """
-
-    """
-    pass
-
-
 class IGSingleObsProposal(IndependentGaussianProposal):
 
     def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
         """
 
         """
+        assert self.proposal_window_length == 1, "ERROR: Must have a single-length window."
 
         # This proposal gets the single datapoint and the current particles.
         _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset, _t), _particles)
@@ -210,8 +202,8 @@ class IGWindowProposal(IndependentGaussianProposal):
 
         # Zero out the elements outside of the valid range.
         _clipped_dataset = jax.lax.dynamic_slice(_dataset,
-                                                (_t+1, *tuple(0 * _d for _d in _dataset.shape[1:])),
-                                                (self.proposal_window_length, *_dataset.shape[1:]))
+                                                 (_t+1, *tuple(0 * _d for _d in _dataset.shape[1:])),
+                                                 (self.proposal_window_length, *_dataset.shape[1:]))
         _masked_dataset = _clipped_dataset * np.expand_dims(_to_insert.astype(np.int32), 1)
 
         # We will pass in whole data into the tilt and then filter out as required.

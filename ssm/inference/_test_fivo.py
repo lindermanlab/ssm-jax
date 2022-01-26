@@ -1,6 +1,7 @@
 """
 Wrapper for exploring FIVO..
 """
+
 import jax
 import jax.numpy as np
 import matplotlib.pyplot as plt
@@ -123,6 +124,7 @@ def main():
                                _datasets,
                                _masks,
                                _num_particles,
+                               env.config.use_bootstrap_initial_distribution,
                                **{'use_stop_gradient_resampling': env.config.use_sgr,
                                   'tilt_temperature': _temperature,
                                   'resampling_criterion': env.config.resampling_criterion})

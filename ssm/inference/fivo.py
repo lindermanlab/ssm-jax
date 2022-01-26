@@ -139,6 +139,7 @@ def do_fivo_sweep(_param_vals,
                   _datasets,
                   _masks,
                   _num_particles,
+                  _use_bootstrap_initial_distribution,
                   **_smc_kw_args):
     """
     Do a single FIVO sweep.  This essentially just wraps a call to the SMC sweep, but where the model and proposal
@@ -165,6 +166,8 @@ def do_fivo_sweep(_param_vals,
 
         _num_particles:           Integer number of particles to use in the sweep.
 
+        _use_bootstrap_initial_distribution: Set to true to overwride other behaviours and use the model for initialization.
+
         _smc_kw_args:             Keyword arguments to pass into the SMC routine.
 
     Returns:
@@ -183,6 +186,7 @@ def do_fivo_sweep(_param_vals,
                                                 _datasets,
                                                 _masks,
                                                 _num_particles,
+                                                _use_bootstrap_initial_distribution,
                                                 **_smc_kw_args)
     else:
         _single_fivo_sweep_closed = lambda _single_dataset, _single_mask: _do_single_fivo_sweep(_param_vals,
@@ -193,6 +197,7 @@ def do_fivo_sweep(_param_vals,
                                                                                                 _single_dataset,
                                                                                                 _single_mask,
                                                                                                 _num_particles,
+                                                                                                _use_bootstrap_initial_distribution,
                                                                                                 **_smc_kw_args)
 
         _smc_posteriors = jax.vmap(_single_fivo_sweep_closed)(_datasets, _masks)
@@ -211,6 +216,7 @@ def _do_single_fivo_sweep(_param_vals,
                           _single_dataset,
                           _single_mask,
                           _num_particles,
+                          _use_bootstrap_initial_distribution,
                           **_smc_kw_args):
     """
 
@@ -222,6 +228,7 @@ def _do_single_fivo_sweep(_param_vals,
         _rebuild_tilt:
         _single_dataset:
         _num_particles:
+        _use_bootstrap_initial_distribution:
         **_smc_kw_args:
 
     Returns:
@@ -235,13 +242,13 @@ def _do_single_fivo_sweep(_param_vals,
     _proposal = _rebuild_proposal(_param_vals[1], _single_dataset, _model)
 
     # Build the initial distribution from the zeroth proposal.
-    if _proposal is not None:
+    if (_proposal is None) or _use_bootstrap_initial_distribution:
+        initial_distribution = None
+    else:
         initial_distribution = lambda *_args: _proposal(np.zeros(_model.latent_dim, ),
                                                         0,
                                                         _model.initial_distribution(),
                                                         None)
-    else:
-        initial_distribution = _proposal
 
     # Reconstruct the tilt.
     _tilt = _rebuild_tilt(_param_vals[2], _single_dataset, _model)
