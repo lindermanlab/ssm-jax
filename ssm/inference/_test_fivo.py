@@ -41,6 +41,9 @@ default_verbosity = Verbosity.DEBUG
 # Disable jit for inspection.
 DISABLE_JIT = False
 
+# Set the default model for local debugging.
+DEFAULT_MODEL = 'SVM'
+
 # Import and configure WandB.
 try:
     import wandb
@@ -58,7 +61,7 @@ def main():
     with possibly_disable_jit(DISABLE_JIT):
 
         # Set up the experiment and log to WandB
-        env, key, do_print, define_test, do_plot, get_marginals = fivo.do_fivo_config(USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM)
+        env, key, do_print, define_test, do_plot, get_marginals = fivo.do_fivo_config(DEFAULT_MODEL, USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM)
 
         # Define some holders that will be overwritten later.
         true_nlml, em_log_marginal_likelihood, pred_em_nlml, true_bpf_nlml = 0.0, 0.0, 0.0, 0.0

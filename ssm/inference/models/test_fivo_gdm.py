@@ -230,6 +230,7 @@ def define_tilt(subkey, model, dataset, env):
     head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0], bias_init=b_init)
 
     # Define the tilt itself.
+    print('Defining {} tilts.'.format(n_tilts))
     tilt = tilt_fn(n_tilts=n_tilts,
                    tilt_input=stock_tilt_input,
                    head_mean_fn=head_mean_fn,
@@ -312,6 +313,7 @@ def define_proposal(subkey, model, dataset, env):
     n_props = len(dataset[0])
 
     # Define the proposal itself.
+    print('Defining {} proposals.'.format(n_props))
     proposal = GdmProposal(n_proposals=n_props,
                            stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
                            dummy_output=dummy_proposal_output,

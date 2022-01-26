@@ -195,6 +195,7 @@ def define_tilt(subkey, model, dataset, env):
     # head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
     # Define the tilts themselves.
+    print('Defining {} tilts.'.format(n_tilts))
     tilt = tilt_fn(n_tilts=n_tilts,
                    tilt_input=stock_tilt_input,
                    trunk_fn=trunk_fn,
@@ -280,6 +281,7 @@ def define_proposal(subkey, model, dataset, env):
         raise NotImplementedError()
 
     # Define the proposal itself.
+    print('Defining {} proposals.'.format(n_props))
     proposal = proposal_cls(n_proposals=n_props,
                             stock_proposal_input=stock_proposal_input,
                             dummy_output=dummy_proposal_output,

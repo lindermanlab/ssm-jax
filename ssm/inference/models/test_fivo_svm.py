@@ -74,7 +74,7 @@ def get_config():
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--model', default='SVM', type=str)
     parser.add_argument('--seed', default=10, type=int)
-    parser.add_argument('--log-group', default='debug', type=str)  # {'debug', 'gdm-v1.0'}
+    parser.add_argument('--log-group', default='debug-svm', type=str)  # {'debug', 'gdm-v1.0'}
     parser.add_argument('--validation-interval', default=2500, type=int)
     parser.add_argument('--plot-interval', default=1, type=int)
     parser.add_argument('--log-to-wandb-interval', default=1, type=int)
@@ -85,7 +85,7 @@ def get_config():
     # Make sure this one is formatted correctly.
     config['model'] = 'SVM'
 
-    return config
+    return config, do_print, define_test, do_plot, get_true_target_marginal
 
 
 def define_test(key, env):
@@ -194,6 +194,7 @@ def define_tilt(subkey, model, dataset, env):
         raise NotImplementedError()
 
     # Define the tilts themselves.
+    print('Defining {} tilts.'.format(n_tilts))
     tilt = tilt_fn(n_tilts=n_tilts,
                    tilt_input=stock_tilt_input,
                    trunk_fn=trunk_fn,
@@ -245,7 +246,7 @@ def define_proposal(subkey, model, dataset, env):
 
     elif env.config.proposal_type == 'SINGLE_SINGLEOBS':
         proposal_cls = proposals.IGSingleObsProposal
-        n_props = 1
+        n_props = 2  # NOTE - 2 specifies an initial proposal and then a single proposal therein.
         proposal_window_length = None
 
         # TODO - test this.
@@ -258,7 +259,7 @@ def define_proposal(subkey, model, dataset, env):
 
     elif env.config.proposal_type == 'SINGLE_WINDOW':
         proposal_cls = proposals.IGWindowProposal
-        n_props = 1
+        n_props = 2  # NOTE - 2 specifies an initial proposal and then a single proposal therein.
         proposal_window_length = env.config.proposal_window_length
 
     else:
@@ -285,6 +286,7 @@ def define_proposal(subkey, model, dataset, env):
         raise NotImplementedError()
 
     # Define the proposal itself.
+    print('Defining {} proposals.'.format(n_props))
     proposal = proposal_cls(n_proposals=n_props,
                             stock_proposal_input_without_q_state=stock_proposal_input_without_q_state,
                             dummy_output=dummy_proposal_output,

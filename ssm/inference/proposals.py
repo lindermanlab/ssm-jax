@@ -46,8 +46,8 @@ class IndependentGaussianProposal:
                  trunk_fn=None, head_mean_fn=None, head_log_var_fn=None, proposal_window_length=None):
 
         # Work out the number of proposals.
-        assert (n_proposals == 1) or (n_proposals == len(stock_proposal_input_without_q_state[0])), \
-            'Can only use a single proposal or as many proposals as there are states.'
+        assert (n_proposals == 1) or (n_proposals == 2) or (n_proposals == len(stock_proposal_input_without_q_state[0])), \
+            'Can only use a single proposal, two proposals (init and single window), or as many proposals as there are states.'
         self.n_proposals = n_proposals
 
         self.proposal_window_length = proposal_window_length
@@ -106,6 +106,11 @@ class IndependentGaussianProposal:
         # Pull out the time and the appropriate proposal.
         if self.n_proposals == 1:
             params_at_t = jax.tree_map(lambda args: args[0], params)
+        elif self.n_proposals == 2:
+            params_at_t = jax.lax.cond(t == 0,
+                                       jax.tree_map(lambda args: args[0], params),
+                                       jax.tree_map(lambda args: args[1], params),
+                                       None)
         else:
             params_at_t = jax.tree_map(lambda args: args[t], params)
 

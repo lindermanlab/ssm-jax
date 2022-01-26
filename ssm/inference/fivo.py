@@ -44,10 +44,11 @@ color_names = [
 ] * 10
 
 
-def do_fivo_config(USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM):
+def do_fivo_config(DEFAULT_MODEL, USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM):
     """
 
     Args:
+        DEFAULT_MODEL:
         USE_WANDB:
         PROJECT:
         USERNAME:
@@ -62,7 +63,7 @@ def do_fivo_config(USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM):
     try:
         model = sys.argv[np.where(np.asarray([_a == '--model' for _a in sys.argv]))[0][0] + 1]
     except:
-        model = 'GDM'
+        model = DEFAULT_MODEL
         print('[WARNING]: No model specified, defaulting to: ', model)
 
     # Import the config for the specified model.
