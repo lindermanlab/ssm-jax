@@ -124,6 +124,7 @@ class SMCPosterior(tfd.Distribution):
                 _p = np.moveaxis(_p, -3, -2)
             else:
                 _p = np.moveaxis(_p, -2, -1)
+            return _p
 
         # If the weights and the particles are the same shape, then there is no state dimension.
         has_state_dim = jax.tree_map(_has_state_dim, smoothing_particles)

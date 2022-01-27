@@ -349,7 +349,7 @@ def define_proposal(subkey, model, dataset, env):
     proposal_params = proposal.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_prop_fn = proposals.rebuild_proposal(proposal, env.config.proposal_structure)
+    rebuild_prop_fn = proposals.rebuild_proposal(proposal, env)
     return proposal, proposal_params, rebuild_prop_fn
 
 
