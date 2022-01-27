@@ -269,6 +269,10 @@ def rebuild_proposal(proposal, proposal_structure):
         elif proposal_structure == 'VRNN_RESQ':
 
             def _proposal(particles, t, p_dist, q_state, *inputs):
+                """
+                Note that because the VRNN has a deterministic element in the proposal, we need to separate and then re-build the deterministic
+                element separately from the continuous/Gaussian RESQ part of the proposal.
+                """
                 # Pull out the deterministic part of the latent state.
                 rnn_h_dist = p_dist._model[0]
 
