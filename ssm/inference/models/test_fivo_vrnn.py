@@ -41,7 +41,7 @@ def get_config():
     # {'params_rnn', 'params_prior', 'params_decoder_latent', 'params_decoder_full', 'params_encoder_data'}.
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data', type=str)  # CSV.
 
-    parser.add_argument('--proposal-structure', default='RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-structure', default='VRNN_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_RESQ' }
     parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {int, None}.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.

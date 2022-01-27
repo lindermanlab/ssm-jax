@@ -265,6 +265,25 @@ def rebuild_proposal(proposal, proposal_structure):
                 z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist.mean() + q_dist.mean(),
                                                               covariance_matrix=q_dist.covariance())
                 return z_dist, new_q_state
+
+        elif proposal_structure == 'VRNN_RESQ':
+
+            def _proposal(particles, t, p_dist, q_state, *inputs):
+                # Pull out the deterministic part of the latent state.
+                rnn_h_dist = p_dist._model[0]
+
+                # NOTE - the VRNN proposal only produces the stochastic part of the state.
+                q_z_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
+
+                # Build the proposal part of the state.
+                rnn_z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist._model[1].mean() + q_z_dist.mean(),
+                                                                  covariance_matrix=q_z_dist.covariance())
+
+                # Recapitulate the whole state distribution.
+                z_dist = p_dist.__class__((rnn_h_dist, rnn_z_dist))
+
+                return z_dist, new_q_state
+
         else:
             raise NotImplementedError()
 
