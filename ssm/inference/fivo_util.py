@@ -60,48 +60,56 @@ def log_params(_param_hist, _cur_params):
         else:
             _param_hist[0].append(None)
     except:
-        print('[WARNING]: Failed logging parameter values.')
+        print('[WARNING]: Failed logging parameter values: model.')
         _param_hist[0].append(None)
 
     # PROPOSAL.
-    if _cur_params[1] is not None:
-        _p = _cur_params[1]['params']._dict
-        _p_flat = {}
-        for _ko in _p.keys():
-            for _ki in _p[_ko].keys():
-                _k = _ko + '_' + _ki
+    try:
+        if _cur_params[1] is not None:
+            _p = _cur_params[1]['params']._dict
+            _p_flat = {}
+            for _ko in _p.keys():
+                for _ki in _p[_ko].keys():
+                    _k = _ko + '_' + _ki
 
-                # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+                    # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
 
-                # TODO ---- this is kind of messy.  makes plotting GDM easier but isn't general....
-                if ('var' in _k) and ('bias' in _k):
-                    _p_flat[_k + '_(EXP)'] = dc(onp.array(np.exp(_p[_ko][_ki])))
-                else:
-                    _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+                    # TODO ---- this is kind of messy.  makes plotting GDM easier but isn't general....
+                    if ('var' in _k) and ('bias' in _k):
+                        _p_flat[_k + '_(EXP)'] = dc(onp.array(np.exp(_p[_ko][_ki])))
+                    else:
+                        _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
 
-        _param_hist[1].append(_p_flat)
-    else:
+            _param_hist[1].append(_p_flat)
+        else:
+            _param_hist[1].append(None)
+    except:
+        print('[WARNING]: Failed logging parameter values: proposal.')
         _param_hist[1].append(None)
 
     # TILT.
-    if _cur_params[2] is not None:
-        _p = _cur_params[2]['params']._dict
-        _p_flat = {}
-        for _ko in _p.keys():
-            for _ki in _p[_ko].keys():
-                _k = _ko + '_' + _ki
+    try:
+        if _cur_params[2] is not None:
+            _p = _cur_params[2]['params']._dict
+            _p_flat = {}
+            for _ko in _p.keys():
+                for _ki in _p[_ko].keys():
+                    _k = _ko + '_' + _ki
 
-                # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+                    # _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
 
-                # TODO ---- this is kind of messy.  makes plotting GDM easier but isn't general....
-                if ('var' in _k) and ('bias' in _k):
-                    _p_flat[_k + '_(EXP)'] = dc(onp.array(np.exp(_p[_ko][_ki])))
-                else:
-                    _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+                    # TODO ---- this is kind of messy.  makes plotting GDM easier but isn't general....
+                    if ('var' in _k) and ('bias' in _k):
+                        _p_flat[_k + '_(EXP)'] = dc(onp.array(np.exp(_p[_ko][_ki])))
+                    else:
+                        _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
 
-        _param_hist[2].append(_p_flat)
-    else:
-        _param_hist[2].append(None)
+            _param_hist[2].append(_p_flat)
+        else:
+            _param_hist[2].append(None)
+    except:
+        print('[WARNING]: Failed logging parameter values: tilt.')
+        _param_hist[1].append(None)
 
     return _param_hist
 
