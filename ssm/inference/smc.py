@@ -95,7 +95,7 @@ def smc(key,
             Level of text output.
 
 
-    :return: Tuple:
+    Returns: (Tuple)
         particles (np.array, (batch x time x num_particles x state_dim) -- or -- (time x num_particles x state_dim)):
             Particles approximating the smoothing distribution.  May have a leading batch dimension if `dataset` also
             has a leading batch dimension.
@@ -167,7 +167,6 @@ def _single_smc(key,
     Assumes that the data and latent states are indexed 0:T-1, i.e. there is a latent
     state and observation at T=0 that exists prior to any dynamics.
 
-
     Args:
         key (JAX PRNG key, No size):
             JAX PRNG key.
@@ -216,7 +215,7 @@ def _single_smc(key,
             Level of text output.
 
 
-    :return: Tuple:
+    Returns: (Tuple)
         particles (np.array, (time x num_particles x state_dim)):
             Particles approximating the smoothing distribution.
 
@@ -357,7 +356,7 @@ def _smc_forward_pass(key,
             Level of text output.
 
 
-    :return: Tuple:
+    Returns: (Tuple)
         filtering_particles (np.array, (time x num_particles x state_dim)):
             Particles approximating the filtering distribution.
 
@@ -556,13 +555,11 @@ def _smc_backward_pass(filtering_particles, ancestors, verbosity=default_verbosi
 
 def always_resample_criterion(unused_log_weights, unused_t):
     r"""A criterion that always resamples."""
-    tmp = 0
     return True
 
 
 def never_resample_criterion(unused_log_weights, unused_t):
     r"""A criterion that never resamples."""
-    tmp = 0
     return False
 
 
@@ -687,7 +684,7 @@ def do_resample(key,
             Whether to use stop-gradient-resampling [Scibior & Wood, 2021].
 
 
-    :return: Tuple:
+    Returns: (Tuple)
         resampled_particles (np.array, (num_particles x state_dim):
             Resampled particles.
 

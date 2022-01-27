@@ -3,11 +3,9 @@ Proposal templates for SMC (+FIVO).
 """
 import jax
 import jax.numpy as np
-from jax.scipy import special as spsp
 from jax import vmap
 from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
-from copy import deepcopy as dc
 import flax.linen as nn
 
 # Import some ssm stuff.
@@ -23,28 +21,41 @@ class IndependentGaussianProposal:
     To define a different proposal FUNCTION here (as opposed to a proposal structure), change this class.
 
     This modules `.apply` method also wraps a call to the input generator, which takes the standard proposal
-    parameterization (dataset, model, particles, t, p_dist, q_state) and flattens it into the right form.
-
-    Args:
-        - n_proposals (int):
-            Number of independent proposals to define.  Here must be equal to one (other definitions may use multiple
-            proposals independently indexed by discrete state/time etc.
-
-        - stock_proposal_input_without_q_state (tuple):
-            Tuple of the stock proposal input used in SMC, without the `q_state` (as this state must be defined here).
-            Of type: (dataset, model, particles, time, p_dist).
-
-        - dummy_output (ndarray):
-            Correctly shaped ndarray of dummy values used to define the output layer.
-
-    Returns:
-        - None
+    parameterization (dataset, model, particles, t, p_dist, q_state, *inputs) and flattens the right form.
 
     """
 
     def __init__(self, n_proposals, stock_proposal_input, dummy_output,
                  trunk_fn=None, head_mean_fn=None, head_log_var_fn=None, proposal_window_length=None):
+        """
+        Args:
+            n_proposals (int):
+                Number of independent proposals to define.  Here must be equal to one (other definitions may use multiple
+                proposals independently indexed by discrete state/time etc.
 
+            stock_proposal_input (tuple):
+                Tuple of the stock proposal input used in SMC.  Of type: (dataset, model, particles, time, p_dist).
+
+            dummy_output (ndarray):
+                Correctly shaped ndarray of dummy values used to define the output layer.
+
+            trunk_fn (nn.Module):
+                Linen module that is applied to the prepared inputs to create a common encoding.
+
+            head_mean_fn (nn.Module):
+                Linen module that is applied to the common encoding to create the Gaussian mean.
+
+            head_log_var_fn (nn.Module):
+                Linen module that is applied to the common encoding to create the log variance of the Gaussian.
+
+            proposal_window_length (int):
+                If using a windowed proposal, this specified the length of the window.  Note that to use a windowed proposal the
+                input generator function must be updated, and so this is just declared here to define a consistent interface.
+
+        Returns:
+            None
+
+        """
         # Work out the number of proposals.
         assert (n_proposals == 1) or (n_proposals == 2) or (n_proposals == len(stock_proposal_input[0])), \
             'Can only use a single proposal, two proposals (init and single window), or as many proposals as there are states.'
@@ -68,10 +79,10 @@ class IndependentGaussianProposal:
         Initialize the parameters of the proposal distribution.
 
         Args:
-            - key (jax.PRNGKey):    Seed to seed initialization.
+            key (jax.PRNGKey):    Seed to seed initialization.
 
         Returns:
-            - parameters:           FrozenDict of the parameters of the initialized proposal.
+            parameters:           FrozenDict of the parameters of the initialized proposal.
 
         """
         # return self.proposal.init(key, self._dummy_processed_input)
@@ -112,12 +123,18 @@ class IndependentGaussianProposal:
         return q_dist, None
 
     def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
-        """
-        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
-        can be input into the proposal.
+        r"""
+        Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state, *inputs) into a vector object that
+        can be input directly into the proposal.
 
         Args:
-
+            _dataset:
+            _model:
+            _particles:
+            _t:
+            _p_dist:
+            _q_state:
+            *inputs:
 
         Returns:
             (ndarray):              Processed and vectorized version of `*_inputs` ready to go into proposal.
@@ -138,11 +155,11 @@ class IndependentGaussianProposal:
 
 
 class IGSingleObsProposal(IndependentGaussianProposal):
+    """
+    IndependentGaussianProposal but where only a single observation at time t is used.
+    """
 
     def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
-        """
-
-        """
         assert self.proposal_window_length == 1, "ERROR: Must have a single-length window."
 
         # This proposal gets the single datapoint and the current particles.
@@ -159,14 +176,12 @@ class IGSingleObsProposal(IndependentGaussianProposal):
 
 
 class IGWindowProposal(IndependentGaussianProposal):
-
-    # window_length = 2
+    """
+    IndependentGaussianProposal where a window of observations is used.
+    """
 
     # We need to define the method for generating the inputs.
     def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
-        """
-
-        """
 
         _masked_idx = np.arange(self.proposal_window_length)
         _to_insert = (_t + 1 + _masked_idx < len(_dataset))  # We will insert where the window is inside the dataset.
