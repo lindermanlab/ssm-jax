@@ -130,34 +130,10 @@ def main():
                                   'resampling_criterion': env.config.resampling_criterion})
 
         # Jit this badboy.
-        do_fivo_sweep_jitted = \
-            jax.jit(do_fivo_sweep_closed, static_argnums=(2, ))
+        do_fivo_sweep_jitted = jax.jit(do_fivo_sweep_closed, static_argnums=(2, ))
 
         # Convert into value and grad.
-        do_fivo_sweep_val_and_grad = \
-            jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
-
-        # --------------------------------------------------------------------------------------------------------------------------------------------
-
-        # Test the initial models.
-        key, subkey = jr.split(key)
-        true_nlml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_nlml, initial_fivo_bound = \
-            fivo_util.initial_validation(env,
-                                         key,
-                                         true_model,
-                                         validation_datasets,
-                                         validation_dataset_masks,
-                                         true_states,
-                                         opt,
-                                         do_fivo_sweep_jitted,
-                                         smc_jit,
-                                         num_particles=env.config.validation_particles,
-                                         dset_to_plot=env.config.dset_to_plot,
-                                         init_model=model,
-                                         do_print=do_print,
-                                         do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
-
-        # --------------------------------------------------------------------------------------------------------------------------------------------
+        do_fivo_sweep_val_and_grad = jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
 
         # Wrap another call to fivo for validation.
         @jax.jit
@@ -211,6 +187,24 @@ def main():
             print('\tVI_USE_VI_GRAD:', VI_USE_VI_GRAD, '\n')
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
+
+        # Test the initial models.
+        key, subkey = jr.split(key)
+        true_nlml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_nlml, initial_fivo_bound = \
+            fivo_util.initial_validation(env,
+                                         key,
+                                         true_model,
+                                         validation_datasets,
+                                         validation_dataset_masks,
+                                         true_states,
+                                         opt,
+                                         do_fivo_sweep_jitted,
+                                         smc_jit,
+                                         num_particles=env.config.validation_particles,
+                                         dset_to_plot=env.config.dset_to_plot,
+                                         init_model=model,
+                                         do_print=do_print,
+                                         do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
 
         # Define some storage.
         param_hist = [[], [], []]  # Model, proposal, tilt.

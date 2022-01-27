@@ -11,7 +11,7 @@ import pickle
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
-from ssm.vrnn.models import VRNN, VrnnFilteringProposal
+from ssm.vrnn.models import VRNN, VrnnFilteringProposal, VrnnSmoothingProposal
 import ssm.nn_util as nn_util
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
@@ -41,8 +41,8 @@ def get_config():
     # {'params_rnn', 'params_prior', 'params_decoder_latent', 'params_decoder_full', 'params_encoder_data'}.
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data', type=str)  # CSV.
 
-    parser.add_argument('--proposal-structure', default='VRNN_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_RESQ' }
-    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING'}
+    parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
+    parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {int, None}.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
@@ -111,6 +111,10 @@ def get_config():
                 np.zeros(config['fcnet_hidden_sizes'])
             except:
                 raise RuntimeError("Invalid size specification.")
+
+    # If there is no RNN state dim specified, then just copy the latent dim.
+    if config['rnn_state_dim'] is None:
+        config['rnn_state_dim'] = config['latent_dim']
 
     return config, do_print, define_test, do_plot, get_true_target_marginal
 
@@ -239,6 +243,8 @@ def define_proposal(subkey, model, dataset, env):
     Returns:
 
     """
+    data_encoder = None  # Define the default.
+    subkey, subkey1, subkey2 = jr.split(subkey, num=3)
 
     if env.config.proposal_structure in [None, 'NONE', 'BOOTSTRAP']:
         return None, None, lambda *args: None
@@ -251,21 +257,6 @@ def define_proposal(subkey, model, dataset, env):
     dummy_p_dist = model.dynamics_distribution(dummy_particles, covariates=(dummy_obs, ))
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
-    # Configure the proposal structure.
-    if env.config.proposal_type == 'VRNN_FILTERING':
-        assert env.config.use_bootstrap_initial_distribution, "Error: must use bootstrap/model initialization in VRNN."
-
-        proposal_cls = VrnnFilteringProposal
-        n_props = 1  # NOTE - we always use the bootstrap so we just use a single proposal.
-        proposal_window_length = 1
-        dummy_q_state = None
-
-    else:
-        raise NotImplementedError()
-
-    # Not define the input given the structure of the proposal.
-    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist, dummy_q_state)
-
     # Fork on the specified definition of the proposal.
     if env.config.proposal_fn_family == 'MLP':
 
@@ -277,6 +268,46 @@ def define_proposal(subkey, model, dataset, env):
     else:
         raise NotImplementedError()
 
+    # Configure the proposal structure.
+    if env.config.proposal_type == 'VRNN_FILTERING':
+        assert env.config.use_bootstrap_initial_distribution, "Error: must use bootstrap/model initialization in VRNN."
+
+        proposal_cls = VrnnFilteringProposal
+        n_props = 1  # NOTE - we always use the bootstrap so we just use a single proposal.
+        proposal_window_length = 1
+        dummy_q_state = None
+        dummy_q_inputs = ()
+
+    elif env.config.proposal_type == 'VRNN_SMOOTHING':
+        assert env.config.use_bootstrap_initial_distribution, "Error: must use bootstrap/model initialization in VRNN."
+
+        proposal_cls = VrnnSmoothingProposal
+        n_props = 1  # NOTE - we always use the bootstrap so we just use a single proposal.
+        proposal_window_length = None  # This will use just the current state of and RNN.
+        dummy_q_state = None
+
+        RNN_CELL_TYPE = nn.LSTMCell
+
+        data_encoder = RNN_CELL_TYPE()
+        dummy_rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else env.config.latent_dim
+        dummy_rnn_carry = RNN_CELL_TYPE().initialize_carry(jr.PRNGKey(0), batch_dims=(), size=dummy_rnn_state_dim)
+        dummy_rnn_input = tuple((dummy_rnn_carry, dataset[0, 0]))
+        encoder_params = data_encoder.init(subkey2, *dummy_rnn_input)
+
+        # If twe are using an LSTM, then we expose just the second part of the state.
+        if RNN_CELL_TYPE == nn.LSTMCell:
+            dummy_q_inputs = dummy_rnn_carry[1]
+        elif RNN_CELL_TYPE == nn.GRUCell:
+            dummy_q_inputs = dummy_rnn_carry
+        else:
+            raise NotImplementedError()
+
+    else:
+        raise NotImplementedError()
+
+    # Not define the input given the structure of the proposal.
+    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist, dummy_q_state, dummy_q_inputs)
+
     # Define the proposal itself.
     print('Defining {} proposals.'.format(n_props))
     proposal = proposal_cls(n_proposals=n_props,
@@ -287,57 +318,15 @@ def define_proposal(subkey, model, dataset, env):
                             head_log_var_fn=head_log_var_fn,
                             proposal_window_length=proposal_window_length)
 
-    # Initialize the network.
-    proposal_params = proposal.init(subkey)
+    # Initialize the proposal network.
+    proposal_params = proposal.init(subkey1)
+
+    if data_encoder is not None:
+        proposal_params = tuple((proposal_params, encoder_params))
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_prop_fn = proposals.rebuild_proposal(proposal, env.config.proposal_structure)
+    rebuild_prop_fn = proposals.rebuild_proposal(proposal, env, data_encoder=data_encoder)
     return proposal, proposal_params, rebuild_prop_fn
-
-
-def load_piano_data():
-    from ssm.inference.data.datasets import sparse_pianoroll_to_dense
-
-    with open('./data/piano-midi.de.pkl', 'rb') as f:
-        dataset_sparse = pickle.load(f)
-
-    PAD_FLAG = 0.0
-    MAX_LENGTH = 1000
-
-    min_note = 21
-    max_note = 108
-    num_notes = max_note - min_note + 1
-
-    dataset_and_metadata = [sparse_pianoroll_to_dense(_d, min_note=min_note, num_notes=num_notes) for _d in dataset_sparse['train']]
-    max_length = max([_d[1] for _d in dataset_and_metadata])
-
-    if max_length < MAX_LENGTH:
-        MAX_LENGTH = max_length
-
-    dataset_masks = []
-    dataset = []
-    for _i, _d in enumerate(dataset_and_metadata):
-
-        if len(_d[0]) > MAX_LENGTH:
-            print('[WARNING]: Removing dataset, over length 1000.')
-            continue
-
-        dataset.append(np.concatenate((_d[0], PAD_FLAG * np.ones((MAX_LENGTH - len(_d[0]), *_d[0].shape[1:])))))
-        dataset_masks.append(np.concatenate((np.ones(_d[0].shape[0]), 0.0 * np.ones((MAX_LENGTH - len(_d[0]))))))
-
-    print('Loaded {} datasets.'.format(len(dataset)))
-
-    dataset = np.asarray(dataset)
-    dataset_masks = np.asarray(dataset_masks)
-    true_states = None  # There are no true states!
-
-    # print('\n\n[WARNING]: trimming data further. \n\n')
-    # dataset = dataset[:, :20]
-    # dataset_masks = dataset_masks[:, :20]
-
-    dataset_means = dataset_sparse['train_mean']
-
-    return dataset, dataset_masks, true_states, dataset_means
 
 
 def define_true_model_and_data(key, env):
@@ -381,7 +370,6 @@ def define_true_model_and_data(key, env):
     fcnet_hidden_sizes = env.config.fcnet_hidden_sizes
 
     # We have to do something a bit funny to the full decoder to make sure that it is approximately correct.
-    output_bias_init = lambda *_args: np.log(dataset_means)
     kernel_init = lambda *args: nn.initializers.xavier_normal()(*args)  # * 0.001
 
     # Define some dummy place holders.
@@ -396,9 +384,10 @@ def define_true_model_and_data(key, env):
     data_encoder = nn_util.MLP(fcnet_hidden_sizes + [emissions_encoded_dim], kernel_init=kernel_init)
 
     if output_type == 'BERNOULLI':
+        output_bias_init = lambda *_args: np.log(dataset_means)
         full_decoder = nn_util.MLP(fcnet_hidden_sizes + [emissions_dim], kernel_init=kernel_init, bias_init=output_bias_init)
     elif output_type == 'GAUSSIAN':
-        full_decoder = nn_util.MLP(fcnet_hidden_sizes + [2 * emissions_dim], kernel_init=kernel_init, bias_init=output_bias_init)
+        full_decoder = nn_util.MLP(fcnet_hidden_sizes + [2 * emissions_dim], kernel_init=kernel_init)
     else:
         raise NotImplementedError()
 
@@ -412,7 +401,7 @@ def define_true_model_and_data(key, env):
     params_rnn = rnn.init(subkeys[1], input_rnn[0], input_rnn[1])
 
     # Work out the dimensions of the inputs to each function.
-    input_latent_decoder = val_latent
+    input_latent_decoder = rnn_carry[1]
     input_data_encoder = val_obs
     input_full_decoder = np.concatenate((rnn_carry[1], val_latent_decoded))
     input_prior = rnn_carry[1]
@@ -525,7 +514,7 @@ def define_test_model(key, true_model, env):
 
 def do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params, param_figs):
     """
-    TODO - essentially not plotting here.
+    Not plotting here.
 
     Args:
         _param_hist:
@@ -566,9 +555,6 @@ def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log
         if len(opt[0].target) > 0:
             # print()
             print('\tModel:  Good luck printing that shite.')
-
-    print()
-    print()
     print()
 
 
@@ -583,3 +569,53 @@ def get_true_target_marginal(model, data):
 
     """
     return None
+
+
+def load_piano_data():
+    """
+
+    Returns:
+
+    """
+    from ssm.inference.data.datasets import sparse_pianoroll_to_dense
+
+    with open('./data/piano-midi.de.pkl', 'rb') as f:
+        dataset_sparse = pickle.load(f)
+
+    PAD_FLAG = 0.0
+    MAX_LENGTH = 1000
+
+    min_note = 21
+    max_note = 108
+    num_notes = max_note - min_note + 1
+
+    dataset_and_metadata = [sparse_pianoroll_to_dense(_d, min_note=min_note, num_notes=num_notes) for _d in dataset_sparse['train']]
+    max_length = max([_d[1] for _d in dataset_and_metadata])
+
+    if max_length < MAX_LENGTH:
+        MAX_LENGTH = max_length
+
+    dataset_masks = []
+    dataset = []
+    for _i, _d in enumerate(dataset_and_metadata):
+
+        if len(_d[0]) > MAX_LENGTH:
+            print('[WARNING]: Removing dataset, over length 1000.')
+            continue
+
+        dataset.append(np.concatenate((_d[0], PAD_FLAG * np.ones((MAX_LENGTH - len(_d[0]), *_d[0].shape[1:])))))
+        dataset_masks.append(np.concatenate((np.ones(_d[0].shape[0]), 0.0 * np.ones((MAX_LENGTH - len(_d[0]))))))
+
+    print('Loaded {} datasets.'.format(len(dataset)))
+
+    dataset = np.asarray(dataset)
+    dataset_masks = np.asarray(dataset_masks)
+    true_states = None  # There are no true states!
+
+    print('\n\n[WARNING]: trimming data further. \n\n')
+    dataset = dataset[:, :20]
+    dataset_masks = dataset_masks[:, :20]
+
+    dataset_means = dataset_sparse['train_mean']
+
+    return dataset, dataset_masks, true_states, dataset_means

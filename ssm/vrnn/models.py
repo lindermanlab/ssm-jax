@@ -205,7 +205,7 @@ class VRNN(SSM):
 
         assert metadata is None, "Metadata is not provisioned in the dynamics."
 
-        # Pull apart the previous state.
+        # Pull apart the previous VRNN state.
         rnn_h = state[0]
         rnn_z = state[1]
 
@@ -399,4 +399,59 @@ class VrnnFilteringProposal(proposals.IndependentGaussianProposal):
         else:
             _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
             return _vmapped(*_proposal_inputs)
+
+
+class VrnnSmoothingProposal(proposals.IndependentGaussianProposal):
+    r"""
+    Smoothing VRNN proposal.
+
+    """
+
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
+        """
+
+        """
+        assert self.proposal_window_length is None, "ERROR: Cannot use a window."
+
+        # This proposal gets a single encoded datapoint, the reverse RNN encoder state, and the current particles.
+        _raw_obs = jax.lax.dynamic_index_in_dim(_dataset, _t)
+        _encoded_obs = _model._encoder_data_obj.apply(_model._params_encoder_data, jax.lax.dynamic_index_in_dim(_dataset, _t))
+        _exposed_vrnn_hidden_state = _particles[0][1]
+        _exposed_q_hidden_state = inputs[0]
+        _proposal_inputs = (_encoded_obs, _exposed_vrnn_hidden_state, _exposed_q_hidden_state)
+
+        _model_latent_shape = (_model.latent_dim, )
+
+        _is_batched = (_model_latent_shape != _exposed_vrnn_hidden_state.shape)
+
+        if not _is_batched:
+            return nn_util.vectorize_pytree(_proposal_inputs)
+        else:
+            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0, None))
+            return _vmapped(*_proposal_inputs)
+
+    def apply(self, params, dataset, model, particles, t, p_dist, q_state, *inputs):
+        """
+
+        Args:
+            params (FrozenDict):    FrozenDict of the parameters of the proposal.
+            dataset:
+            model:
+            particles:
+            t:
+            p_dist:
+            q_state:
+
+        Returns:
+            (Tuple): (TFP distribution over latent state, updated q internal state).
+
+        """
+
+        assert self.n_proposals == 1, "Can only use a single proposal."
+        params_at_t = jax.tree_map(lambda args: args[0], params)
+
+        proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state, *inputs)
+        q_dist = self.proposal.apply(params_at_t, proposal_inputs)
+
+        return q_dist, None
 

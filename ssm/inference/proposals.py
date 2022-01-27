@@ -205,7 +205,7 @@ class IGWindowProposal(IndependentGaussianProposal):
             return _vmapped(*_proposal_inputs)
 
 
-def rebuild_proposal(proposal, proposal_structure):
+def rebuild_proposal(proposal, env, data_encoder=None):
     """
     Function that produces another function that wraps the proposal.  This needs wrapping because we define a
     proposal as a function that takes just the inputs (as opposed to the inputs and the parameters of the proposal).
@@ -224,6 +224,7 @@ def rebuild_proposal(proposal, proposal_structure):
     Args:
         proposal:               Proposal object.  Will wrap a call to the `.apply` method.
         proposal_structure:     String indicating the type of proposal structure to use.
+        data_encoder:           TODO
 
     Returns:
         (Callable):             Function that can be called as fn(inputs).
@@ -233,18 +234,18 @@ def rebuild_proposal(proposal, proposal_structure):
     def _rebuild_proposal(_param_vals, _dataset, _model, ):
 
         # If there is no proposal, then there is no structure to define.
-        if (proposal is None) or (proposal_structure == 'BOOTSTRAP') or (proposal_structure == 'NONE'):
+        if (proposal is None) or (env.config.proposal_structure == 'BOOTSTRAP') or (env.config.proposal_structure == 'NONE'):
             return None
 
         # We fork depending on the proposal type.
         # Proposal takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
-        if proposal_structure == 'DIRECT':
+        if env.config.proposal_structure == 'DIRECT':
 
             def _proposal(particles, t, p_dist, q_state, *inputs):
                 z_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
                 return z_dist, new_q_state
 
-        elif proposal_structure == 'RESQ':
+        elif env.config.proposal_structure == 'RESQ':
 
             def _proposal(particles, t, p_dist, q_state, *inputs):
                 q_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
@@ -252,7 +253,8 @@ def rebuild_proposal(proposal, proposal_structure):
                                                               covariance_matrix=q_dist.covariance())
                 return z_dist, new_q_state
 
-        elif proposal_structure == 'VRNN_RESQ':
+        elif env.config.proposal_structure == 'VRNN_FILTERING_RESQ':
+            assert 'Filtering' in str(type(proposal)), "Must use filtering proposal."  # TODO - this is kinda grotty.
 
             def _proposal(particles, t, p_dist, q_state, *inputs):
                 """
@@ -260,17 +262,69 @@ def rebuild_proposal(proposal, proposal_structure):
                 element separately from the continuous/Gaussian RESQ part of the proposal.
                 """
                 # Pull out the deterministic part of the latent state.
-                rnn_h_dist = p_dist._model[0]
+                vrnn_h_dist = p_dist._model[0]
+                vrnn_z_dist = p_dist._model[1]
 
                 # NOTE - the VRNN proposal only produces the stochastic part of the state.
                 q_z_dist, new_q_state = proposal.apply(_param_vals, _dataset, _model, particles, t, p_dist, q_state, *inputs)
 
                 # Build the proposal part of the state.
-                rnn_z_dist = tfd.MultivariateNormalFullCovariance(loc=p_dist._model[1].mean() + q_z_dist.mean(),
+                rnn_z_dist = tfd.MultivariateNormalFullCovariance(loc=vrnn_z_dist.mean() + q_z_dist.mean(),
                                                                   covariance_matrix=q_z_dist.covariance())
 
                 # Recapitulate the whole state distribution.
-                z_dist = p_dist.__class__((rnn_h_dist, rnn_z_dist))
+                z_dist = p_dist.__class__((vrnn_h_dist, rnn_z_dist))
+
+                return z_dist, new_q_state
+
+        elif env.config.proposal_structure == 'VRNN_SMOOTHING_RESQ':
+            assert 'Smoothing' in str(type(proposal)), "Must use smoothing proposal."  # TODO - this is kinda grotty.
+            assert data_encoder is not None, "Must supply a data encoder."
+
+            assert type(_param_vals) == tuple, "Must supply parameters as (proposal, encoder)."
+            assert len(_param_vals) == 2, "Must supply parameters as (proposal, encoder)."
+
+            q_params = _param_vals[0]
+            encoder_params = _param_vals[1]
+
+            # Initialize the backwards filter.
+            init_carry = data_encoder.initialize_carry(jr.PRNGKey(0), batch_dims=(), size=env.config.rnn_state_dim)
+
+            # We need to pass the RNN backwards over the data.
+            def encode_scan_fn(_old_carry, _input_at_t):
+                _new_carry, _new_hidden_state = data_encoder.apply(encoder_params, _old_carry, _input_at_t)
+                return _new_carry, _new_hidden_state
+
+            _, encoded_data = jax.lax.scan(encode_scan_fn,
+                                           init_carry,
+                                           _dataset,
+                                           reverse=True)
+
+            # Now build up the proposal function to directly pass in this processed stuff as input.
+            def _proposal(particles, t, p_dist, q_state, *_):
+                """
+                Note that because the VRNN has a deterministic element in the proposal, we need to separate and then re-build the deterministic
+                element separately from the continuous/Gaussian RESQ part of the proposal.
+                """
+                # Pull out the deterministic part of the latent state.
+                vrnn_h_dist = p_dist._model[0]
+                vrnn_z_dist = p_dist._model[1]
+
+                # Grab the encoded state.
+                encoded_data_at_t = jax.lax.dynamic_index_in_dim(encoded_data, t, keepdims=False)
+
+                # Build the input tuple.
+                inputs_at_t = (encoded_data_at_t, )
+
+                # NOTE - the VRNN proposal only produces the stochastic part of the state.
+                q_z_dist, new_q_state = proposal.apply(q_params, _dataset, _model, particles, t, p_dist, q_state, *inputs_at_t)
+
+                # Build the proposal part of the state.
+                rnn_z_dist = tfd.MultivariateNormalFullCovariance(loc=vrnn_z_dist.mean() + q_z_dist.mean(),
+                                                                  covariance_matrix=q_z_dist.covariance())
+
+                # Recapitulate the whole state distribution.
+                z_dist = p_dist.__class__((vrnn_h_dist, rnn_z_dist))
 
                 return z_dist, new_q_state
 
