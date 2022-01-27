@@ -381,9 +381,11 @@ class VrnnFilteringProposal(proposals.IndependentGaussianProposal):
         """
         assert self.proposal_window_length == 1, "ERROR: Must have a single-length window."
 
-        # This proposal gets the single datapoint and the current particles.
+        # This proposal gets a single encoded datapoint and the current particles.
+        _raw_obs = jax.lax.dynamic_index_in_dim(_dataset, _t)
+        _encoded_obs = _model._encoder_data_obj(jax.lax.dynamic_index_in_dim(_dataset, _t))
         _hidden_state = _particles[0]
-        _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset, _t), _hidden_state)
+        _proposal_inputs = (_encoded_obs, _hidden_state)
 
         _model_latent_shape = (_model.latent_dim, )
 
