@@ -83,17 +83,11 @@ class IndependentGaussianProposal:
 
         Args:
             params (FrozenDict):    FrozenDict of the parameters of the proposal.
-
             dataset:
-
             model:
-
             particles:
-
             t:
-
             p_dist:
-
             q_state:
 
         Returns:
@@ -114,29 +108,6 @@ class IndependentGaussianProposal:
 
         proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state, *inputs)
         q_dist = self.proposal.apply(params_at_t, proposal_inputs)
-
-        # # TODO - Can force the optimal proposal here for the default GDM example..
-        # _prop_inp_old = proposal_inputs
-        # if proposal_inputs.ndim == 1:
-        #     proposal_inputs = np.expand_dims(proposal_inputs, axis=0)
-        #
-        # mean = jax.lax.cond(
-        #          t == 0,
-        #          lambda *args: (proposal_inputs[..., 0] / (np.asarray([9.0 + 1.0]))),
-        #          lambda *args: (((9.0 - np.asarray([t]) + 1) * proposal_inputs[:, 1]) + proposal_inputs[:, 0]) / (9.0 - np.asarray([t]) + 1 + 1),
-        #          None)
-        #
-        # std = jax.lax.cond(t == 0,
-        #                    lambda *args: (mean * 0.0) + np.sqrt(10.0 / 11.0 + np.asarray([0])),
-        #                    lambda *args: (mean * 0.0) + np.sqrt(1.0 / (1.0 + (1.0 / (1.0 + ((9.0 - np.asarray([t])) * 1.0))))),
-        #                    None)
-        #
-        # # q_dist = tfd.MultivariateNormalDiag((q_dist.mean().squeeze() * 0.0) + np.expand_dims(mean, -1), (q_dist.stddev() * 0.0) + std)
-        # if _prop_inp_old.ndim == 1:
-        #     q_dist = tfd.MultivariateNormalDiag(mean, std)
-        # else:
-        #     q_dist = tfd.MultivariateNormalDiag(np.expand_dims(mean, axis=1), np.expand_dims(std, axis=1))
-        # # TODO - Can force the optimal proposal here for the default GDM example..
 
         return q_dist, None
 

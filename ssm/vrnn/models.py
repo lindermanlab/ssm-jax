@@ -383,7 +383,7 @@ class VrnnFilteringProposal(proposals.IndependentGaussianProposal):
 
         # This proposal gets a single encoded datapoint and the current particles.
         _raw_obs = jax.lax.dynamic_index_in_dim(_dataset, _t)
-        _encoded_obs = _model._encoder_data_obj(jax.lax.dynamic_index_in_dim(_dataset, _t))
+        _encoded_obs = _model._encoder_data_obj.apply(_model._params_encoder_data, jax.lax.dynamic_index_in_dim(_dataset, _t))
         _hidden_state = _particles[0]
         _proposal_inputs = (_encoded_obs, _hidden_state)
 
