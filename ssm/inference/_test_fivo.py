@@ -7,23 +7,14 @@ import jax.numpy as np
 import matplotlib.pyplot as plt
 from jax import random as jr
 from copy import deepcopy as dc
-from timeit import default_timer as dt
-import numpy as onp
 import pickle as p
-from types import SimpleNamespace
-from typing import Iterable
-import argparse
-import git
 import platform
-from pprint import pprint
 
 # Import some ssm stuff.
-from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
-from ssm.inference.smc import _plot_single_sweep
+from ssm.utils import Verbosity, possibly_disable_jit
 from ssm.inference.smc import smc
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
-from tensorflow_probability.substrates.jax import distributions as tfd
 import ssm.inference.fivo_vi as fivo_vi
 import ssm.inference.fivo_util as fivo_util
 

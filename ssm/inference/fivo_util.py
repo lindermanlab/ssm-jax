@@ -3,21 +3,13 @@ import jax.numpy as np
 import matplotlib.pyplot as plt
 import numpy as onp
 from jax import random as jr
-from flax import optim
 from copy import deepcopy as dc
-from ssm.inference.smc import _plot_single_sweep
-from tensorflow_probability.substrates.jax import distributions as tfd
-import jax.scipy as jscipy
-from types import SimpleNamespace
-import wandb
-from pprint import pprint
-
-from ssm.inference.fivo import get_params_from_opt
 
 # Import some ssm stuff.
 import ssm.utils as utils
+from ssm.inference.smc import _plot_single_sweep
+from ssm.inference.fivo import get_params_from_opt
 from ssm.utils import Verbosity
-from ssm.inference.smc import smc
 
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG

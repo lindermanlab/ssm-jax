@@ -2,15 +2,12 @@ import jax
 import jax.numpy as np
 import matplotlib.pyplot as plt
 import argparse
-from jax import random as jr
 import flax.linen as nn
-from typing import NamedTuple
+from jax import random as jr
 from copy import deepcopy as dc
 from tensorflow_probability.substrates.jax import distributions as tfd
 
 # Import some ssm stuff.
-from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
-from ssm.svm.models import SVM
 import ssm.nn_util as nn_util
 import ssm.utils as utils
 import ssm.inference.fivo as fivo

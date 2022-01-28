@@ -2,9 +2,8 @@ import jax
 import jax.numpy as np
 import matplotlib.pyplot as plt
 import argparse
-from jax import random as jr
 import flax.linen as nn
-from typing import NamedTuple
+from jax import random as jr
 from copy import deepcopy as dc
 from tensorflow_probability.substrates.jax import distributions as tfd
 

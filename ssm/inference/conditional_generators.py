@@ -5,18 +5,16 @@ import jax
 import jax.numpy as np
 import matplotlib.pyplot as plt
 import flax.linen as nn
-import ssm.nn_util as nn_util
-from jax import flatten_util
-
-# Specific imports for here.
-from jax.scipy import special as spsp
-from jax import vmap
 from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
+from jax import vmap
+from jax import flatten_util
+from typing import (NamedTuple, Any, Callable, Sequence)
+
+# Specific imports for here.
+import ssm.nn_util as nn_util
 from ssm.utils import Verbosity
 
-from typing import (NamedTuple, Any, Callable, Sequence, Iterable, List, Optional, Tuple,
-                    Set, Type, Union, TypeVar, Generic, Dict)
 
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG

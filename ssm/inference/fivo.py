@@ -7,19 +7,14 @@ is implemented here.  There are a collection of other functions that have to be 
 code run.  Templates for these other functions are implemented in the accompanying notebook fivo-lds.ipynb .
 """
 import jax
+import git
+import wandb
 import jax.numpy as np
 import matplotlib.pyplot as plt
-import numpy as onp
 from jax import random as jr
 from flax import optim
-from copy import deepcopy as dc
-from ssm.inference.smc import _plot_single_sweep
-from tensorflow_probability.substrates.jax import distributions as tfd
-import jax.scipy as jscipy
 from types import SimpleNamespace
-import wandb
 from pprint import pprint
-import git
 
 # Import some ssm stuff.
 import ssm.utils as utils
@@ -28,20 +23,6 @@ from ssm.inference.smc import smc
 
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
-
-# Define the standard plotting colours.
-color_names = [
-    "tab:blue",
-    "tab:orange",
-    "tab:green",
-    "tab:red",
-    "tab:purple",
-    "tab:brown",
-    "tab:pink",
-    "tab:gray",
-    "tab:olive",
-    "tab:cyan"
-] * 10
 
 
 def do_fivo_config(DEFAULT_MODEL, USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM):

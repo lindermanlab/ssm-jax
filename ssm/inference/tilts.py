@@ -3,11 +3,8 @@ Tilt templates for SMC (+FIVO).
 """
 import jax
 import jax.numpy as np
-from jax.scipy import special as spsp
-from jax import vmap
 from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
-from copy import deepcopy as dc
 
 # Import some ssm stuff.
 from ssm.inference.conditional_generators import IndependentGaussianGenerator

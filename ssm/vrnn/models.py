@@ -4,27 +4,20 @@ Implementations of various VRNN models.
 import inspect
 import jax
 import flax
-
 import jax.numpy as np
 import jax.random as jr
 import flax.linen as nn
-
+import tensorflow_probability.substrates.jax as tfp
+from ssm.distributions import MultivariateNormalBlockTridiag
 from jax.tree_util import register_pytree_node_class
+
+from ssm import nn_util
 from ssm.base import SSM
 from ssm.utils import Verbosity, random_rotation, make_named_tuple, ensure_has_batch_dim, auto_batch
-from ssm import nn_util
-
-import tensorflow_probability.substrates.jax as tfp
-tfd = tfp.distributions
-
-from ssm.distributions import MultivariateNormalBlockTridiag
-SVMPosterior = MultivariateNormalBlockTridiag
-
 import ssm.inference.proposals as proposals
 
-
-def _iterate_rnn(_rnn_obj, _params, _prev_rnn_state, _input_rnn):
-    return _rnn_obj.apply(_params, _prev_rnn_state, _input_rnn)
+tfd = tfp.distributions
+SVMPosterior = MultivariateNormalBlockTridiag
 
 
 @register_pytree_node_class

@@ -3,10 +3,10 @@ Proposal templates for SMC (+FIVO).
 """
 import jax
 import jax.numpy as np
+import flax.linen as nn
 from jax import vmap
 from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
-import flax.linen as nn
 
 # Import some ssm stuff.
 from ssm.inference.conditional_generators import IndependentGaussianGenerator

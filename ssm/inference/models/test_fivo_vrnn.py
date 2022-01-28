@@ -2,18 +2,14 @@ import jax
 import jax.numpy as np
 import matplotlib.pyplot as plt
 import argparse
-from jax import random as jr
 import flax.linen as nn
-from typing import NamedTuple
+from jax import random as jr
 from copy import deepcopy as dc
 from tensorflow_probability.substrates.jax import distributions as tfd
-import pickle
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
-from ssm.vrnn.models import VRNN, VrnnFilteringProposal, VrnnSmoothingProposal
 import ssm.nn_util as nn_util
-import ssm.utils as utils
 import ssm.inference.fivo as fivo
 import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
@@ -31,7 +27,6 @@ def get_config():
 
     parser.add_argument('--dataset', default='jsb.pkl', type=str,
                         help="Dataset to apply method to.  {'piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl'}. ")
-    parser.add_argument('--synthetic-data', default=0, type=int, help="Generate and use synthetic data for testing/debugging.")
 
     parser.add_argument('--resampling-criterion', default='always_resample', type=str, help="{'always_resample', 'never_resample'}")
     parser.add_argument('--use-sgr', default=1, type=int, help="{0, 1}.")
@@ -91,6 +86,7 @@ def get_config():
     parser.add_argument('--plot-interval', default=1, type=int, help="Multiples of --validation-interval to plot at.")
     parser.add_argument('--log-to-wandb-interval', default=1, type=int, help="Multiples of --validation-interval to push to WandB remote at.")
     parser.add_argument('--PLOT', default=0, type=int, help="Whether to make plots online.  Always disable plotting for the VRNN.")
+    parser.add_argument('--synthetic-data', default=0, type=int, help="Generate and use synthetic data for testing/debugging.")
 
     config = parser.parse_args().__dict__
 
@@ -148,15 +144,8 @@ def define_test(key, env):
     key, subkey = jr.split(key)
     tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, train_datasets, env)
 
-    # # Build up the train/val splits.
-    # num_val_datasets = int(len(datasets) * env.config.num_val_dataset_fraction)
-    # validation_datasets = datasets[:num_val_datasets]
-    # validation_dataset_masks = dataset_masks[:num_val_datasets]
-    # train_datasets = datasets[num_val_datasets:]
-    # train_dataset_masks = dataset_masks[num_val_datasets:]
-
     # Return this big pile of stuff.
-    ret_model = (true_model, true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
+    ret_model = (true_model, train_true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
     ret_test = (model, get_model_params, rebuild_model_fn)
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
