@@ -1,12 +1,14 @@
 import jax
-import jax.numpy as np
-import matplotlib.pyplot as plt
 import argparse
-import flax.linen as nn
 import pickle
+import tensorflow as tf
+import flax.linen as nn
+import matplotlib.pyplot as plt
+import jax.numpy as np
 from jax import random as jr
 from copy import deepcopy as dc
 from tensorflow_probability.substrates.jax import distributions as tfd
+from flax import optim
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
@@ -26,6 +28,11 @@ def get_config():
 
     # Set up the experiment.
     parser = argparse.ArgumentParser()
+
+    parser.add_argument('--pretrain-encoder', default=1, type=int, help="{0, 1}")
+    parser.add_argument('--pretrain-encoder-opt-steps', default=10000, type=int, help="")
+    parser.add_argument('--pretrain-encoder-lr', default=0.001, type=float, help="")
+    parser.add_argument('--pretrain-encoder-batch-size', default=4, type=float, help="")
 
     parser.add_argument('--dataset', default='jsb.pkl', type=str,
                         help="Dataset to apply method to.  {'piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl'}. ")
@@ -54,7 +61,7 @@ def get_config():
     parser.add_argument('--vi-minibatch-size', default=16, type=int, help="Size of VI minibatches when learning tilt with VI.")
     parser.add_argument('--vi-epochs', default=1, type=int, help="Number of VI epochs to perform when learning tilt with VI.")
 
-    parser.add_argument('--num-particles', default=10, type=int, help="Number of particles per sweep during learning.")
+    parser.add_argument('--num-particles', default=4, type=int, help="Number of particles per sweep during learning.")
     parser.add_argument('--datasets-per-batch', default=2, type=int, help="Number of datasets averaged across per FIVO step.")
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
 
@@ -63,7 +70,7 @@ def get_config():
     parser.add_argument('--lr-r', default=0.0001, type=float, help="Learning rate of tilt parameters.")
 
     # VRNN architecture args.
-    parser.add_argument('--latent-dim', default=64, type=int, help="Dimension of z latent variable.")
+    parser.add_argument('--latent-dim', default=10, type=int, help="Dimension of z latent variable.")
     parser.add_argument('--latent-enc-dim', default=None, type=int, help="Dimension of encoded latent z variable. (None -> latent-dim)")
     parser.add_argument('--obs-enc-dim', default=None, type=int, help="Dimension of encoded observations. (None -> latent-dim)")
     parser.add_argument('--rnn-state-dim', default=None, type=int, help="Dimension of the deterministic RNN. (None -> latent-dim)")
@@ -140,7 +147,7 @@ def define_test(key, env):
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, train_datasets, env)
+    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, train_datasets, env, validation_dataset=validation_datasets)
 
     # Define the tilt.
     key, subkey = jr.split(key)
@@ -224,7 +231,7 @@ def define_tilt(subkey, model, dataset, env):
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def define_proposal(subkey, model, dataset, env):
+def define_proposal(subkey, model, dataset, env, validation_dataset=None):
     """
 
     Args:
@@ -237,7 +244,7 @@ def define_proposal(subkey, model, dataset, env):
 
     """
     data_encoder = None  # Define the default.
-    subkey, subkey1, subkey2 = jr.split(subkey, num=3)
+    subkey, subkey1, subkey2, subkey3 = jr.split(subkey, num=4)
 
     if env.config.proposal_structure in [None, 'NONE', 'BOOTSTRAP']:
         return None, None, lambda *args: None
@@ -315,11 +322,52 @@ def define_proposal(subkey, model, dataset, env):
     proposal_params = proposal.init(subkey1)
 
     if data_encoder is not None:
+
+        # TODO - place this somewhere more elegant than here.
+        if env.config.pretrain_encoder:
+            encoder_params = pretrain_encoder(env, subkey3, encoder_params, dataset, validation_dataset)
+
         proposal_params = tuple((proposal_params, encoder_params))
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
     rebuild_prop_fn = proposals.rebuild_proposal(proposal, env, data_encoder=data_encoder)
     return proposal, proposal_params, rebuild_prop_fn
+
+
+def pretrain_encoder(env, key, encoder_params, train_dataset, validation_dataset):
+    """
+
+    Args:
+        env:
+        key:
+        encoder_params:
+        train_dataset:
+        validation_dataset:
+
+    Returns:
+
+    """
+    # We can pre-train the encoder to fit the data.  Do that here.
+    # Note that when training we sweep over the parameters backward train in reverse.
+    enc_opt_def = optim.Adam(learning_rate=env.config.pretrain_encoder_lr)
+    enc_opt = enc_opt_def.create(encoder_params)
+
+    # Create the batches
+    full_idx = np.arange(len(train_dataset))
+    total_samples = env.config.pretrain_encoder_opt_steps * env.config.pretrain_encoder_batch_size
+    batch_idx = []
+    while len(batch_idx) < total_samples:
+        key, subkey = jr.split(key)
+        mixed_idx = jr.shuffle(subkey, full_idx)
+        batch_idx += mixed_idx
+    batch_idx = np.asarray(batch_idx)[:total_samples]
+    batch_idx = np.reshape(batch_idx, (env.config.pretrain_encoder_opt_steps, env.config.pretrain_encoder_batch_size))
+
+    for _i in range(env.config.pretrain_encoder_opt_steps):
+        p = 0
+
+
+    return encoder_params
 
 
 def define_true_model_and_data(key, env):
