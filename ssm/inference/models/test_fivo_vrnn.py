@@ -9,6 +9,7 @@ from tensorflow_probability.substrates.jax import distributions as tfd
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
+from ssm.vrnn.models import VRNN, VrnnFilteringProposal, VrnnSmoothingProposal
 import ssm.nn_util as nn_util
 import ssm.inference.fivo as fivo
 import ssm.inference.proposals as proposals
