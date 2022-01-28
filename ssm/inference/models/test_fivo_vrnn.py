@@ -29,7 +29,8 @@ def get_config():
     # Set up the experiment.
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dataset', default='pianorolls', type=str, help="Dataset to apply method to.  {'pianorolls'}. ")
+    parser.add_argument('--dataset', default='jsb.pkl', type=str,
+                        help="Dataset to apply method to.  {'piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl'}. ")
     parser.add_argument('--synthetic-data', default=0, type=int, help="Generate and use synthetic data for testing/debugging.")
 
     parser.add_argument('--resampling-criterion', default='always_resample', type=str, help="{'always_resample', 'never_resample'}")
@@ -132,7 +133,8 @@ def define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, true_states, datasets, dataset_masks = define_true_model_and_data(subkey, env)
+    true_model, train_true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks = \
+        define_true_model_and_data(subkey, env)
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
@@ -140,18 +142,18 @@ def define_test(key, env):
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, datasets, env)
+    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, train_datasets, env)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, datasets, env)
+    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, train_datasets, env)
 
-    # Build up the train/val splits.
-    num_val_datasets = int(len(datasets) * env.config.num_val_dataset_fraction)
-    validation_datasets = datasets[:num_val_datasets]
-    validation_dataset_masks = dataset_masks[:num_val_datasets]
-    train_datasets = datasets[num_val_datasets:]
-    train_dataset_masks = dataset_masks[num_val_datasets:]
+    # # Build up the train/val splits.
+    # num_val_datasets = int(len(datasets) * env.config.num_val_dataset_fraction)
+    # validation_datasets = datasets[:num_val_datasets]
+    # validation_dataset_masks = dataset_masks[:num_val_datasets]
+    # train_datasets = datasets[num_val_datasets:]
+    # train_dataset_masks = dataset_masks[num_val_datasets:]
 
     # Return this big pile of stuff.
     ret_model = (true_model, true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
@@ -344,7 +346,7 @@ def define_true_model_and_data(key, env):
 
     if env.config.synthetic_data:
         emissions_dim = env.config.emissions_dim
-        dataset_means = np.zeros((emissions_dim,))
+        train_dataset_means = 0.5 * np.ones((emissions_dim,))
         output_type = 'GAUSSIAN'
 
         T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
@@ -353,9 +355,10 @@ def define_true_model_and_data(key, env):
 
     else:
 
-        if env.config.dataset == 'pianorolls':
-            dataset, dataset_masks, true_states, dataset_means = load_piano_data()
-            emissions_dim = dataset.shape[-1]
+        if env.config.dataset in ['piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl']:
+            train_dataset, train_dataset_masks, train_true_states, train_dataset_means = load_piano_data(env.config.dataset, phase='train')
+            valid_dataset, valid_dataset_masks, valid_true_states, _ = load_piano_data(env.config.dataset, phase='valid')
+            emissions_dim = train_dataset.shape[-1]
             output_type = 'BERNOULLI'
         else:
             raise NotImplementedError()
@@ -384,8 +387,13 @@ def define_true_model_and_data(key, env):
     data_encoder = nn_util.MLP(fcnet_hidden_sizes + [emissions_encoded_dim], kernel_init=kernel_init)
 
     if output_type == 'BERNOULLI':
-        output_bias_init = lambda *_args: np.log(dataset_means)
+
+        clipped_train_dataset_means = np.clip(train_dataset_means, 0.0001, 0.9999)
+        clipped_log_odds = np.log(clipped_train_dataset_means) - np.log(1 - clipped_train_dataset_means)
+        output_bias_init = lambda *_args: clipped_log_odds
+
         full_decoder = nn_util.MLP(fcnet_hidden_sizes + [emissions_dim], kernel_init=kernel_init, bias_init=output_bias_init)
+
     elif output_type == 'GAUSSIAN':
         full_decoder = nn_util.MLP(fcnet_hidden_sizes + [2 * emissions_dim], kernel_init=kernel_init)
     else:
@@ -401,7 +409,7 @@ def define_true_model_and_data(key, env):
     params_rnn = rnn.init(subkeys[1], input_rnn[0], input_rnn[1])
 
     # Work out the dimensions of the inputs to each function.
-    input_latent_decoder = rnn_carry[1]
+    input_latent_decoder = val_latent
     input_data_encoder = val_obs
     input_full_decoder = np.concatenate((rnn_carry[1], val_latent_decoded))
     input_prior = rnn_carry[1]
@@ -444,15 +452,21 @@ def define_true_model_and_data(key, env):
         key, subkey = jr.split(key)
         true_states, dataset = true_model.unconditional_sample(key=subkey, num_steps=T + 1, num_samples=num_trials)
         dataset_masks = np.ones(dataset.shape[0])
+        raise NotImplementedError("Need to generate the right dataset splits here.")
 
     else:
-        true_states = None
+        train_true_states = None
 
-    return true_model, true_states, dataset, dataset_masks
+    return true_model, train_true_states, train_dataset, train_dataset_masks, valid_dataset, valid_dataset_masks
 
 
 def define_test_model(key, true_model, env):
     """
+    This is a bit of a weird function, because we will only ever be using this on real data (in all likelihood).
+
+    Therefore the "true" model is already the model we want.  So this function really just defines the getters and setters for that true model.
+
+    I.e. there is no real "mutation" that happens in this function.
 
     Args:
         key:
@@ -462,49 +476,11 @@ def define_test_model(key, true_model, env):
     Returns:
 
     """
-    key, subkey = jr.split(key)
+    # Copy the true model as this is the initial model as well.
+    default_model = dc(true_model)
 
     # Close over the free parameters we have elected to learn.
     get_free_model_params_fn = lambda _model: fivo.get_model_params_fn(_model, env.config.free_parameters)
-
-    if len(env.config.free_parameters) > 0:
-
-        print('\n\n\n[WARNING]: This way of initializing parameters is crap.')
-
-        # Get the default parameters from the true model.
-        true_params = fivo.get_model_params_fn(true_model)
-
-        # Generate a model to use.  NOTE - this will generate a new model, and we will
-        # overwrite any of the free parameters of interest into the true model.
-        # TODO - NOTE - this clones the true model.  need to double-check that the parameters are deeply mutated later.
-        tmp_model = true_model.__class__(*true_params)
-
-        # Dig out the free parameters.
-        init_free_params = get_free_model_params_fn(tmp_model)
-
-        # Overwrite all the params with the new values.
-        default_params = utils.mutate_named_tuple_by_key(true_params, init_free_params)
-
-        # Mutate the free parameters.
-        for _k in env.config.free_parameters:
-            print('[WARNING]: No initializer for {}.'.format(_k))
-            # _base = getattr(default_params, _k)
-            # key, subkey = jr.split(key)
-            #
-            # # TODO - This needs to be made model-specific.
-            #
-            # # TODO - this initialization method is crap.
-            # new_val = {_k: _base + (0.1 * jr.normal(key=subkey, shape=_base.shape))}
-            #
-            # default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
-
-        # Build out a new model using these values.
-        default_model = fivo.rebuild_model_fn(default_params, tmp_model)
-
-    else:
-
-        # If there are no free parameters then just use the true model.
-        default_model = dc(true_model)
 
     # Close over rebuilding the model.
     rebuild_model_fn = lambda _params: fivo.rebuild_model_fn(_params, default_model)
@@ -571,7 +547,7 @@ def get_true_target_marginal(model, data):
     return None
 
 
-def load_piano_data():
+def load_piano_data(dataset_pickle_name, phase='train'):
     """
 
     Returns:
@@ -579,17 +555,17 @@ def load_piano_data():
     """
     from ssm.inference.data.datasets import sparse_pianoroll_to_dense
 
-    with open('./data/piano-midi.de.pkl', 'rb') as f:
+    with open('./data/' + dataset_pickle_name, 'rb') as f:
         dataset_sparse = pickle.load(f)
 
     PAD_FLAG = 0.0
-    MAX_LENGTH = 1000
+    MAX_LENGTH = 10000
 
     min_note = 21
     max_note = 108
     num_notes = max_note - min_note + 1
 
-    dataset_and_metadata = [sparse_pianoroll_to_dense(_d, min_note=min_note, num_notes=num_notes) for _d in dataset_sparse['train']]
+    dataset_and_metadata = [sparse_pianoroll_to_dense(_d, min_note=min_note, num_notes=num_notes) for _d in dataset_sparse[phase]]
     max_length = max([_d[1] for _d in dataset_and_metadata])
 
     if max_length < MAX_LENGTH:
@@ -606,16 +582,33 @@ def load_piano_data():
         dataset.append(np.concatenate((_d[0], PAD_FLAG * np.ones((MAX_LENGTH - len(_d[0]), *_d[0].shape[1:])))))
         dataset_masks.append(np.concatenate((np.ones(_d[0].shape[0]), 0.0 * np.ones((MAX_LENGTH - len(_d[0]))))))
 
-    print('Loaded {} datasets.'.format(len(dataset)))
+    print('{}: Loaded {} datasets.'.format(dataset_pickle_name, len(dataset)))
 
     dataset = np.asarray(dataset)
     dataset_masks = np.asarray(dataset_masks)
+    dataset_means = np.asarray(dataset_sparse['train_mean'])
     true_states = None  # There are no true states!
 
-    print('\n\n[WARNING]: trimming data further. \n\n')
-    dataset = dataset[:, :20]
-    dataset_masks = dataset_masks[:, :20]
-
-    dataset_means = dataset_sparse['train_mean']
+    # print('\n\n[WARNING]: trimming data further. \n\n')
+    # dataset = dataset[:, :20]
+    # dataset_masks = dataset_masks[:, :20]
 
     return dataset, dataset_masks, true_states, dataset_means
+
+
+if __name__ == '__main__':
+
+    phase = 'train'
+
+    for _s in ['piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl']:
+        dataset, masks, true_states, means = load_piano_data(_s, phase)
+
+        print('Dataset dimensions (N x T x D): ', dataset.shape)
+
+        plt.figure()
+        plt.imshow(dataset[0].T)
+        plt.title(_s)
+        plt.xlim(0, 500)
+        plt.pause(0.1)
+
+    print('Done')

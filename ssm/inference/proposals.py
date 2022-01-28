@@ -305,6 +305,8 @@ def rebuild_proposal(proposal, env, data_encoder=None):
                 """
                 Note that because the VRNN has a deterministic element in the proposal, we need to separate and then re-build the deterministic
                 element separately from the continuous/Gaussian RESQ part of the proposal.
+
+                Note that the inputs are not used here -- they are replaced with an encoded observation.
                 """
                 # Pull out the deterministic part of the latent state.
                 vrnn_h_dist = p_dist._model[0]
