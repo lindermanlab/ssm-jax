@@ -89,8 +89,12 @@ class RnnWithReadoutLayer(nn.Module):
     """
     emissions_dim: int
     latent_dim: int = 64
-    rnn_cell: nn.recurrent.RNNCellBase = nn.LSTMCell
-    readout_network: nn.Module = nn.Dense
+    _rnn_cell: nn.recurrent.RNNCellBase = nn.LSTMCell
+    _readout_network: nn.Module = nn.Dense
+
+    def setup(self):
+        self.rnn_cell = self._rnn_cell()
+        self.readout_network = self._readout_network(self.emissions_dim)
 
     def initialize_carry(self, rng, batch_dims=(), init_fn=zeros):
         """
@@ -104,20 +108,29 @@ class RnnWithReadoutLayer(nn.Module):
         Returns:
 
         """
-        return self.rnn_cell.initialize_carry(rng, batch_dims, self.latent_dim, init_fn)
+        return self._rnn_cell().initialize_carry(rng, batch_dims, self.latent_dim, init_fn)
 
-    @nn.compact
     def __call__(self, carry, x):
         """
 
         Args:
-            *args:
-            **kwargs:
+            carry:
+            x:
 
         Returns:
 
         """
-        rnn_carry, rnn_carry_exposed = self.rnn_cell()(carry, x)
-        rnn_y_out = self.readout_network(self.emissions_dim)(rnn_carry_exposed)
+        rnn_carry, rnn_carry_exposed = self.rnn_cell(carry, x)
+        rnn_y_out = self.readout_network(rnn_carry_exposed)
         return rnn_carry, rnn_y_out
+
+
+# if __name__ == '__main__':
+#
+#     key = jax.random.PRNGKey(0)
+#     _emissions_dim = 4
+#     wrapped = RnnWithReadoutLayer(_emissions_dim)
+#     init_carry = wrapped.initialize_carry(key)
+#     params1 = wrapped.init(key, init_carry, np.zeros(_emissions_dim))
+#     p = 0
 
