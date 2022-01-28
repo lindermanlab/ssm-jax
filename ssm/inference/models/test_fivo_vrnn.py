@@ -3,6 +3,7 @@ import jax.numpy as np
 import matplotlib.pyplot as plt
 import argparse
 import flax.linen as nn
+import pickle
 from jax import random as jr
 from copy import deepcopy as dc
 from tensorflow_probability.substrates.jax import distributions as tfd
