@@ -10,10 +10,19 @@ from tensorflow_probability.substrates.jax import distributions as tfd
 from typing import (NamedTuple, Any, Callable, Sequence, Iterable, List, Optional, Tuple,
                     Set, Type, Union, TypeVar, Generic, Dict)
 
+from typing import (Any, Callable, Sequence, Iterable, List, Optional, Tuple,
+                    Set, Type, Union, TypeVar, Generic, Dict)
+from flax.core.scope import CollectionFilter, DenyList, Variable, VariableDict, FrozenVariableDict, union_filters
+from flax.linen.initializers import orthogonal, zeros
+
+import jax
+
+
 PRNGKey = Any
 Shape = Iterable[int]
 Dtype = Any  # this could be a real type?
 Array = Any
+RNGSequences = Dict[str, PRNGKey]
 
 
 def vectorize_pytree(*args):
@@ -72,3 +81,43 @@ class Static(nn.Module):
                             self.bias_init,
                             (self.features, ))
         return kernel
+
+
+class RnnWithReadoutLayer(nn.Module):
+    """
+    Combine an RNN with a readout layer to encode the (exposed) hidden state.
+    """
+    emissions_dim: int
+    latent_dim: int = 64
+    rnn_cell: nn.recurrent.RNNCellBase = nn.LSTMCell
+    readout_network: nn.Module = nn.Dense
+
+    def initialize_carry(self, rng, batch_dims=(), init_fn=zeros):
+        """
+
+        Args:
+            rng:
+            batch_dims:
+            size:
+            init_fn:
+
+        Returns:
+
+        """
+        return self.rnn_cell.initialize_carry(rng, batch_dims, self.latent_dim, init_fn)
+
+    @nn.compact
+    def __call__(self, carry, x):
+        """
+
+        Args:
+            *args:
+            **kwargs:
+
+        Returns:
+
+        """
+        rnn_carry, rnn_carry_exposed = self.rnn_cell()(carry, x)
+        rnn_y_out = self.readout_network(self.emissions_dim)(rnn_carry_exposed)
+        return rnn_carry, rnn_y_out
+
