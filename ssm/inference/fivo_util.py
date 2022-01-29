@@ -4,12 +4,18 @@ import matplotlib.pyplot as plt
 import numpy as onp
 from jax import random as jr
 from copy import deepcopy as dc
+import flax
 
 # Import some ssm stuff.
 import ssm.utils as utils
 from ssm.inference.smc import _plot_single_sweep
 from ssm.inference.fivo import get_params_from_opt
 from ssm.utils import Verbosity
+from copy import deepcopy as dc
+from tensorflow_probability.substrates.jax import distributions as tfd
+from flax import optim
+from flax import linen as nn
+import ssm.nn_util as nn_util
 
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
@@ -512,45 +518,133 @@ def compare_sweeps(env, opt, dataset, mask, true_model, rebuild_model_fn, rebuil
         plt.close(fig)
 
 
-def final_validation(get_marginals,
-                     env,
-                     opt,
-                     dataset,
-                     mask,
-                     true_model,
-                     rebuild_model_fn,
-                     rebuild_prop_fn,
-                     rebuild_tilt_fn,
-                     key,
-                     do_fivo_sweep_jitted,
-                     smc_jitted,
-                     GLOBAL_PLOT=True,
-                     tag=''):
+def pretrain_encoder(env, key, encoder, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks):
     """
+    Pretrain the encoder to predict the next step in the sequence using the next-step prediction error.
 
     Args:
-        get_marginals:
         env:
-        opt:
-        dataset:
-        true_model:
-        rebuild_model_fn:
-        rebuild_prop_fn:
-        rebuild_tilt_fn:
         key:
-        do_fivo_sweep_jitted:
+        encoder:
+        train_datasets:
+        train_dataset_masks:
+        validation_datasets:
+        validation_dataset_masks:
 
     Returns:
 
     """
+    # We need to wrap the encoder in an object with a readout layer.
+    # The complexity of the output layer constrains the representation that can be learned by the encoder...
+    state_dim = env.config.rnn_state_dim
 
-    # Compare the sweeps.
-    compare_sweeps(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, tag=tag)
+    # Wrap the entire encoder in an object with an output layer.
+    wrapped_encoder = nn_util.RnnWithReadoutLayer(train_datasets.shape[-1], state_dim, lambda *args: encoder)
 
-    # Compare the KLs.
-    true_bpf_kls, pred_smc_kls = compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted,
-                                             plot=True)
+    key, subkey = jr.split(key)
+    init_carry = wrapped_encoder.initialize_carry(subkey)
 
+    # wrapped_encoder.init(subkey, init_carry, train_datasets[..., 0])
+
+    key, subkey = jr.split(key)
+    wrapped_params = wrapped_encoder.init(subkey, init_carry, np.zeros(train_datasets.shape[-1]))
+
+    # We can pre-train the encoder to fit the data.  Do that here.
+    # Note that when training we sweep over the parameters backward train in reverse.
+    enc_opt_def = optim.Adam(learning_rate=env.config.pretrain_encoder_lr)
+    enc_opt = enc_opt_def.create(wrapped_params)
+
+    # Create the batches
+    full_idx = np.arange(len(train_datasets))
+    total_samples = env.config.pretrain_encoder_opt_steps * env.config.pretrain_encoder_batch_size
+    batch_idx = []
+    while len(batch_idx) < total_samples:
+        key, subkey = jr.split(key)
+        mixed_idx = jr.shuffle(subkey, full_idx)
+        batch_idx += mixed_idx
+    batch_idx = np.asarray(batch_idx)[:total_samples]
+    batch_idx = np.reshape(batch_idx, (env.config.pretrain_encoder_opt_steps, env.config.pretrain_encoder_batch_size))
+
+    def _rnn_scan(_carry, _input, ):
+        _current_h, _wrapped_params, _prev_obs = _carry
+        _curr_obs, _curr_mask = _input
+        _next_h, _next_obs_pred = wrapped_encoder.apply(_wrapped_params, _current_h, _prev_obs)
+
+        _loss = tfd.Bernoulli(_next_obs_pred).log_prob(_curr_obs) * _curr_mask
+        # _loss = np.mean(np.square(_next_obs_pred - _curr_obs))
+
+        return (_current_h, _wrapped_params, _curr_obs), _loss
+
+    def _single_loss(_wrapped_params, _key, _obs, _mask):
+        _init_state = wrapped_encoder.initialize_carry(_key, batch_dims=())
+
+        _, _log_probs = jax.lax.scan(_rnn_scan,
+                                     (_init_state, _wrapped_params, np.zeros(_obs.shape[-1])),
+                                     (_obs, _mask),
+                                     length=len(_obs),
+                                     reverse=True)
+        return - np.sum(_log_probs) / np.sum(_mask)
+
+    @jax.jit
+    def loss(_key, _wrapped_params, _batch, _batch_mask):
+        _subkeys = jr.split(_key, len(_batch))
+        _losses = jax.vmap(_single_loss, in_axes=(None, 0, 0, 0))(_wrapped_params, _subkeys, _batch, _batch_mask)
+        return np.mean(_losses)
+
+    # Compile into val and grad.
+    loss_val_and_grad = jax.value_and_grad(loss, argnums=1)
+
+    print_regularity = 10
+    min_loss = np.inf
+
+    for _step in range(env.config.pretrain_encoder_opt_steps):
+        key, subkey = jr.split(key)
+        batch = train_datasets[batch_idx[_step]]
+        batch_mask = train_dataset_masks[batch_idx[_step]]
+        loss, grad = loss_val_and_grad(subkey, enc_opt.target, batch, batch_mask)
+        enc_opt = enc_opt.apply_gradient(grad)
+
+        if _step % print_regularity == 0: print('{:> 6d}: {:> 7.3f}'.format(_step, loss))
+        if loss < min_loss: min_loss = loss
+
+    # Now we return just the parameters of the RNN.
+    rnn_params = flax.core.FrozenDict({'params': enc_opt.target['params']['rnn_cell']})
+    return rnn_params
+
+
+# def final_validation(get_marginals,
+#                      env,
+#                      opt,
+#                      dataset,
+#                      mask,
+#                      true_model,
+#                      rebuild_model_fn,
+#                      rebuild_prop_fn,
+#                      rebuild_tilt_fn,
+#                      key,
+#                      do_fivo_sweep_jitted,
+#                      smc_jitted,
+#                      GLOBAL_PLOT=True,
+#                      tag=''):
+#     """
+#
+#     Args:
+#         get_marginals:
+#         env:
+#         opt:
+#         dataset:
+#         true_model:
+#         rebuild_model_fn:
+#         rebuild_prop_fn:
+#         rebuild_tilt_fn:
+#         key:
+#         do_fivo_sweep_jitted:
+#
+#     Returns:
+#
+#     """
+#     compare_sweeps(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, tag=tag)
+#     true_bpf_kls, pred_smc_kls = compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True)
 
 # def temp_validation_code(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
 #                          num_particles=10, dset_to_plot=0, init_model=None):

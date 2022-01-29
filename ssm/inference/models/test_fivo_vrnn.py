@@ -15,6 +15,7 @@ from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
 from ssm.vrnn.models import VRNN, VrnnFilteringProposal, VrnnSmoothingProposal
 import ssm.nn_util as nn_util
 import ssm.inference.fivo as fivo
+from ssm.inference.fivo_util import pretrain_encoder
 import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 
@@ -30,7 +31,7 @@ def get_config():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--pretrain-encoder', default=1, type=int, help="{0, 1}")
-    parser.add_argument('--pretrain-encoder-opt-steps', default=500, type=int, help="")
+    parser.add_argument('--pretrain-encoder-opt-steps', default=100, type=int, help="")
     parser.add_argument('--pretrain-encoder-lr', default=0.01, type=float, help="")
     parser.add_argument('--pretrain-encoder-batch-size', default=4, type=float, help="")
 
@@ -335,97 +336,6 @@ def define_proposal(subkey, model, train_dataset, env, train_dataset_masks=None,
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
     rebuild_prop_fn = proposals.rebuild_proposal(proposal, env, data_encoder=data_encoder)
     return proposal, proposal_params, rebuild_prop_fn
-
-
-def pretrain_encoder(env, key, encoder, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks):
-    """
-    Pretrain the encoder to predict the next step in the sequence using the next-step prediction error.
-
-    Args:
-        env:
-        key:
-        encoder:
-        train_datasets:
-        train_dataset_masks:
-        validation_datasets:
-        validation_dataset_masks:
-
-    Returns:
-
-    """
-    # We need to wrap the encoder in an object with a readout layer.
-    # The complexity of the output layer constrains the representation that can be learned by the encoder...
-    state_dim = env.config.rnn_state_dim
-
-    # Wrap the entire encoder in an object with an output layer.
-    wrapped_encoder = nn_util.RnnWithReadoutLayer(train_datasets.shape[-1], state_dim, lambda *args: encoder)
-
-    key, subkey = jr.split(key)
-    init_carry = wrapped_encoder.initialize_carry(subkey)
-
-    # wrapped_encoder.init(subkey, init_carry, train_datasets[..., 0])
-
-    key, subkey = jr.split(key)
-    wrapped_params = wrapped_encoder.init(subkey, init_carry, np.zeros(train_datasets.shape[-1]))
-
-    # We can pre-train the encoder to fit the data.  Do that here.
-    # Note that when training we sweep over the parameters backward train in reverse.
-    enc_opt_def = optim.Adam(learning_rate=env.config.pretrain_encoder_lr)
-    enc_opt = enc_opt_def.create(wrapped_params)
-
-    # Create the batches
-    full_idx = np.arange(len(train_datasets))
-    total_samples = env.config.pretrain_encoder_opt_steps * env.config.pretrain_encoder_batch_size
-    batch_idx = []
-    while len(batch_idx) < total_samples:
-        key, subkey = jr.split(key)
-        mixed_idx = jr.shuffle(subkey, full_idx)
-        batch_idx += mixed_idx
-    batch_idx = np.asarray(batch_idx)[:total_samples]
-    batch_idx = np.reshape(batch_idx, (env.config.pretrain_encoder_opt_steps, env.config.pretrain_encoder_batch_size))
-
-    def _rnn_scan(_carry, _curr_obs, ):
-        _current_h, _wrapped_params, _prev_obs = _carry
-        _next_h, _next_obs_pred = wrapped_encoder.apply(_wrapped_params, _current_h, _prev_obs)
-
-        _loss = tfd.Bernoulli(_next_obs_pred).log_prob(_curr_obs)
-        # _loss = np.mean(np.square(_next_obs_pred - _curr_obs))
-
-        return (_current_h, _wrapped_params, _curr_obs), (_loss)
-
-    def _single_loss(_wrapped_params, _key, _obs):
-        _init_state = wrapped_encoder.initialize_carry(_key, batch_dims=())
-
-        _, _log_probs = jax.lax.scan(_rnn_scan,
-                                     (_init_state, _wrapped_params, np.zeros(_obs.shape[-1])),
-                                     _obs,
-                                     reverse=True)
-        return - np.sum(_log_probs)
-
-    @jax.jit
-    def loss(_key, _wrapped_params, _batch):
-        _subkeys = jr.split(_key, len(_batch))
-        _losses = jax.vmap(_single_loss, in_axes=(None, 0, 0))(_wrapped_params, _subkeys, _batch)
-        return np.mean(_losses)
-
-    # Compile into val and grad.
-    loss_val_and_grad = jax.value_and_grad(loss, argnums=1)
-
-    print_regularity = 10
-    min_loss = np.inf
-
-    for _step in range(env.config.pretrain_encoder_opt_steps):
-        key, subkey = jr.split(key)
-        batch = train_datasets[batch_idx[_step]]
-        loss, grad = loss_val_and_grad(subkey, enc_opt.target, batch)
-        enc_opt = enc_opt.apply_gradient(grad)
-
-        if _step % print_regularity == 0: print('{:> 6d}: {:> 7.3f}'.format(_step, loss))
-        if loss < min_loss: min_loss = loss
-
-    # Now we return just the parameters of the RNN.
-    rnn_params = enc_opt.target['params']['rnn_cell']
-    return rnn_params
 
 
 def define_true_model_and_data(key, env):

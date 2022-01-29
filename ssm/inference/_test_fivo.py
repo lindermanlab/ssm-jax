@@ -484,20 +484,6 @@ def main():
                          pred_fivo_bound_to_print,
                          em_log_marginal_likelihood)
 
-        # Do some final validation.
-        fivo_util.final_validation(get_marginals,
-                                   env,
-                                   opt,
-                                   validation_datasets,
-                                   validation_dataset_masks,
-                                   true_model,
-                                   rebuild_model_fn,
-                                   rebuild_prop_fn,
-                                   rebuild_tilt_fn,
-                                   key,
-                                   do_fivo_sweep_jitted,
-                                   smc_jit)
-
 
 if __name__ == '__main__':
     main()
