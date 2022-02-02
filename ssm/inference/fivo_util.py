@@ -151,7 +151,8 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
     # Test BPF in the true model..
     key, subkey = jr.split(key)
     true_bpf_posterior = _smc_jit(subkey, true_model, dataset, masks, num_particles=num_particles, resampling_criterion=env.config.resampling_criterion)
-    true_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
+    true_neg_fivo_bound = - np.mean(true_bpf_posterior.log_normalizer)
+    true_neg_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
 
     if init_model is not None:
         # Test BPF in the initial model..
@@ -229,7 +230,44 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
     if do_print is not None:
         do_print(0, true_model, opt, true_lml, initial_lml, initial_fivo_bound, em_log_marginal_likelihood)
 
-    return true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
+    return true_neg_lml, true_neg_fivo_bound, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
+
+def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_eval_small_vmap, em_neg_lml):
+
+    key, subkey1, subkey2 = jr.split(key, num=3)
+    small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, 20), params)
+    small_true_bpf_posteriors = single_bpf_true_eval_small_vmap(jr.split(subkey2, 20))
+
+    small_true_bpf_neg_lml_all = - small_true_bpf_posteriors.log_normalizer
+    small_true_bpf_neg_lml = utils.lexp(utils.lexp(small_true_bpf_neg_lml_all, _axis=1))
+    small_true_bpf_neg_lml_var = np.mean(np.var(small_true_bpf_neg_lml_all, axis=0))
+    small_true_bpf_neg_fivo_mean = np.mean(small_true_bpf_neg_lml_all)
+    small_true_bpf_neg_fivo_var = np.var(np.mean(small_true_bpf_neg_lml_all, axis=1))
+
+    small_pred_smc_neg_lml_all = - small_pred_smc_posteriors.log_normalizer
+    small_pred_smc_neg_lml = utils.lexp(utils.lexp(small_pred_smc_neg_lml_all, _axis=1))
+    small_pred_smc_neg_lml_var = np.mean(np.var(small_pred_smc_neg_lml_all, axis=0))
+    small_pred_smc_neg_fivo_mean = np.mean(small_pred_smc_neg_lml_all)
+    small_pred_smc_neg_fivo_var = np.var(np.mean(small_pred_smc_neg_lml_all, axis=1))
+
+    try:
+        small_nlml_metrics = {'mean': {'em_true': em_neg_lml,
+                                       'bpf_true': small_true_bpf_neg_lml,
+                                       'pred': small_pred_smc_neg_lml, },
+                              'variance': {'bpf_true': small_true_bpf_neg_lml_var,
+                                           'pred': small_pred_smc_neg_lml_var}, }
+    except:
+        small_nlml_metrics = None
+
+    try:
+        small_fivo_metrics = {'mean': {'bpf_true': small_true_bpf_neg_fivo_mean,
+                                       'pred': small_pred_smc_neg_fivo_mean, },
+                              'variance': {'bpf_true': small_true_bpf_neg_fivo_var,
+                                           'pred': small_pred_smc_neg_fivo_var, }, }
+    except:
+        small_fivo_metrics = None
+
+    return small_nlml_metrics, small_fivo_metrics
 
 
 def compare_kls(get_marginals, env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_kls=None):
@@ -344,7 +382,26 @@ def compare_kls(get_marginals, env, opt, dataset, mask, true_model, key, do_fivo
         plt.savefig('./figs/kl_diff.pdf')
         plt.close(fig)
 
-    return true_bpf_kls, pred_smc_kls
+    try:
+        kl_metrics = {'median': {'bpf_true': np.nanquantile(true_bpf_kls, 0.5, axis=1),
+                                 'fivo': np.nanquantile(pred_smc_kls, 0.5, axis=1), },
+                      'lq': {'bpf_true': np.nanquantile(true_bpf_kls, 0.25, axis=1),
+                             'fivo': np.nanquantile(pred_smc_kls, 0.25, axis=1), },
+                      'uq': {'bpf_true': np.nanquantile(true_bpf_kls, 0.75, axis=1),
+                             'fivo': np.nanquantile(pred_smc_kls, 0.75, axis=1), },
+                      'mean': {'bpf_true': np.nanmean(true_bpf_kls, axis=1),
+                               'fivo': np.nanmean(pred_smc_kls, axis=1), },
+                      'variance': {'bpf_true': np.nanvar(true_bpf_kls, axis=1),
+                                   'fivo': np.nanvar(pred_smc_kls, axis=1), },
+                      'nan': {'bpf_true': np.sum(np.isnan(true_bpf_kls), axis=1),
+                              'fivo': np.sum(np.isnan(pred_smc_kls), axis=1), },
+                      'expected': {'bpf_true': np.nanmean(true_bpf_kls),
+                                   'pred': np.nanmean(pred_smc_kls)}
+                      }
+    except:
+        kl_metrics = None
+
+    return kl_metrics, true_bpf_kls
 
 
 def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_upc=None):
@@ -418,7 +475,24 @@ def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_
         plt.savefig('./figs/ss_diff.pdf')
         plt.close(fig)
 
-    return true_bpf_upc, pred_smc_upc
+    try:
+        upc_metrics = {'median': {'bpf_true': np.quantile(true_bpf_upc, 0.5, axis=0),
+                                  'fivo': np.quantile(pred_smc_upc, 0.5, axis=0), },
+                       'lq': {'bpf_true': np.quantile(true_bpf_upc, 0.25, axis=0),
+                              'fivo': np.quantile(pred_smc_upc, 0.25, axis=0), },
+                       'uq': {'bpf_true': np.quantile(true_bpf_upc, 0.75, axis=0),
+                              'fivo': np.quantile(pred_smc_upc, 0.75, axis=0), },
+                       'mean': {'bpf_true': np.mean(true_bpf_upc, axis=0),
+                                'fivo': np.mean(pred_smc_upc, axis=0), },
+                       'variance': {'bpf_true': np.var(true_bpf_upc, axis=0),
+                                    'fivo': np.var(pred_smc_upc, axis=0), },
+                       'expected': {'bpf_true': np.mean(true_bpf_upc),
+                                    'pred': np.mean(pred_smc_upc), }
+                       }
+    except:
+        upc_metrics = None
+
+    return upc_metrics, true_bpf_upc
 
 
 def compare_sweeps(env, opt, dataset, mask, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted,
@@ -798,4 +872,20 @@ def pretrain_encoder(env, key, encoder, train_datasets, train_dataset_masks, val
 #         plt.savefig('./figs/ESS_diff.pdf')
 #         plt.close(fig)
 #
-#     return true_bpf_ess, pred_smc_ess
+#
+#    'expected_ess': {'bpf_true':          np.mean(true_bpf_ess),
+#                     'pred':              np.mean(pred_smc_ess), },
+#
+#    'ess': {'median':     {'bpf_true':    np.quantile(true_bpf_ess, 0.5, axis=0),
+#                           'pred':        np.quantile(pred_smc_ess, 0.5, axis=0), },
+#            'lq':         {'bpf_true':    np.quantile(true_bpf_ess, 0.25, axis=0),
+#                           'pred':        np.quantile(pred_smc_ess, 0.25, axis=0), },
+#            'uq':         {'bpf_true':    np.quantile(true_bpf_ess, 0.75, axis=0),
+#                           'pred':        np.quantile(pred_smc_ess, 0.75, axis=0), },
+#            'mean':       {'bpf_true':    np.mean(true_bpf_ess, axis=0),
+#                           'pred':        np.mean(pred_smc_ess, axis=0), },
+#            'variance':   {'bpf_true':    np.var(true_bpf_ess, axis=0),
+#                           'pred':        np.var(pred_smc_ess, axis=0), },
+#            },
+#
+#     return ess_metrics, pred_smc_ess

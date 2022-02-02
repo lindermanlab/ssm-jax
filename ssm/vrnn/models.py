@@ -78,7 +78,6 @@ class VRNN(SSM):
             seed:
         """
 
-        # We are only considering the univariate case.
         self.latent_dim = num_latent_dims
         self.emission_dims = num_emission_dims
         self.latent_enc_dim = latent_enc_dim
