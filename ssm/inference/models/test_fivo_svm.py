@@ -187,7 +187,7 @@ def define_tilt(subkey, model, dataset, env):
         head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
 
     elif env.config.tilt_fn_family == 'MLP':
-        trunk_fn = nn_util.MLP([10, 10, ], output_layer_relu=True)
+        trunk_fn = nn_util.MLP([10, 10, ], output_layer_activation=True)
         head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
         head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
 
@@ -280,7 +280,7 @@ def define_proposal(subkey, model, dataset, env):
         head_log_var_fn = nn_util.Static(dummy_proposal_output.shape[0], bias_init=nn.initializers.zeros)
 
     elif env.config.proposal_fn_family == 'MLP':
-        trunk_fn = nn_util.MLP([10, 10, ], output_layer_relu=True)
+        trunk_fn = nn_util.MLP([10, 10, ], output_layer_activation=True)
         head_mean_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=kernel_init)
         head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.1, )
 
