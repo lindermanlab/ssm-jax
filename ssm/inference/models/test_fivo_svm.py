@@ -29,6 +29,7 @@ def get_config():
     parser.add_argument('--synthetic-data', default=1, type=int)
 
     parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # CSV.  # {'always_resample', 'never_resample'}.
+    parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # CSV.  # {'multinomial_resampling', 'systematic_resampling'}.
     parser.add_argument('--use-sgr', default=0, type=int)  # {0, 1}
     parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 

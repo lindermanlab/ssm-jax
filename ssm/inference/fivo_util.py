@@ -4,12 +4,18 @@ import matplotlib.pyplot as plt
 import numpy as onp
 from jax import random as jr
 from copy import deepcopy as dc
+import flax
 
 # Import some ssm stuff.
 import ssm.utils as utils
 from ssm.inference.smc import _plot_single_sweep
 from ssm.inference.fivo import get_params_from_opt
 from ssm.utils import Verbosity
+from copy import deepcopy as dc
+from tensorflow_probability.substrates.jax import distributions as tfd
+from flax import optim
+from flax import linen as nn
+import ssm.nn_util as nn_util
 
 # Set the default verbosity.
 default_verbosity = Verbosity.DEBUG
@@ -145,7 +151,8 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
     # Test BPF in the true model..
     key, subkey = jr.split(key)
     true_bpf_posterior = _smc_jit(subkey, true_model, dataset, masks, num_particles=num_particles, resampling_criterion=env.config.resampling_criterion)
-    true_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
+    true_neg_fivo_bound = - np.mean(true_bpf_posterior.log_normalizer)
+    true_neg_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
 
     if init_model is not None:
         # Test BPF in the initial model..
@@ -223,7 +230,44 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
     if do_print is not None:
         do_print(0, true_model, opt, true_lml, initial_lml, initial_fivo_bound, em_log_marginal_likelihood)
 
-    return true_lml, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
+    return true_neg_lml, true_neg_fivo_bound, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
+
+def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_eval_small_vmap, em_neg_lml):
+
+    key, subkey1, subkey2 = jr.split(key, num=3)
+    small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, 20), params)
+    small_true_bpf_posteriors = single_bpf_true_eval_small_vmap(jr.split(subkey2, 20))
+
+    small_true_bpf_neg_lml_all = - small_true_bpf_posteriors.log_normalizer
+    small_true_bpf_neg_lml = utils.lexp(utils.lexp(small_true_bpf_neg_lml_all, _axis=1))
+    small_true_bpf_neg_lml_var = np.mean(np.var(small_true_bpf_neg_lml_all, axis=0))
+    small_true_bpf_neg_fivo_mean = np.mean(small_true_bpf_neg_lml_all)
+    small_true_bpf_neg_fivo_var = np.var(np.mean(small_true_bpf_neg_lml_all, axis=1))
+
+    small_pred_smc_neg_lml_all = - small_pred_smc_posteriors.log_normalizer
+    small_pred_smc_neg_lml = utils.lexp(utils.lexp(small_pred_smc_neg_lml_all, _axis=1))
+    small_pred_smc_neg_lml_var = np.mean(np.var(small_pred_smc_neg_lml_all, axis=0))
+    small_pred_smc_neg_fivo_mean = np.mean(small_pred_smc_neg_lml_all)
+    small_pred_smc_neg_fivo_var = np.var(np.mean(small_pred_smc_neg_lml_all, axis=1))
+
+    try:
+        small_nlml_metrics = {'mean': {'em_true': em_neg_lml,
+                                       'bpf_true': small_true_bpf_neg_lml,
+                                       'pred': small_pred_smc_neg_lml, },
+                              'variance': {'bpf_true': small_true_bpf_neg_lml_var,
+                                           'pred': small_pred_smc_neg_lml_var}, }
+    except:
+        small_nlml_metrics = None
+
+    try:
+        small_fivo_metrics = {'mean': {'bpf_true': small_true_bpf_neg_fivo_mean,
+                                       'pred': small_pred_smc_neg_fivo_mean, },
+                              'variance': {'bpf_true': small_true_bpf_neg_fivo_var,
+                                           'pred': small_pred_smc_neg_fivo_var, }, }
+    except:
+        small_fivo_metrics = None
+
+    return small_nlml_metrics, small_fivo_metrics
 
 
 def compare_kls(get_marginals, env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_kls=None):
@@ -338,7 +382,26 @@ def compare_kls(get_marginals, env, opt, dataset, mask, true_model, key, do_fivo
         plt.savefig('./figs/kl_diff.pdf')
         plt.close(fig)
 
-    return true_bpf_kls, pred_smc_kls
+    try:
+        kl_metrics = {'median': {'bpf_true': np.nanquantile(true_bpf_kls, 0.5, axis=1),
+                                 'fivo': np.nanquantile(pred_smc_kls, 0.5, axis=1), },
+                      'lq': {'bpf_true': np.nanquantile(true_bpf_kls, 0.25, axis=1),
+                             'fivo': np.nanquantile(pred_smc_kls, 0.25, axis=1), },
+                      'uq': {'bpf_true': np.nanquantile(true_bpf_kls, 0.75, axis=1),
+                             'fivo': np.nanquantile(pred_smc_kls, 0.75, axis=1), },
+                      'mean': {'bpf_true': np.nanmean(true_bpf_kls, axis=1),
+                               'fivo': np.nanmean(pred_smc_kls, axis=1), },
+                      'variance': {'bpf_true': np.nanvar(true_bpf_kls, axis=1),
+                                   'fivo': np.nanvar(pred_smc_kls, axis=1), },
+                      'nan': {'bpf_true': np.sum(np.isnan(true_bpf_kls), axis=1),
+                              'fivo': np.sum(np.isnan(pred_smc_kls), axis=1), },
+                      'expected': {'bpf_true': np.nanmean(true_bpf_kls),
+                                   'pred': np.nanmean(pred_smc_kls)}
+                      }
+    except:
+        kl_metrics = None
+
+    return kl_metrics, true_bpf_kls
 
 
 def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_upc=None):
@@ -412,10 +475,27 @@ def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_
         plt.savefig('./figs/ss_diff.pdf')
         plt.close(fig)
 
-    return true_bpf_upc, pred_smc_upc
+    try:
+        upc_metrics = {'median': {'bpf_true': np.quantile(true_bpf_upc, 0.5, axis=0),
+                                  'fivo': np.quantile(pred_smc_upc, 0.5, axis=0), },
+                       'lq': {'bpf_true': np.quantile(true_bpf_upc, 0.25, axis=0),
+                              'fivo': np.quantile(pred_smc_upc, 0.25, axis=0), },
+                       'uq': {'bpf_true': np.quantile(true_bpf_upc, 0.75, axis=0),
+                              'fivo': np.quantile(pred_smc_upc, 0.75, axis=0), },
+                       'mean': {'bpf_true': np.mean(true_bpf_upc, axis=0),
+                                'fivo': np.mean(pred_smc_upc, axis=0), },
+                       'variance': {'bpf_true': np.var(true_bpf_upc, axis=0),
+                                    'fivo': np.var(pred_smc_upc, axis=0), },
+                       'expected': {'bpf_true': np.mean(true_bpf_upc),
+                                    'pred': np.mean(pred_smc_upc), }
+                       }
+    except:
+        upc_metrics = None
+
+    return upc_metrics, true_bpf_upc
 
 
-def compare_sweeps(env, opt, dataset, mask, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted,
+def compare_sweeps(env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted,
                    tag='', nrep=10, true_states=None, num_particles=None):
     """
 
@@ -423,26 +503,22 @@ def compare_sweeps(env, opt, dataset, mask, true_model, rebuild_model_fn, rebuil
         env:
         opt:
         dataset:
+        mask:
         true_model:
-        rebuild_model_fn:
-        rebuild_prop_fn:
-        rebuild_tilt_fn:
         key:
         do_fivo_sweep_jitted:
+        smc_jitted:
+        tag:
+        nrep:
+        true_states:
+        num_particles:
 
     Returns:
 
     """
+
     if num_particles is None:
         num_particles = env.config.sweep_test_particles
-
-    # # Do some final validation.
-    # # Rebuild the initial distribution.
-    # _prop = rebuild_prop_fn(get_params_from_opt(opt)[1])
-    # if _prop is not None:
-    #     initial_distribution = lambda _dset, _model:  _prop(_dset, _model, np.zeros(dataset.shape[-1], ), 0, _model.initial_distribution(), None)
-    # else:
-    #     initial_distribution = None
 
     # BPF in true model.
     key, subkey = jr.split(key)
@@ -512,45 +588,133 @@ def compare_sweeps(env, opt, dataset, mask, true_model, rebuild_model_fn, rebuil
         plt.close(fig)
 
 
-def final_validation(get_marginals,
-                     env,
-                     opt,
-                     dataset,
-                     mask,
-                     true_model,
-                     rebuild_model_fn,
-                     rebuild_prop_fn,
-                     rebuild_tilt_fn,
-                     key,
-                     do_fivo_sweep_jitted,
-                     smc_jitted,
-                     GLOBAL_PLOT=True,
-                     tag=''):
+def pretrain_encoder(env, key, encoder, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks):
     """
+    Pretrain the encoder to predict the next step in the sequence using the next-step prediction error.
 
     Args:
-        get_marginals:
         env:
-        opt:
-        dataset:
-        true_model:
-        rebuild_model_fn:
-        rebuild_prop_fn:
-        rebuild_tilt_fn:
         key:
-        do_fivo_sweep_jitted:
+        encoder:
+        train_datasets:
+        train_dataset_masks:
+        validation_datasets:
+        validation_dataset_masks:
 
     Returns:
 
     """
+    # We need to wrap the encoder in an object with a readout layer.
+    # The complexity of the output layer constrains the representation that can be learned by the encoder...
+    state_dim = env.config.rnn_state_dim
 
-    # Compare the sweeps.
-    compare_sweeps(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, tag=tag)
+    # Wrap the entire encoder in an object with an output layer.
+    wrapped_encoder = nn_util.RnnWithReadoutLayer(train_datasets.shape[-1], state_dim, lambda *args: encoder)
 
-    # Compare the KLs.
-    true_bpf_kls, pred_smc_kls = compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted,
-                                             plot=True)
+    key, subkey = jr.split(key)
+    init_carry = wrapped_encoder.initialize_carry(subkey)
 
+    # wrapped_encoder.init(subkey, init_carry, train_datasets[..., 0])
+
+    key, subkey = jr.split(key)
+    wrapped_params = wrapped_encoder.init(subkey, init_carry, np.zeros(train_datasets.shape[-1]))
+
+    # We can pre-train the encoder to fit the data.  Do that here.
+    # Note that when training we sweep over the parameters backward train in reverse.
+    enc_opt_def = optim.Adam(learning_rate=env.config.pretrain_encoder_lr)
+    enc_opt = enc_opt_def.create(wrapped_params)
+
+    # Create the batches
+    full_idx = np.arange(len(train_datasets))
+    total_samples = env.config.pretrain_encoder_opt_steps * env.config.pretrain_encoder_batch_size
+    batch_idx = []
+    while len(batch_idx) < total_samples:
+        key, subkey = jr.split(key)
+        mixed_idx = jr.shuffle(subkey, full_idx)
+        batch_idx += mixed_idx
+    batch_idx = np.asarray(batch_idx)[:total_samples]
+    batch_idx = np.reshape(batch_idx, (env.config.pretrain_encoder_opt_steps, env.config.pretrain_encoder_batch_size))
+
+    def _rnn_scan(_carry, _input, ):
+        _current_h, _wrapped_params, _prev_obs = _carry
+        _curr_obs, _curr_mask = _input
+        _next_h, _next_obs_pred = wrapped_encoder.apply(_wrapped_params, _current_h, _prev_obs)
+
+        _loss = tfd.Bernoulli(_next_obs_pred).log_prob(_curr_obs) * _curr_mask
+        # _loss = np.mean(np.square(_next_obs_pred - _curr_obs))
+
+        return (_current_h, _wrapped_params, _curr_obs), _loss
+
+    def _single_loss(_wrapped_params, _key, _obs, _mask):
+        _init_state = wrapped_encoder.initialize_carry(_key, batch_dims=())
+
+        _, _log_probs = jax.lax.scan(_rnn_scan,
+                                     (_init_state, _wrapped_params, np.zeros(_obs.shape[-1])),
+                                     (_obs, _mask),
+                                     length=len(_obs),
+                                     reverse=True)
+        return - np.sum(_log_probs) / np.sum(_mask)
+
+    @jax.jit
+    def loss(_key, _wrapped_params, _batch, _batch_mask):
+        _subkeys = jr.split(_key, len(_batch))
+        _losses = jax.vmap(_single_loss, in_axes=(None, 0, 0, 0))(_wrapped_params, _subkeys, _batch, _batch_mask)
+        return np.mean(_losses)
+
+    # Compile into val and grad.
+    loss_val_and_grad = jax.value_and_grad(loss, argnums=1)
+
+    print_regularity = 10
+    min_loss = np.inf
+
+    for _step in range(env.config.pretrain_encoder_opt_steps):
+        key, subkey = jr.split(key)
+        batch = train_datasets[batch_idx[_step]]
+        batch_mask = train_dataset_masks[batch_idx[_step]]
+        loss, grad = loss_val_and_grad(subkey, enc_opt.target, batch, batch_mask)
+        enc_opt = enc_opt.apply_gradient(grad)
+
+        if _step % print_regularity == 0: print('{:> 6d}: {:> 7.3f}'.format(_step, loss))
+        if loss < min_loss: min_loss = loss
+
+    # Now we return just the parameters of the RNN.
+    rnn_params = flax.core.FrozenDict({'params': enc_opt.target['params']['rnn_cell']})
+    return rnn_params
+
+
+# def final_validation(get_marginals,
+#                      env,
+#                      opt,
+#                      dataset,
+#                      mask,
+#                      true_model,
+#                      rebuild_model_fn,
+#                      rebuild_prop_fn,
+#                      rebuild_tilt_fn,
+#                      key,
+#                      do_fivo_sweep_jitted,
+#                      smc_jitted,
+#                      GLOBAL_PLOT=True,
+#                      tag=''):
+#     """
+#
+#     Args:
+#         get_marginals:
+#         env:
+#         opt:
+#         dataset:
+#         true_model:
+#         rebuild_model_fn:
+#         rebuild_prop_fn:
+#         rebuild_tilt_fn:
+#         key:
+#         do_fivo_sweep_jitted:
+#
+#     Returns:
+#
+#     """
+#     compare_sweeps(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, tag=tag)
+#     true_bpf_kls, pred_smc_kls = compare_kls(get_marginals, env, opt, dataset, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True)
 
 # def temp_validation_code(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
 #                          num_particles=10, dset_to_plot=0, init_model=None):
@@ -704,4 +868,20 @@ def final_validation(get_marginals,
 #         plt.savefig('./figs/ESS_diff.pdf')
 #         plt.close(fig)
 #
-#     return true_bpf_ess, pred_smc_ess
+#
+#    'expected_ess': {'bpf_true':          np.mean(true_bpf_ess),
+#                     'pred':              np.mean(pred_smc_ess), },
+#
+#    'ess': {'median':     {'bpf_true':    np.quantile(true_bpf_ess, 0.5, axis=0),
+#                           'pred':        np.quantile(pred_smc_ess, 0.5, axis=0), },
+#            'lq':         {'bpf_true':    np.quantile(true_bpf_ess, 0.25, axis=0),
+#                           'pred':        np.quantile(pred_smc_ess, 0.25, axis=0), },
+#            'uq':         {'bpf_true':    np.quantile(true_bpf_ess, 0.75, axis=0),
+#                           'pred':        np.quantile(pred_smc_ess, 0.75, axis=0), },
+#            'mean':       {'bpf_true':    np.mean(true_bpf_ess, axis=0),
+#                           'pred':        np.mean(pred_smc_ess, axis=0), },
+#            'variance':   {'bpf_true':    np.var(true_bpf_ess, axis=0),
+#                           'pred':        np.var(pred_smc_ess, axis=0), },
+#            },
+#
+#     return ess_metrics, pred_smc_ess

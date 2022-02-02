@@ -29,7 +29,7 @@ class VRNN(SSM):
 
     Need to get obs[t] into covariates somehow.
 
-    NOTE - TODO - i think the hidden state is shifted by one time index here, but this is waaay easier to implement...
+    NOTE - I think the hidden state is shifted by one time index here, but this is waaay easier to implement...
     """
 
     def __init__(self,
@@ -78,7 +78,6 @@ class VRNN(SSM):
             seed:
         """
 
-        # We are only considering the univariate case.
         self.latent_dim = num_latent_dims
         self.emission_dims = num_emission_dims
         self.latent_enc_dim = latent_enc_dim
@@ -166,10 +165,10 @@ class VRNN(SSM):
 
         # Iterate the RNN.
         input_rnn = np.concatenate((prev_rnn_z_dec, prev_obs_enc), axis=-1)
-        new_rnn_z, new_rnn_z_exposed = self._rnn_obj.apply(self._params_rnn, prev_rnn_h, input_rnn)
+        new_rnn_h, new_rnn_h_exposed = self._rnn_obj.apply(self._params_rnn, prev_rnn_h, input_rnn)
 
         # Call the *prior* local parameter generation functions.
-        rnn_z_dist_local_params = self._prior_obj.apply(self._params_prior, new_rnn_z_exposed)
+        rnn_z_dist_local_params = self._prior_obj.apply(self._params_prior, new_rnn_h_exposed)
         rnn_z_dist_local_params = np.reshape(rnn_z_dist_local_params, (*rnn_z_dist_local_params.shape[:-1], 2, -1))
         rnn_z_mean = rnn_z_dist_local_params[..., 0, :]
         rnn_z_log_var = rnn_z_dist_local_params[..., 1, :]
@@ -178,7 +177,7 @@ class VRNN(SSM):
         rnn_z_dist = tfd.MultivariateNormalDiag(rnn_z_mean, np.sqrt(np.exp(rnn_z_log_var)))
 
         # # # Construct a joint distribution so that we have a single object.
-        rnn_h_dists = jax.tree_map(lambda _state: tfd.Independent(tfd.Deterministic(_state), reinterpreted_batch_ndims=1), new_rnn_z)
+        rnn_h_dists = jax.tree_map(lambda _state: tfd.Independent(tfd.Deterministic(_state), reinterpreted_batch_ndims=1), new_rnn_h)
         rnn_h_dist = tfd.JointDistributionSequential(rnn_h_dists)
         rnn_dist = tfd.JointDistributionSequential((rnn_h_dist, rnn_z_dist), )
 
@@ -333,6 +332,24 @@ class VRNN(SSM):
 
         return state_history, obs_history
 
+    def sample(self, key, num_steps, initial_state=None, covariates=None, metadata=None, num_samples=1):
+        """
+
+        Args:
+            key:
+            num_steps:
+            initial_state:
+            covariates:
+            metadata:
+            num_samples:
+
+        Returns:
+
+        """
+        assert initial_state is None, "[ERROR}: Cannot use custom inital states (yet)."
+        state_history, obs_history = jax.vmap(lambda _k: self._single_unconditional_sample(_k, num_steps))(jr.split(key, num_samples))
+        return state_history, obs_history
+
     def unconditional_sample(self, key, num_steps, num_samples):
         """
 
@@ -344,13 +361,7 @@ class VRNN(SSM):
         Returns:
 
         """
-
-        state_history, obs_history = jax.vmap(lambda _k: self._single_unconditional_sample(_k, num_steps))(jr.split(key, num_samples))
-
-        # We return just the latent states.
-        print('[WARNING]: Returning just the latent states as the true state history.')
-
-        return state_history[1], obs_history
+        return self.sample(key, num_steps, num_samples=num_samples)
 
 
 class VrnnFilteringProposal(proposals.IndependentGaussianProposal):

@@ -1,18 +1,21 @@
 import jax
-import jax.numpy as np
-import matplotlib.pyplot as plt
 import argparse
-import flax.linen as nn
 import pickle
+import tensorflow as tf
+import flax.linen as nn
+import matplotlib.pyplot as plt
+import jax.numpy as np
 from jax import random as jr
 from copy import deepcopy as dc
 from tensorflow_probability.substrates.jax import distributions as tfd
+from flax import optim
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
 from ssm.vrnn.models import VRNN, VrnnFilteringProposal, VrnnSmoothingProposal
 import ssm.nn_util as nn_util
 import ssm.inference.fivo as fivo
+from ssm.inference.fivo_util import pretrain_encoder
 import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 
@@ -27,10 +30,16 @@ def get_config():
     # Set up the experiment.
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--pretrain-encoder', default=1, type=int, help="{0, 1}")
+    parser.add_argument('--pretrain-encoder-opt-steps', default=100, type=int, help="")
+    parser.add_argument('--pretrain-encoder-lr', default=0.01, type=float, help="")
+    parser.add_argument('--pretrain-encoder-batch-size', default=4, type=float, help="")
+
     parser.add_argument('--dataset', default='jsb.pkl', type=str,
                         help="Dataset to apply method to.  {'piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl'}. ")
 
-    parser.add_argument('--resampling-criterion', default='always_resample', type=str, help="{'always_resample', 'never_resample'}")
+    parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # CSV.  # {'always_resample', 'never_resample'}.
+    parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # CSV.  # {'multinomial_resampling', 'systematic_resampling'}.
     parser.add_argument('--use-sgr', default=1, type=int, help="{0, 1}.")
     parser.add_argument('--temper', default=0.0, type=float, help="{0.0 to disable,  >0.1 to temper}")
 
@@ -54,7 +63,7 @@ def get_config():
     parser.add_argument('--vi-minibatch-size', default=16, type=int, help="Size of VI minibatches when learning tilt with VI.")
     parser.add_argument('--vi-epochs', default=1, type=int, help="Number of VI epochs to perform when learning tilt with VI.")
 
-    parser.add_argument('--num-particles', default=10, type=int, help="Number of particles per sweep during learning.")
+    parser.add_argument('--num-particles', default=4, type=int, help="Number of particles per sweep during learning.")
     parser.add_argument('--datasets-per-batch', default=2, type=int, help="Number of datasets averaged across per FIVO step.")
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
 
@@ -63,7 +72,7 @@ def get_config():
     parser.add_argument('--lr-r', default=0.0001, type=float, help="Learning rate of tilt parameters.")
 
     # VRNN architecture args.
-    parser.add_argument('--latent-dim', default=64, type=int, help="Dimension of z latent variable.")
+    parser.add_argument('--latent-dim', default=10, type=int, help="Dimension of z latent variable.")
     parser.add_argument('--latent-enc-dim', default=None, type=int, help="Dimension of encoded latent z variable. (None -> latent-dim)")
     parser.add_argument('--obs-enc-dim', default=None, type=int, help="Dimension of encoded observations. (None -> latent-dim)")
     parser.add_argument('--rnn-state-dim', default=None, type=int, help="Dimension of the deterministic RNN. (None -> latent-dim)")
@@ -140,7 +149,8 @@ def define_test(key, env):
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, train_datasets, env)
+    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, train_datasets, env,
+                                                                 train_dataset_masks, validation_datasets, validation_dataset_masks)
 
     # Define the tilt.
     key, subkey = jr.split(key)
@@ -224,7 +234,7 @@ def define_tilt(subkey, model, dataset, env):
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def define_proposal(subkey, model, dataset, env):
+def define_proposal(subkey, model, train_dataset, env, train_dataset_masks=None, validation_datasets=None, validation_dataset_masks=None):
     """
 
     Args:
@@ -237,7 +247,7 @@ def define_proposal(subkey, model, dataset, env):
 
     """
     data_encoder = None  # Define the default.
-    subkey, subkey1, subkey2 = jr.split(subkey, num=3)
+    subkey, subkey1, subkey2, subkey3 = jr.split(subkey, num=4)
 
     if env.config.proposal_structure in [None, 'NONE', 'BOOTSTRAP']:
         return None, None, lambda *args: None
@@ -246,7 +256,7 @@ def define_proposal(subkey, model, dataset, env):
     # Stock proposal input form is (dataset, model, particles, t, p_dist, ).
     n_dummy_particles = 2
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(n_dummy_particles, ), )
-    dummy_obs = np.repeat(np.expand_dims(dataset[0, 0], 0), n_dummy_particles, axis=0)
+    dummy_obs = np.repeat(np.expand_dims(train_dataset[0, 0], 0), n_dummy_particles, axis=0)
     dummy_p_dist = model.dynamics_distribution(dummy_particles, covariates=(dummy_obs, ))
     dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
@@ -279,13 +289,12 @@ def define_proposal(subkey, model, dataset, env):
         proposal_window_length = None  # This will use just the current state of and RNN.
         dummy_q_state = None
 
+        # Define the reccurent bit.
         RNN_CELL_TYPE = nn.LSTMCell
-
         data_encoder = RNN_CELL_TYPE()
         dummy_rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else env.config.latent_dim
         dummy_rnn_carry = RNN_CELL_TYPE().initialize_carry(jr.PRNGKey(0), batch_dims=(), size=dummy_rnn_state_dim)
-        dummy_rnn_input = tuple((dummy_rnn_carry, dataset[0, 0]))
-        encoder_params = data_encoder.init(subkey2, *dummy_rnn_input)
+        dummy_rnn_input = tuple((dummy_rnn_carry, train_dataset[0, 0]))
 
         # If twe are using an LSTM, then we expose just the second part of the state.
         if RNN_CELL_TYPE == nn.LSTMCell:
@@ -299,7 +308,7 @@ def define_proposal(subkey, model, dataset, env):
         raise NotImplementedError()
 
     # Not define the input given the structure of the proposal.
-    stock_proposal_input = (dataset[0], model, dummy_particles, 0, dummy_p_dist, dummy_q_state, dummy_q_inputs)
+    stock_proposal_input = (train_dataset[0], model, dummy_particles, 0, dummy_p_dist, dummy_q_state, dummy_q_inputs)
 
     # Define the proposal itself.
     print('Defining {} proposals.'.format(n_props))
@@ -315,6 +324,14 @@ def define_proposal(subkey, model, dataset, env):
     proposal_params = proposal.init(subkey1)
 
     if data_encoder is not None:
+
+        # TODO - place this somewhere more elegant than here.
+        if env.config.pretrain_encoder:
+            encoder_params = pretrain_encoder(env, subkey2, data_encoder,
+                                              train_dataset, train_dataset_masks, validation_datasets, validation_dataset_masks)
+        else:
+            encoder_params = data_encoder.init(subkey2, *dummy_rnn_input)
+
         proposal_params = tuple((proposal_params, encoder_params))
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
@@ -589,15 +606,15 @@ def load_piano_data(dataset_pickle_name, phase='train'):
 
 if __name__ == '__main__':
 
-    phase = 'train'
+    _phase = 'train'
 
     for _s in ['piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl']:
-        dataset, masks, true_states, means = load_piano_data(_s, phase)
+        _dataset, _masks, _true_states, _means = load_piano_data(_s, _phase)
 
-        print('Dataset dimensions (N x T x D): ', dataset.shape)
+        print('Dataset dimensions (N x T x D): ', _dataset.shape)
 
         plt.figure()
-        plt.imshow(dataset[0].T)
+        plt.imshow(_dataset[0].T)
         plt.title(_s)
         plt.xlim(0, 500)
         plt.pause(0.1)

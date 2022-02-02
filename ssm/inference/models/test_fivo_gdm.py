@@ -31,6 +31,7 @@ def get_config():
     parser.add_argument('--synthetic-data', default=1, type=int)
 
     parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # CSV.  # {'always_resample', 'never_resample'}.
+    parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # CSV.  # {'multinomial_resampling', 'systematic_resampling'}.
     parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
     parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
@@ -76,8 +77,7 @@ def get_config():
     parser.add_argument('--model', default='GDM', type=str)
     parser.add_argument('--seed', default=10, type=int)
     parser.add_argument('--log-group', default='debug-gdm', type=str)               # {'debug', 'gdm-v1.0'}
-    parser.add_argument('--validation-interval', default=2500, type=int)
-    parser.add_argument('--plot-interval', default=1, type=int)
+    parser.add_argument('--validation-interval', default=5000, type=int)
     parser.add_argument('--log-to-wandb-interval', default=1, type=int)
     parser.add_argument('--PLOT', default=1, type=int)
 
