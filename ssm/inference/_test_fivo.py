@@ -203,7 +203,7 @@ def main():
         val_hist = [[], [], []]  # Model, proposal, tilt.
         param_figures = [None, None, None]  # Model, proposal, tilt.
         nlml_hist = []
-        smoothed_training_loss = 0.0
+        smoothed_training_loss = np.nan
 
         # Back up the true parameters.
         true_hist = fivo_util.log_params([[], [], []], [get_model_free_params(true_model), None, None],)  # Model, proposal, tilt.
