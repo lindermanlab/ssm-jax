@@ -13,6 +13,7 @@ import ssm.utils as utils
 import ssm.inference.fivo as fivo
 import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
+from ssm.svm.models import SVM
 
 
 def get_config():
@@ -24,6 +25,7 @@ def get_config():
 
     # Set up the experiment.
     parser = argparse.ArgumentParser()
+    parser.add_argument('--validation-interval', default=500, type=int)
 
     parser.add_argument('--dataset', default='default', type=str)
     parser.add_argument('--synthetic-data', default=1, type=int)
@@ -75,7 +77,6 @@ def get_config():
     parser.add_argument('--model', default='SVM', type=str)
     parser.add_argument('--seed', default=10, type=int)
     parser.add_argument('--log-group', default='debug-svm', type=str)  # {'debug', 'gdm-v1.0'}
-    parser.add_argument('--validation-interval', default=2500, type=int)
     parser.add_argument('--plot-interval', default=1, type=int)
     parser.add_argument('--log-to-wandb-interval', default=1, type=int)
     parser.add_argument('--PLOT', default=1, type=int)
