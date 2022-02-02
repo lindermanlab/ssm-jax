@@ -277,7 +277,7 @@ def main():
             # Do some validation and logging stuff.
 
             # Quickly calculate a smoothed training loss for quick and dirty plotting.
-            smoothed_training_loss = 0.1 * neg_fivo_bound + 0.9 * smoothed_training_loss if smoothed_training_loss != np.nan else neg_fivo_bound
+            smoothed_training_loss = ((0.1 * neg_fivo_bound + 0.9 * smoothed_training_loss) if (smoothed_training_loss != np.nan) else neg_fivo_bound)
 
             # Do some validation and give some output.
             if (_step % env.config.validation_interval == 0) or (_step == 1):
@@ -377,28 +377,18 @@ def main():
                 if env.config.PLOT:
 
                     key, subkey = jr.split(key)
-                    fivo_util.compare_sweeps(env, opt, validation_datasets, validation_dataset_masks, true_model, rebuild_model_fn, rebuild_prop_fn,
-                                             rebuild_tilt_fn, subkey, do_fivo_sweep_jitted, smc_jit, tag=_step, nrep=2, true_states=true_states)
+                    fivo_util.compare_sweeps(env, opt, validation_datasets, validation_dataset_masks, true_model, subkey, do_fivo_sweep_jitted,
+                                             smc_jit, tag=_step, nrep=2, true_states=true_states)
 
-                    param_figures = do_plot(param_hist,
-                                            nlml_hist,
-                                            em_neg_lml,
-                                            large_true_bpf_neg_lml,
-                                            get_model_free_params(true_model),
-                                            param_figures)
+                    param_figures = do_plot(param_hist, nlml_hist, em_neg_lml, large_true_bpf_neg_lml,
+                                            get_model_free_params(true_model), param_figures)
 
                 # Do some printing.
                 if VI_USE_VI_GRAD:
                     print("VI: Step {:>5d}:  Final VI NEG-ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
                           format(_step, final_vi_elbo, vi_gradient_steps, VI_FREQUENCY))
 
-                do_print(_step,
-                         true_model,
-                         opt,
-                         large_true_bpf_neg_lml,
-                         large_pred_smc_neg_lml,
-                         large_pred_smc_neg_fivo_bound,
-                         em_neg_lml)
+                do_print(_step, true_model, opt, large_true_bpf_neg_lml, large_pred_smc_neg_lml, large_pred_smc_neg_fivo_bound, em_neg_lml)
 
                 # # Compare the effective sample size.
                 # key, subkey = jr.split(key)

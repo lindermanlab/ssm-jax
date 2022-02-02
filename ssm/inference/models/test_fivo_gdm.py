@@ -43,7 +43,7 @@ def get_config():
     parser.add_argument('--proposal-window-length', default=None, type=int)          # {int, None}.
     parser.add_argument('--proposal-fn-family', default='AFFINE', type=str)         # {'AFFINE', 'MLP'}.
 
-    parser.add_argument('--tilt-structure', default='NONE', type=str)             # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)             # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='PERSTEP', type=str)                 # {'PERSTEP'}.
     parser.add_argument('--tilt-window-length', default=None, type=int)             # {int, None}.
     parser.add_argument('--tilt-fn-family', default='AFFINE', type=str)             # {'AFFINE', 'MLP'}.
@@ -76,9 +76,9 @@ def get_config():
     parser.add_argument('--model', default='GDM', type=str)
     parser.add_argument('--seed', default=10, type=int)
     parser.add_argument('--log-group', default='debug-gdm', type=str)               # {'debug', 'gdm-v1.0'}
-    parser.add_argument('--validation-interval', default=100, type=int)
+    parser.add_argument('--validation-interval', default=5000, type=int)
     parser.add_argument('--log-to-wandb-interval', default=1, type=int)
-    parser.add_argument('--PLOT', default=0, type=int)
+    parser.add_argument('--PLOT', default=1, type=int)
 
     config = parser.parse_args().__dict__
 

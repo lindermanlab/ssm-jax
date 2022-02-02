@@ -495,7 +495,7 @@ def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_
     return upc_metrics, true_bpf_upc
 
 
-def compare_sweeps(env, opt, dataset, mask, true_model, rebuild_model_fn, rebuild_prop_fn, rebuild_tilt_fn, key, do_fivo_sweep_jitted, smc_jitted,
+def compare_sweeps(env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted,
                    tag='', nrep=10, true_states=None, num_particles=None):
     """
 
@@ -503,26 +503,22 @@ def compare_sweeps(env, opt, dataset, mask, true_model, rebuild_model_fn, rebuil
         env:
         opt:
         dataset:
+        mask:
         true_model:
-        rebuild_model_fn:
-        rebuild_prop_fn:
-        rebuild_tilt_fn:
         key:
         do_fivo_sweep_jitted:
+        smc_jitted:
+        tag:
+        nrep:
+        true_states:
+        num_particles:
 
     Returns:
 
     """
+
     if num_particles is None:
         num_particles = env.config.sweep_test_particles
-
-    # # Do some final validation.
-    # # Rebuild the initial distribution.
-    # _prop = rebuild_prop_fn(get_params_from_opt(opt)[1])
-    # if _prop is not None:
-    #     initial_distribution = lambda _dset, _model:  _prop(_dset, _model, np.zeros(dataset.shape[-1], ), 0, _model.initial_distribution(), None)
-    # else:
-    #     initial_distribution = None
 
     # BPF in true model.
     key, subkey = jr.split(key)
