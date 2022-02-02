@@ -118,11 +118,35 @@ def smc(key,
     assert use_stop_gradient_resampling + use_resampling_gradients != 2, \
         "[Error]: Cannot use both resampling gradients and stop gradient resampling."
 
-    # Assign defaults.
+    # Select the resampling criterion (whether or not to resample).
     if resampling_criterion is None:
         resampling_criterion = always_resample_criterion
+
+    elif type(resampling_criterion) == str:
+        if resampling_criterion == 'always_resample':
+            resampling_criterion = always_resample_criterion
+        elif resampling_criterion == 'never_resample':
+            resampling_criterion = never_resample_criterion
+        else:
+            raise NotImplementedError()
+
+    else:
+        assert resampling_criterion in [always_resample_criterion, never_resample_criterion], "Error: unrecognised resampling criterion."
+
+    # Select the resampling function.
     if resampling_function is None:
-        resampling_function = multinomial_resampling  # TODO - changed from: systematic_resampling
+        resampling_function = systematic_resampling  # NOTE - changed default from multinomial_resampling.
+
+    elif type(resampling_function) == str:
+        if resampling_function == 'multinomial_resampling':
+            resampling_function = multinomial_resampling
+        elif resampling_function == 'systematic_resampling':
+            resampling_function = systematic_resampling
+        else:
+            raise NotImplementedError()
+
+    else:
+        assert resampling_function in [multinomial_resampling, systematic_resampling], "Error: unrecognised resampling function."
 
     # Close over the static arguments.
     single_smc_closed = lambda _k, _d, _m: \
@@ -704,17 +728,7 @@ def do_resample(key,
     if num_particles is None:
         num_particles = len(log_weights)
 
-    if type(resampling_criterion) == str:
-        if resampling_criterion == 'always_resample':
-            callable_resampling_criterion = always_resample_criterion
-        elif resampling_criterion == 'never_resample':
-            callable_resampling_criterion = never_resample_criterion
-        else:
-            raise NotImplementedError()
-    else:
-        callable_resampling_criterion = resampling_criterion
-
-    should_resample = callable_resampling_criterion(log_weights, 0)
+    should_resample = resampling_criterion(log_weights, 0)
 
     resampled_particles, ancestors = jax.lax.cond(
         should_resample,

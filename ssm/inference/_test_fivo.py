@@ -118,7 +118,8 @@ def main():
                                env.config.use_bootstrap_initial_distribution,
                                **{'use_stop_gradient_resampling': env.config.use_sgr,
                                   'tilt_temperature': _temperature,
-                                  'resampling_criterion': env.config.resampling_criterion})
+                                  'resampling_criterion': env.config.resampling_criterion,
+                                  'resampling_function': env.config.resampling_function})
 
         # Jit this badboy.
         do_fivo_sweep_jitted = jax.jit(do_fivo_sweep_closed, static_argnums=(2, ))
