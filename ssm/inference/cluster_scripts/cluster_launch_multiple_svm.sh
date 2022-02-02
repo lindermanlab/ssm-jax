@@ -1,7 +1,7 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-glob_tag='SVM-v1-0-0'
+glob_tag='SVM-v2-0-0'
 model='SVM'
 proposal_type='SINGLE_WINDOW'
 tilt_type='SINGLE_WINDOW'

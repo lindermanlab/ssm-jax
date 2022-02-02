@@ -1,7 +1,7 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-glob_tag='GDM-v1-0-0'
+glob_tag='GDM-v2-0-0'
 model='GDM'
 temper=0.0
 proposal_type='PERSTEP'
