@@ -29,6 +29,7 @@ def get_config():
 
     # Set up the experiment.
     parser = argparse.ArgumentParser()
+    parser.add_argument('--validation-interval', default=500, type=int)
 
     parser.add_argument('--pretrain-encoder', default=1, type=int, help="{0, 1}")
     parser.add_argument('--pretrain-encoder-opt-steps', default=100, type=int, help="")
@@ -83,7 +84,7 @@ def get_config():
     parser.add_argument('--emissions-dim', default=1, type=int, help="Dimension of observed value (Overwritten for real data)")
     parser.add_argument('--num-trials', default=100000, type=int, help="Number of datasets to generate.  (Overwritten for real data)")
 
-    parser.add_argument('--num-val-dataset-fraction', default=0.2, type=int, help="Fraction of num-trials to designate as validation datasets.")
+    parser.add_argument('--num-val-datasets', default=100, type=int, help="(Overwritten for real data)")
 
     parser.add_argument('--dset-to-plot', default=2, type=int, help="Index of dataset to visualize.")
     parser.add_argument('--validation-particles', default=250, type=int, help="'Large' number of particles for asymptotic evaluation.")
@@ -93,7 +94,6 @@ def get_config():
     parser.add_argument('--model', default='VRNN', type=str, help="Don't change here.")
     parser.add_argument('--seed', default=10, type=int, help="Seed for initialization.")
     parser.add_argument('--log-group', default='debug-vrnn', type=str, help="WandB group to log to.  Overwrite from outside.")
-    parser.add_argument('--validation-interval', default=2500, type=int, help='Interval in optimization steps to validate at.')
     parser.add_argument('--plot-interval', default=1, type=int, help="Multiples of --validation-interval to plot at.")
     parser.add_argument('--log-to-wandb-interval', default=1, type=int, help="Multiples of --validation-interval to push to WandB remote at.")
     parser.add_argument('--PLOT', default=0, type=int, help="Whether to make plots online.  Always disable plotting for the VRNN.")
@@ -356,10 +356,10 @@ def define_true_model_and_data(key, env):
         emissions_dim = env.config.emissions_dim
         train_dataset_means = 0.5 * np.ones((emissions_dim,))
         output_type = 'GAUSSIAN'
-
         T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
-        dataset_masks = np.ones((num_trials, T + 1,))
-        dataset = None  # To be overwritten later.  just shut the linter up.
+
+        # To be overwritten later.  just shut the linter up.
+        dataset, train_dataset, train_dataset_masks, valid_dataset, valid_dataset_masks = None, None, None, None, None
 
     else:
 
@@ -460,7 +460,14 @@ def define_true_model_and_data(key, env):
         key, subkey = jr.split(key)
         true_states, dataset = true_model.unconditional_sample(key=subkey, num_steps=T + 1, num_samples=num_trials)
         dataset_masks = np.ones(dataset.shape[0])
-        raise NotImplementedError("Need to generate the right dataset splits here.")
+
+        valid_true_states = true_states[:env.config.num_val_datasets]
+        valid_dataset = dataset[:env.config.num_val_datasets]
+        valid_dataset_masks = dataset_masks[:env.config.num_val_datasets]
+
+        train_true_states = true_states[env.config.num_val_datasets]
+        train_dataset = dataset[env.config.num_val_datasets:]
+        train_dataset_masks = dataset_masks[env.config.num_val_datasets:]
 
     else:
         train_true_states = None
