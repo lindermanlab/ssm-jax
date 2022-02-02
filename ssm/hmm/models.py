@@ -68,6 +68,10 @@ class BernoulliHMM(HMM):
                                            transitions,
                                            emissions)
 
+    @property
+    def emission_probs(self):
+        return self._emissions._distribution.mean()
+
 
 @register_pytree_node_class
 class GaussianHMM(HMM):
@@ -141,6 +145,14 @@ class GaussianHMM(HMM):
                                           transitions,
                                           emissions)
 
+    @property
+    def emission_means(self):
+        return self._emissions._distribution.mean()
+
+    @property
+    def emission_covariance_matrices(self):
+        return self._emissions._distribution.covariance()
+
 
 @register_pytree_node_class
 class PoissonHMM(HMM):
@@ -197,3 +209,6 @@ class PoissonHMM(HMM):
                                          transitions,
                                          emissions)
 
+    @property
+    def emission_rates(self):
+        return self._emissions._distribution.mean()
