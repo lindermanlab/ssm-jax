@@ -1,3 +1,4 @@
+from __future__ import annotations
 from functools import partial
 import jax.numpy as np
 from jax import vmap, lax
@@ -130,8 +131,8 @@ class AutoregressiveEmissions(Emissions):
                dataset: np.ndarray,
                posteriors: StationaryHMMPosterior,
                covariates=None,
-               metadata=None) -> None:
-        r"""Update the distribution (in-place) with an M step.
+               metadata=None) -> AutoregressiveEmissions:
+        r"""Update the distribution with an M step.
 
         Operates over a batch of data.
 
@@ -140,6 +141,9 @@ class AutoregressiveEmissions(Emissions):
                 of shape :math:`(\text{batch\_dim}, \text{num\_timesteps}, \text{emissions\_dim})`.
             posteriors (StationaryHMMPosterior): HMM posterior object
                 with batch_dim to match dataset.
+                
+        Returns:
+            emissions (AutoregressiveEmissions): updated emissions object
         """
         # TODO: Can we compute the expected sufficient statistics with a convolution or scan?
 
@@ -187,6 +191,7 @@ class AutoregressiveEmissions(Emissions):
         # Compute the conditional distribution over parameters and take the mode
         conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
         self._distribution = ssmd.GaussianLinearRegression.from_params(conditional.mode())
+        return self
 
     def tree_flatten(self):
         children = (self._distribution, self._prior)

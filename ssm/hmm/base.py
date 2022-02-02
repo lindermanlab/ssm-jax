@@ -1,5 +1,6 @@
 """Module defining base model behavior for Hidden Markov Models (HMMs).
 """
+from __future__ import annotations
 from dataclasses import dataclass
 
 import jax.numpy as np
@@ -79,7 +80,6 @@ class HMM(SSM):
     def emissions_distribution(self, state, covariates=None, metadata=None):
         return self._emissions.distribution(state, covariates=covariates, metadata=metadata)
 
-
     ### Methods for posterior inference
     @ensure_has_batch_dim()
     def initialize(self,
@@ -147,10 +147,11 @@ class HMM(SSM):
             self._transitions.log_transition_matrices(data, covariates=covariates, metadata=metadata))
 
     @ensure_has_batch_dim()
-    def m_step(self, data, posterior, covariates=None, metadata=None):
-        self._initial_condition.m_step(data, posterior, covariates=covariates, metadata=metadata)
-        self._transitions.m_step(data, posterior, covariates=covariates, metadata=metadata)
-        self._emissions.m_step(data, posterior, covariates=covariates, metadata=metadata)
+    def m_step(self, data, posterior, covariates=None, metadata=None) -> HMM:
+        self._initial_condition = self._initial_condition.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        self._transitions = self._transitions.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        self._emissions = self._emissions.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        return self
 
     @ensure_has_batch_dim()
     def fit(self,

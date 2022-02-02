@@ -67,7 +67,7 @@ def tree_all_equal(tree1, tree2):
     Args:
         tree1 ([type]): [description]
         tree2 ([type]): [description]
-        
+
     Returns:
         isEqual (bool): whether array PyTrees are equal
     """
@@ -205,11 +205,11 @@ def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metad
     Checks the shape of the PyTree leaves inside the data argument and compares them to the 
     shape of emissions as defined by the model. A batch dimension is added if the shape
     only has 1 additional dimension (num_timesteps).
-    
+
     Naively assumes that if data needs a batch dim, then so do the rest of the batched_args.
 
     Args:
-        batched_args (tuple, optional): Names of the function arguments to batch. 
+        batched_args (tuple, optional): Names of the function arguments to batch.
             'data' must be an element. Defaults to ("data", "posterior", "covariates", "metadata").
         model_arg (str, optional): The name of the argument of the model class.
             Used to extract information about the emissions shape. Defaults to "self".
@@ -275,11 +275,11 @@ def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "sta
     Naively assumes that if data has a batch dim, then so do the rest of the batched_args.
 
     Args:
-        batched_args (tuple, optional): Names of the function arguments that may be batched. 
+        batched_args (tuple, optional): Names of the function arguments that may be batched.
             'data' must be an element. Defaults to ("data", "posterior", "covariates", "metadata").
         model_arg (str, optional): The name of the argument of the model class.
             Used to extract information about the emissions shape. Defaults to "self".
-        map_function (Callable, optional): Type of map operation applied to func. 
+        map_function (Callable, optional): Type of map operation applied to func.
             Defaults to `vmap`.
     """
     def auto_batch_decorator(f):
@@ -327,6 +327,7 @@ def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "sta
 
         return wrapper
     return auto_batch_decorator
+
 
 
 def one_hot(z, K):

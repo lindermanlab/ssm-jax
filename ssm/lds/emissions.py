@@ -1,3 +1,4 @@
+from __future__ import annotations
 import jax
 from jax._src.tree_util import tree_map
 import jax.numpy as np
@@ -44,8 +45,8 @@ class Emissions:
                covariates=None,
                metadata=None,
                num_samples=1,
-               key=None):
-        """Update the emissions distribution in-place using an M-step.
+               key=None) -> Emissions:
+        """Update the emissions distribution using an M-step.
 
         Operates over a batch of data (posterior must have the same batch dim).
 
@@ -58,6 +59,9 @@ class Emissions:
                 Defaults to None.
             num_samples (int): number of samples from posterior to use in a generic update
             key (jr.PRNGKey): random seed
+            
+        Returns:
+            emissions (Emissions): updated emissions object
         """
         # TODO: Implement generic m-step using samples of the posterior
         raise NotImplementedError
@@ -137,8 +141,8 @@ class GaussianEmissions(Emissions):
                posterior,
                covariates=None,
                metadata=None,
-               key=None):
-        """Update the emissions distribution in-place using an exact M-step.
+               key=None) -> GaussianEmissions:
+        """Update the emissions distribution using an exact M-step.
 
         Operates over a batch of data (posterior must have the same batch dim).
 
@@ -151,6 +155,9 @@ class GaussianEmissions(Emissions):
                 Defaults to None.
             num_samples (int): number of samples from posterior to use in a generic update
             key (jr.PRNGKey): random seed
+            
+        Returns:
+            emissions (GaussianEmissions): updated emissions object
         """
         def compute_stats_and_counts(data, posterior):
             # Extract expected sufficient statistics from posterior
@@ -188,6 +195,7 @@ class GaussianEmissions(Emissions):
 
         conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
         self._distribution = ssmd.GaussianLinearRegression.from_params(conditional.mode())
+        return self
 
 
 @register_pytree_node_class
@@ -242,7 +250,7 @@ class PoissonEmissions(Emissions):
                covariates=None,
                metadata=None,
                num_samples=1,
-               key=None):
+               key=None) -> PoissonEmissions:
         if key is None:
             raise ValueError("PRNGKey needed for generic m-step")
 
@@ -270,3 +278,4 @@ class PoissonEmissions(Emissions):
         )
 
         self._distribution = unravel(optimize_results.x)
+        return self

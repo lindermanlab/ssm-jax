@@ -79,6 +79,23 @@ def test_poisson_lds_sample_is_consistent():
     onp.testing.assert_allclose(true_states, states, atol=1e-5)
     onp.testing.assert_allclose(true_data, data, atol=1e-5)
     
+def test_gaussian_lds_marginal_likelihood():
+    rng1, rng2, rng3 = jr.split(SEED, 3)
+    true_lds = GaussianLDS(3, 5, seed=rng1)
+    states, data = true_lds.sample(rng2, num_steps=100, num_samples=3)
+    test_lds = GaussianLDS(3, 5, seed=rng3)
+    
+    # test without posterior
+    lp1 = test_lds.marginal_likelihood(data, posterior=None)
+    assert not np.any(np.isnan(lp1))
+    
+    # test with posterior
+    posterior = test_lds.e_step(data)
+    lp2 = test_lds.marginal_likelihood(data, posterior=posterior)
+    assert not np.any(np.isnan(lp2))
+    
+    assert np.allclose(lp1, lp2, rtol=1e-3)
+    
 def test_gaussian_lds_em_fit():
     rng1, rng2, rng3 = jr.split(SEED, 3)
     true_lds = GaussianLDS(3, 5, seed=rng1)

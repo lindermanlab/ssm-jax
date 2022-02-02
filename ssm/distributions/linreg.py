@@ -106,15 +106,18 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
     since we often want the bias to be only weakly penalized.
 
     Let y \in \mathbb{R}^n and x \in \mathbb{R}^p. The likelihood is:
-        .. math:
+    
+    .. math::
             y \sim N(A x + b, \Sigma)
+            
     Let W = [A, b] \in \mathbb{R}^{n \times p + 1} denote the combined
     weights and biases.
 
     The prior on (W, \Sigma) is
-        .. math
-            \Sigma         \sim \mathrm{IW}(\nu, \Psi)
-            W \mid \Sigma  \sim \mathrm{MN}(M, \Sigma, V)
+        
+    .. math::
+        \Sigma         \sim \mathrm{IW}(\nu, \Psi)
+        W \mid \Sigma  \sim \mathrm{MN}(M, \Sigma, V)
 
     where \nu is the degrees of freedom, \Psi is the scale of the inverse
     Wishart distribution, M is the mean of the weights, and V is the

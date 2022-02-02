@@ -1,0 +1,2 @@
+from ssm.factorial_hmm.models import NormalFactorialHMM
+from ssm.factorial_hmm.posterior import FactorialHMMPosterior

@@ -1,9 +1,11 @@
+from __future__ import annotations
 from jax._src.tree_util import tree_map
 import jax.numpy as np
 from jax import tree_util, vmap
 from jax.tree_util import register_pytree_node_class
 
 import ssm.distributions as ssmd
+
 
 class InitialCondition:
     """
@@ -20,19 +22,19 @@ class InitialCondition:
     def distribution(self, covariates=None, metadata=None):
         """
         Return the distribution of x_1 (potentially given covariates u_t)
-        
-        Args: 
+
+        Args:
             covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-                
+
         Returns:
             distribution (tfd.Distribution): distribution of z_1
         """
         raise NotImplementedError
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> InitialCondition:
         # TODO: implement generic m-step
         raise NotImplementedError
 
@@ -80,21 +82,21 @@ class StandardInitialCondition(InitialCondition):
     def distribution(self, covariates=None, metadata=None):
         """
         Return the distribution of x_1.
-        
-        Args: 
+
+        Args:
             covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-                
+
         Returns:
             distribution (tfd.Distribution): distribution of z_1
         """
         return self._distribution
 
-    def m_step(self, dataset, posteriors, covariates=None, metadata=None):
-        """Update the initial distribution in an M step given posteriors over the latent states. 
-        
+    def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> StandardInitialCondition:
+        """Update the initial distribution in an M step given posteriors over the latent states.
+
         Update is performed in place.
 
         Args:
@@ -104,6 +106,9 @@ class StandardInitialCondition(InitialCondition):
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
+                
+        Returns:
+            initial_condition (StandardInitialCondition): updated initial condition object
         """
         def compute_stats_and_counts(data, posterior):
             Ex = posterior.expected_states[0]
@@ -119,3 +124,4 @@ class StandardInitialCondition(InitialCondition):
 
         conditional = ssmd.MultivariateNormalTriL.compute_conditional_from_stats(stats)
         self._distribution = ssmd.MultivariateNormalTriL.from_params(conditional.mode())
+        return self

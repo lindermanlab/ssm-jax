@@ -1,3 +1,4 @@
+from __future__ import annotations
 import jax.numpy as np
 from jax import vmap
 from jax.tree_util import tree_map, register_pytree_node_class
@@ -20,24 +21,22 @@ class Dynamics:
     def distribution(self, state, covariates=None, metadata=None):
         """
         Return the conditional distribution of x_t given state x_{t-1}
-        
+
         Args:
             state (float): state x_{t-1}
             covariates (PyTree, optional): optional covariates with leaf shape (B, T, ...).
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-                
+
         Returns:
             distribution (tfd.Distribution): conditional distribution of x_t given state x_{t-1}.
         """
         raise NotImplementedError
 
-    def m_step(self, dataset, posteriors):
+    def m_step(self, dataset, posteriors) -> Dynamics:
         """Update the transition parameters in an M step given posteriors
-        over the latent states. 
-        
-        Update is performed in place.
+        over the latent states.
 
         Args:
             dataset (np.ndarray): the observed dataset with shape (B, T, D)
@@ -46,6 +45,9 @@ class Dynamics:
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
+                
+        Returns:
+            dynamics (Dynamics): updated dynamics object
         """
         # TODO: implement generic m-step
         raise NotImplementedError
@@ -116,7 +118,7 @@ class StationaryDynamics(Dynamics):
                batched_data,
                batched_posteriors,
                batched_covariates=None,
-               batched_metadata=None):
+               batched_metadata=None) -> StationaryDynamics:
 
         # Manually extract the expected sufficient statistics from posterior
         def compute_stats_and_counts(data, posterior, covariates, metadata):
@@ -157,3 +159,4 @@ class StationaryDynamics(Dynamics):
 
         conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
         self._distribution = ssmd.GaussianLinearRegression.from_params(conditional.mode())
+        return self
