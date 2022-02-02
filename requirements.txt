@@ -41,7 +41,6 @@ ipython==8.0.1
 ipython-genutils==0.2.0
 ipywidgets==7.6.5
 jax==0.2.21
-jaxlib==0.1.75+cuda11.cudnn82
 jedi==0.18.1
 Jinja2==3.0.3
 joblib==1.1.0
@@ -112,7 +111,6 @@ sentry-sdk==1.5.4
 shortuuid==1.0.8
 six==1.16.0
 smmap==5.0.0
--e git+git@github.com:lindermanlab/ssm-jax-refactor.git@97d86a54e3ca42672021bba7a31372312a9d7ccf#egg=ssm
 stack-data==0.1.4
 subprocess32==3.5.4
 tensorboard==2.8.0

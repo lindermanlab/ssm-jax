@@ -42,12 +42,12 @@ def get_config():
     parser.add_argument('--proposal-structure', default='RESQ', type=str)           # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)       # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--proposal-window-length', default=5, type=int)            # {int, None}.
-    parser.add_argument('--proposal-fn-family', default='AFFINE', type=str)         # {'AFFINE', 'MLP'}.
+    parser.add_argument('--proposal-fn-family', default='MLP', type=str)         # {'AFFINE', 'MLP'}.
 
     parser.add_argument('--tilt-structure', default='DIRECT', type=str)             # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)           # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--tilt-window-length', default=5, type=int)                # {int, None}.
-    parser.add_argument('--tilt-fn-family', default='AFFINE', type=str)             # {'AFFINE', 'MLP'}.
+    parser.add_argument('--tilt-fn-family', default='MLP', type=str)             # {'AFFINE', 'MLP'}.
 
     parser.add_argument('--vi-use-tilt-gradient', default=1, type=int)
     parser.add_argument('--vi-buffer-length', default=10, type=int)
@@ -387,7 +387,7 @@ def define_test_model(key, true_model, env):
             key, subkey = jr.split(key)
 
             # TODO - This needs to be made model-specific.
-            new_val = {_k: _base + (0.2 * jr.normal(key=subkey, shape=_base.shape))}
+            new_val = {_k: _base + (1.0 * jr.normal(key=subkey, shape=_base.shape))}
 
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
