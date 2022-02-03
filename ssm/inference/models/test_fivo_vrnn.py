@@ -30,34 +30,38 @@ def get_config():
 
     # Set up the experiment.
     parser = argparse.ArgumentParser()
-    parser.add_argument('--validation-interval', default=50, type=int)
 
+    # Dataset args.
     parser.add_argument('--dataset', default='jsb.pkl', type=str,
                         help="Dataset to apply method to.  {'piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl'}. ")
 
+    # General sweep settings.
+    parser.add_argument('--validation-interval', default=50, type=int)
     parser.add_argument('--resampling-criterion', default='ess_criterion', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
     parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # {'multinomial_resampling', 'systematic_resampling'}.
     parser.add_argument('--use-sgr', default=1, type=int, help="{0, 1}.")
     parser.add_argument('--temper', default=0.0, type=float, help="{0.0 to disable,  >0.1 to temper}")
+    parser.add_argument('--num-particles', default=4, type=int, help="Number of particles per sweep during learning.")
+    parser.add_argument('--datasets-per-batch', default=4, type=int, help="Number of datasets averaged across per FIVO step.")
 
+    # Model free parameters.
     # CSV: {'params_rnn', 'params_prior', 'params_decoder_latent', 'params_decoder_full', 'params_encoder_data'}.
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data',type=str)
 
+    # Data encoder args.
     parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
 
-    parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
-    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
+    # Proposal args.
+    parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
+    parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {None, }.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
+    # Tilt args.
     parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT', 'VRNN'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--tilt-window-length', default=2, type=int)  # {None, }.
     parser.add_argument('--tilt-fn-family', default='VRNN', type=str)  # {'VRNN'}.
-
-
-    parser.add_argument('--num-particles', default=4, type=int, help="Number of particles per sweep during learning.")
-    parser.add_argument('--datasets-per-batch', default=4, type=int, help="Number of datasets averaged across per FIVO step.")
 
     # VRNN architecture args.
     parser.add_argument('--latent-dim', default=32, type=int, help="Dimension of z latent variable.")
@@ -67,11 +71,13 @@ def get_config():
     parser.add_argument('--fcnet-hidden-sizes', default=None, type=str,
                         help="Layer widths of MLPs. CSV of widths, i.e. '10,10'. (None -> [latent_dim]). ")
 
+    # Learning rates.
     parser.add_argument('--lr-p', default=3.0e-5, type=float, help="Learning rate of model parameters.")
     parser.add_argument('--lr-q', default=3.0e-5, type=float, help="Learning rate of proposal parameters.")
     parser.add_argument('--lr-r', default=3.0e-5, type=float, help="Learning rate of tilt parameters.")
     parser.add_argument('--lr-e', default=3.0e-5, type=float, help="Learning rate of data encoder parameters.")
 
+    # Misc settings.
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
     parser.add_argument('--dset-to-plot', default=2, type=int, help="Index of dataset to visualize.")
     parser.add_argument('--validation-particles', default=128, type=int, help="'Large' number of particles for asymptotic evaluation.")
@@ -88,21 +94,26 @@ def get_config():
     parser.add_argument('--use-bootstrap-initial-distribution', default=1, type=int, help="Force sweeps to use the model for initialization.")
 
     # Old stuff.
+
+    # Synthetic data args (not used for real data).
     parser.add_argument('--T', default=10, type=int, help="Length of sequences.  (Overwritten for real data)")
     parser.add_argument('--emissions-dim', default=1, type=int, help="Dimension of observed value (Overwritten for real data)")
     parser.add_argument('--num-trials', default=100000, type=int, help="Number of datasets to generate.  (Overwritten for real data)")
     parser.add_argument('--num-val-datasets', default=100, type=int, help="(Overwritten for real data)")
 
+    # Encoder pre-training hyperparameters.
     parser.add_argument('--encoder-pretrain', default=0, type=int, help="{0, 1}")
     parser.add_argument('--encoder-pretrain-opt-steps', default=100, type=int, help="")
     parser.add_argument('--encoder-pretrain-lr', default=0.01, type=float, help="")
     parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
 
+    # Variational / M.L. learning of tilt function.
     parser.add_argument('--vi-use-tilt-gradient', default=0, type=int, help="Learn tilt using VI.")
     parser.add_argument('--vi-buffer-length', default=10, type=int, help="Number of optimization steps' data to store as VI buffer.  Linked to --batch-size.")
     parser.add_argument('--vi-minibatch-size', default=16, type=int, help="Size of VI minibatches when learning tilt with VI.")
     parser.add_argument('--vi-epochs', default=1, type=int, help="Number of VI epochs to perform when learning tilt with VI.")
 
+    # Parse dem boiz.
     config = parser.parse_args().__dict__
 
     # Make sure this one is formatted correctly.

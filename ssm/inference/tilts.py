@@ -199,8 +199,6 @@ class IGPerStepTilt(IndependentGaussianTilt):
 
 class IGWindowTilt(IndependentGaussianTilt):
 
-    # window_length = 2
-
     # We need to define the method for generating the inputs.
     @staticmethod
     def _tilt_output_generator(dataset, model, particles, t, _tilt_window_length, *_inputs):
@@ -221,12 +219,55 @@ class IGWindowTilt(IndependentGaussianTilt):
         tilt_outputs = (masked_dataset, )
         return nn_util.vectorize_pytree(tilt_outputs)
 
+    def apply(self, params, dataset, model, particles, t, *inputs):
+        """
+
+        Args:
+            params:
+            dataset:
+            model:
+            particles:
+            t:
+            *inputs:
+
+        Returns:
+
+        """
+
+        # Pull out the time and the appropriate tilt.
+        if self.n_tilts == 1:
+            t_params = jax.tree_map(lambda args: args[0], params)
+        else:
+            t_params = jax.tree_map(lambda args: args[t], params)
+
+        # Generate a tilt distribution.
+        tilt_inputs = self._tilt_input_generator(dataset, model, particles, t, *inputs)
+        r_dist = self.tilt.apply(t_params, tilt_inputs)
+
+        # Now score under that distribution.
+        tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, self.tilt_window_length, *inputs)
+
+        # We need to re-capitulate the distribution for each of the timesteps (its independent) and accumulate
+        # just those within the time window.
+        means = r_dist.mean()
+        variances = r_dist.variance()
+        dataset_length = len(dataset)
+        mask = (np.arange(self.tilt_window_length) + t) < dataset_length
+
+        def _eval(_mu, _var, _mask, _obs):
+            return tfd.Normal(_mu, np.sqrt(_var)).log_prob(_obs) * _mask
+
+        r_vals = jax.vmap(_eval, in_axes=(1, 1, 0, 0))(means, variances, mask, tilt_outputs)
+        log_r_val = np.sum(r_vals, axis=0)
+
+        return log_r_val
+
 
 def rebuild_tilt(tilt, tilt_structure):
     """
     """
 
-    def _rebuild_tilt(_param_vals, _dataset, _model):
+    def _rebuild_tilt(_param_vals, _dataset, _model, _encoded_data=None):
         # If there is no tilt, then there is no structure to define.
         if tilt is None:
             return lambda *_: 0.0

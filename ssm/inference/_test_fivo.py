@@ -31,10 +31,10 @@ default_verbosity = Verbosity.DEBUG
 # config.update("jax_debug_nans", True)
 
 # Disable jit for inspection.
-DISABLE_JIT = False
+DISABLE_JIT = True
 
 # Set the default model for local debugging.
-DEFAULT_MODEL = 'VRNN'
+DEFAULT_MODEL = 'SVM'
 
 # Import and configure WandB.
 try:

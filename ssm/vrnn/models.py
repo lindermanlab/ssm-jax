@@ -15,6 +15,7 @@ from ssm import nn_util
 from ssm.base import SSM
 from ssm.utils import Verbosity, random_rotation, make_named_tuple, ensure_has_batch_dim, auto_batch
 import ssm.inference.proposals as proposals
+import ssm.inference.tilts as tilts
 
 tfd = tfp.distributions
 SVMPosterior = MultivariateNormalBlockTridiag
@@ -422,6 +423,40 @@ class VrnnSmoothingProposal(proposals.IndependentGaussianProposal):
         _encoded_obs = _model._encoder_data_obj.apply(_model._params_encoder_data, jax.lax.dynamic_index_in_dim(_dataset, _t))
         _exposed_vrnn_hidden_state = _particles[0][1]
         _exposed_encoder_hidden_state = inputs[0]
+        _proposal_inputs = (_encoded_obs, _exposed_vrnn_hidden_state, _exposed_encoder_hidden_state)
+
+        _model_latent_shape = (_model.latent_dim, )
+
+        _is_batched = (_model_latent_shape != _exposed_vrnn_hidden_state.shape)
+
+        if not _is_batched:
+            return nn_util.vectorize_pytree(_proposal_inputs)
+        else:
+            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0, None))
+            return _vmapped(*_proposal_inputs)
+
+
+class VrnnTilt(tilts.IndependentGaussianTilt):
+    r"""
+    Tilt for use with VRNN.
+    """
+
+    def _tilt_input_generator(self, dataset, model, particles, t, *_inputs):
+        """
+        NOTE - Encoded data (from an external RNN) are supplied through `inputs`.
+        """
+        assert self.n_tilts == 1, "Can only use a single tilt."
+
+        # This proposal gets a single encoded datapoint (using the VRNN encoder), the data encoder state, and the current particles.
+        _raw_obs = jax.lax.dynamic_index_in_dim(_dataset, _t)
+        _encoded_obs = _model._encoder_data_obj.apply(_model._params_encoder_data, jax.lax.dynamic_index_in_dim(_dataset, _t))
+        _exposed_vrnn_hidden_state = _particles[0][1]
+
+        if len(_inputs) > 0:
+            _exposed_encoder_hidden_state = inputs[0]
+        else:
+            _exposed_encoder_hidden_state = ()
+
         _proposal_inputs = (_encoded_obs, _exposed_vrnn_hidden_state, _exposed_encoder_hidden_state)
 
         _model_latent_shape = (_model.latent_dim, )

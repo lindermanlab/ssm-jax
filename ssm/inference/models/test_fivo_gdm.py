@@ -64,6 +64,7 @@ def get_config():
     parser.add_argument('--lr-p', default=0.001, type=float)
     parser.add_argument('--lr-q', default=0.001, type=float)
     parser.add_argument('--lr-r', default=0.001, type=float)
+    parser.add_argument('--lr-e', default=3.0e-5, type=float, help="Learning rate of data encoder parameters.")
 
     parser.add_argument('--T', default=9, type=int)   # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=1, type=int)
