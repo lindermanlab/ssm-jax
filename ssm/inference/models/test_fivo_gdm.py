@@ -15,6 +15,8 @@ import ssm.utils as utils
 import ssm.inference.fivo as fivo
 import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
+from ssm.inference.fivo_util import pretrain_encoder
+import ssm.inference.encoders as encoders
 
 
 def get_config():
@@ -94,14 +96,39 @@ def get_config():
 
 
 def define_test(key, env):
+    """
+
+    Args:
+        key:
+        env:
+
+    Returns:
+
+    """
 
     # Define the true model.
     key, subkey = jr.split(key)
     true_model, true_states, datasets, masks = define_true_model_and_data(subkey, env)
 
+    if len(datasets.shape) == 2:
+        print('\nWARNING: Expanding dataset and mask dim.\n')
+        datasets = np.expand_dims(datasets, 0)
+        masks = np.expand_dims(masks, 0)
+
+    validation_datasets = np.asarray(dc(datasets[:env.config.num_val_datasets]))
+    validation_dataset_masks = np.asarray(dc(masks[:env.config.num_val_datasets]))
+    train_datasets = np.asarray(dc(datasets[env.config.num_val_datasets:]))
+    train_dataset_masks = np.asarray(dc(masks[env.config.num_val_datasets:]))
+
     # Now define a model to test.
     key, subkey = jax.random.split(key)
     model, get_model_params, rebuild_model_fn = define_test_model(subkey, true_model, env)
+
+    # Define an encoder for the data.
+    key, subkey = jax.random.split(key)
+    encoder, encoder_params, rebuild_encoder_fn = define_data_encoder(subkey, true_model, env,
+                                                                      train_datasets, train_dataset_masks,
+                                                                      validation_datasets, validation_dataset_masks)
 
     # Define the proposal.
     key, subkey = jr.split(key)
@@ -111,17 +138,34 @@ def define_test(key, env):
     key, subkey = jr.split(key)
     tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, datasets, env)
 
-    validation_datasets = np.asarray(dc(datasets[:env.config.num_val_datasets]))
-    validation_masks = np.asarray(dc(masks[:env.config.num_val_datasets]))
-    train_datasets = np.asarray(dc(datasets[env.config.num_val_datasets:]))
-    train_masks = np.asarray(dc(masks[env.config.num_val_datasets:]))
-
     # Return this big pile of stuff.
-    ret_model = (true_model, true_states, train_datasets, train_masks, validation_datasets, validation_masks)
+    ret_model = (true_model, true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
     ret_test = (model, get_model_params, rebuild_model_fn)
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
-    return ret_model, ret_test, ret_prop, ret_tilt
+    ret_enc = (encoder, encoder_params, rebuild_encoder_fn)
+    return ret_model, ret_test, ret_prop, ret_tilt, ret_enc
+
+
+def define_data_encoder(key, true_model, env, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks):
+    """
+
+    Args:
+        subkey:
+        true_model:
+        env:
+        train_datasets:
+        train_dataset_masks:
+
+    Returns:
+
+    """
+
+    # If there is no encoder, just pass nones through.
+    if (env.config.encoder_structure == 'NONE') or (env.config.encoder_structure is None):
+        return None, None, lambda *_args: None
+    else:
+        raise RuntimeError("Error:  GDM isn't currently configured for use with a data encoder.")
 
 
 class GdmTilt(tilts.IndependentGaussianTilt):

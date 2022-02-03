@@ -59,6 +59,7 @@ def do_vi_tilt_update(key,
                       _param_vals,
                       _rebuild_model,
                       _rebuild_tilt,
+                      _rebuild_encoder,
                       _state_buffer_raw,
                       _obs_buffer_raw,
                       _mask_buffer_raw,
@@ -73,6 +74,7 @@ def do_vi_tilt_update(key,
         _param_vals:
         _rebuild_model:
         _rebuild_tilt:
+        _rebuild_encoder:
         _state_buffer_raw:
         _obs_buffer_raw:
         _mask_buffer_raw:
@@ -91,6 +93,11 @@ def do_vi_tilt_update(key,
 
     # Reconstruct the model, inscribing the current parameter values.
     model = _rebuild_model(_param_vals[0])
+
+    #
+    encoder = _rebuild_encoder(_param_vals[3])
+    if encoder is not None:
+        raise NotImplementedError("Don't quite know how to handle encoders here yet.")
 
     # Construct the batch.
     state_buffer_shaped = np.concatenate(_state_buffer_raw)

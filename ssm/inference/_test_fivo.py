@@ -352,10 +352,10 @@ def main():
                           'tilt_temperature': temperature,
 
                           'params_p_true': true_hist[0][-1],
-                          'params_p_pred': param_hist[0][-1],
-                          'params_q_pred': param_hist[1][-1],
-                          'params_r_pred': param_hist[2][-1],
-                          'params_e_pred': param_hist[3][-1],
+                          'params_p_pred': cur_params[0],
+                          'params_q_pred': cur_params[1],
+                          'params_r_pred': cur_params[2],
+                          'params_e_pred': cur_params[3],
 
                           'smoothed_training_loss': smoothed_training_loss,
 

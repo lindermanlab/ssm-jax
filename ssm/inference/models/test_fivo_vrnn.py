@@ -47,12 +47,12 @@ def get_config():
 
     parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
     parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
-    parser.add_argument('--proposal-window-length', default=1, type=int)  # {int, None}.
+    parser.add_argument('--proposal-window-length', default=1, type=int)  # {None, }.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
     parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT', 'VRNN'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
-    parser.add_argument('--tilt-window-length', default=2, type=int)  # {int, None}.
+    parser.add_argument('--tilt-window-length', default=2, type=int)  # {None, }.
     parser.add_argument('--tilt-fn-family', default='VRNN', type=str)  # {'VRNN'}.
 
     parser.add_argument('--num-particles', default=4, type=int, help="Number of particles per sweep during learning.")
@@ -229,17 +229,7 @@ def define_tilt(subkey, model, dataset, env):
         return None, None, lambda *args: None
 
     # configure the tilt.
-    if env.config.tilt_type == 'PERSTEP_ALLOBS':
-        tilt_fn = tilts.IGPerStepTilt
-        n_tilts = len(dataset[0]) - 1
-        tilt_window_length = None
-
-    elif env.config.tilt_type == 'PERSTEP_WINDOW':
-        tilt_fn = tilts.IGWindowTilt
-        n_tilts = len(dataset[0]) - 1
-        tilt_window_length = env.config.tilt_window_length
-
-    elif env.config.tilt_type == 'SINGLE_WINDOW':
+    if env.config.tilt_type == 'SINGLE_WINDOW':
         tilt_fn = tilts.IGWindowTilt
         n_tilts = 1
         tilt_window_length = env.config.tilt_window_length
