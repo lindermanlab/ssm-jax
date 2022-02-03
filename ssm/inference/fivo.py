@@ -117,6 +117,7 @@ def do_fivo_sweep(_param_vals,
                   _rebuild_model,
                   _rebuild_proposal,
                   _rebuild_tilt,
+                  _rebuild_data_encoder,
                   _datasets,
                   _masks,
                   _num_particles,
@@ -143,6 +144,8 @@ def do_fivo_sweep(_param_vals,
 
         _rebuild_tilt:            Callable that accepts... TODO.
 
+        _rebuild_data_encoder:    Callable that accepts... TODO.
+
         _datasets:                Dataset(s) to condition on.
 
         _num_particles:           Integer number of particles to use in the sweep.
@@ -164,6 +167,7 @@ def do_fivo_sweep(_param_vals,
                                                 _rebuild_model,
                                                 _rebuild_proposal,
                                                 _rebuild_tilt,
+                                                _rebuild_data_encoder,
                                                 _datasets,
                                                 _masks,
                                                 _num_particles,
@@ -175,6 +179,7 @@ def do_fivo_sweep(_param_vals,
                                                                                                 _rebuild_model,
                                                                                                 _rebuild_proposal,
                                                                                                 _rebuild_tilt,
+                                                                                                _rebuild_data_encoder,
                                                                                                 _single_dataset,
                                                                                                 _single_mask,
                                                                                                 _num_particles,
@@ -194,6 +199,7 @@ def _do_single_fivo_sweep(_param_vals,
                           _rebuild_model,
                           _rebuild_proposal,
                           _rebuild_tilt,
+                          _rebuild_data_encoder,
                           _single_dataset,
                           _single_mask,
                           _num_particles,
@@ -207,7 +213,9 @@ def _do_single_fivo_sweep(_param_vals,
         _rebuild_model:
         _rebuild_proposal:
         _rebuild_tilt:
+        _rebuild_data_encoder:
         _single_dataset:
+        _single_mask:
         _num_particles:
         _use_bootstrap_initial_distribution:
         **_smc_kw_args:
@@ -219,8 +227,18 @@ def _do_single_fivo_sweep(_param_vals,
     # Reconstruct the model, inscribing the new parameter values.
     _model = _rebuild_model(_param_vals[0])
 
+    # Reconstruct the data encoder.
+    _encoder = _rebuild_data_encoder(_param_vals[3])
+
+    # If we are using an encoder (is not `None`), we need to encode the data.
+    if _encoder is None:
+        _encoded_data = None
+    else:
+        _key, _subkey = jr.split(_key)
+        _encoded_data = _encoder(_subkey, _single_dataset)
+
     # Reconstruct the proposal.
-    _proposal = _rebuild_proposal(_param_vals[1], _single_dataset, _model)
+    _proposal = _rebuild_proposal(_param_vals[1], _single_dataset, _model, _encoded_data)
 
     # Build the initial distribution from the zeroth proposal.
     if (_proposal is None) or _use_bootstrap_initial_distribution:
@@ -232,7 +250,7 @@ def _do_single_fivo_sweep(_param_vals,
                                                         None)
 
     # Reconstruct the tilt.
-    _tilt = _rebuild_tilt(_param_vals[2], _single_dataset, _model)
+    _tilt = _rebuild_tilt(_param_vals[2], _single_dataset, _model, _encoded_data)
 
     # Do the sweep.
     _smc_posteriors = smc(_key,
@@ -341,7 +359,7 @@ def apply_gradient(full_loss_grad, optimizer):
     return new_optimizer
 
 
-def define_optimizer(p_params=None, q_params=None, r_params=None, lr_p=0.001, lr_q=0.001, lr_r=0.001):
+def define_optimizer(p_params=None, q_params=None, r_params=None, e_params=None, lr_p=0.001, lr_q=0.001, lr_r=0.001, lr_e=0.001):
     """
     Build out the appropriate optimizer.
 
@@ -350,10 +368,12 @@ def define_optimizer(p_params=None, q_params=None, r_params=None, lr_p=0.001, lr
     Args:
         p_params (NamedTuple):    Named tuple of the parameters of the SSM.
         q_params (NamedTuple):    Named tuple of the parameters of the proposal.
-        q_params (NamedTuple):    Named tuple of the parameters of the tilt.
+        r_params (NamedTuple):    Named tuple of the parameters of the tilt.
+        e_params (NamedTuple):    Named tuple of the parameters of any data encoder.
         lr_p (float):             Float learning rate for p.
         lr_q (float):             Float learning rate for q.
         lr_r (float):             Float learning rate for r.
+        lr_e (float):             Float learning rate for data encoder.
 
     Returns:
         (Tuple[opt]):             Tuple of updated optimizers.
@@ -377,6 +397,12 @@ def define_optimizer(p_params=None, q_params=None, r_params=None, lr_p=0.001, lr
     else:
         r_opt = None
 
-    opt = [p_opt, q_opt, r_opt]
+    if e_params is not None:
+        e_opt_def = optim.Adam(learning_rate=lr_e)
+        e_opt = e_opt_def.create(e_params)
+    else:
+        e_opt = None
+
+    opt = [p_opt, q_opt, r_opt, e_opt]
     return opt
 

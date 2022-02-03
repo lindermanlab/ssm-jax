@@ -89,11 +89,11 @@ class RnnWithReadoutLayer(nn.Module):
     """
     emissions_dim: int
     latent_dim: int = 64
-    _rnn_cell: nn.recurrent.RNNCellBase = nn.LSTMCell
+    _rnn_cell: nn.recurrent.RNNCellBase = nn.LSTMCell()
     _readout_network: nn.Module = nn.Dense
 
     def setup(self):
-        self.rnn_cell = self._rnn_cell()
+        self.rnn_cell = self._rnn_cell
         self.readout_network = self._readout_network(self.emissions_dim)
 
     def initialize_carry(self, rng, batch_dims=(), init_fn=zeros):
@@ -108,7 +108,7 @@ class RnnWithReadoutLayer(nn.Module):
         Returns:
 
         """
-        return self._rnn_cell().initialize_carry(rng, batch_dims, self.latent_dim, init_fn)
+        return self._rnn_cell.initialize_carry(rng, batch_dims, self.latent_dim, init_fn)
 
     def __call__(self, carry, x):
         """

@@ -34,7 +34,7 @@ default_verbosity = Verbosity.DEBUG
 DISABLE_JIT = False
 
 # Set the default model for local debugging.
-DEFAULT_MODEL = 'SVM'
+DEFAULT_MODEL = 'VRNN'
 
 # Import and configure WandB.
 try:
@@ -70,6 +70,7 @@ def main():
         model, get_model_free_params, rebuild_model_fn = ret_vals[1]    # Unpack test model.
         proposal, proposal_params, rebuild_prop_fn = ret_vals[2]        # Unpack proposal.
         tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                # Unpack tilt.
+        encoder, encoder_params, rebuild_encoder_fn = ret_vals[4]      # Unpack the encoder.
 
         # In here we can re-build models from saves if we want to.
         try:
@@ -79,6 +80,7 @@ def main():
                 model = rebuild_model_fn(utils.make_named_tuple(loaded_params[0]))
                 proposal_params = loaded_params[1]
                 tilt_params = loaded_params[2]
+                encoder_params = loaded_params[3]
         except:
             pass
 
@@ -97,9 +99,11 @@ def main():
         opt = fivo.define_optimizer(p_params=get_model_free_params(model),
                                     q_params=proposal_params,
                                     r_params=tilt_params,
+                                    e_params=encoder_params,
                                     lr_p=env.config.lr_p,
                                     lr_q=env.config.lr_q,
                                     lr_r=env.config.lr_r,
+                                    lr_e=env.config.lr_e,
                                     )
 
         # Jit the smc subroutine for completeness.
@@ -112,6 +116,7 @@ def main():
                                rebuild_model_fn,
                                rebuild_prop_fn,
                                rebuild_tilt_fn,
+                               rebuild_encoder_fn,
                                _datasets,
                                _masks,
                                _num_particles,
@@ -199,14 +204,14 @@ def main():
                                          do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
 
         # Define some storage.
-        param_hist = [[], [], []]  # Model, proposal, tilt.
-        val_hist = [[], [], []]  # Model, proposal, tilt.
-        param_figures = [None, None, None]  # Model, proposal, tilt.
+        param_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
+        val_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
+        param_figures = [None, None, None, None]  # Model, proposal, tilt, encoder.
         nlml_hist = []
         smoothed_training_loss = np.nan
 
         # Back up the true parameters.
-        true_hist = fivo_util.log_params([[], [], []], [get_model_free_params(true_model), None, None],)  # Model, proposal, tilt.
+        true_hist = fivo_util.log_params([[], [], [], []], [get_model_free_params(true_model), None, None, None],)  # Model, proposal, tilt, encoder.
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -265,6 +270,7 @@ def main():
                                                                                       fivo.get_params_from_opt(opt),
                                                                                       rebuild_model_fn,
                                                                                       rebuild_tilt_fn,
+                                                                                      rebuild_encoder_fn,
                                                                                       VI_STATE_BUFFER,
                                                                                       VI_OBS_BUFFER,
                                                                                       VI_MASK_BUFFER,
@@ -278,7 +284,7 @@ def main():
             # Do some validation and logging stuff.
 
             # Quickly calculate a smoothed training loss for quick and dirty plotting.
-            smoothed_training_loss = ((0.1 * neg_fivo_bound + 0.9 * smoothed_training_loss) if (smoothed_training_loss != np.nan) else neg_fivo_bound)
+            smoothed_training_loss = ((0.1 * neg_fivo_bound + 0.9 * smoothed_training_loss) if np.logical_not(np.isnan(smoothed_training_loss)) else neg_fivo_bound)
 
             # Do some validation and give some output.
             if (_step % env.config.validation_interval == 0) or (_step == 1):
@@ -349,6 +355,7 @@ def main():
                           'params_p_pred': param_hist[0][-1],
                           'params_q_pred': param_hist[1][-1],
                           'params_r_pred': param_hist[2][-1],
+                          'params_e_pred': param_hist[3][-1],
 
                           'smoothed_training_loss': smoothed_training_loss,
 

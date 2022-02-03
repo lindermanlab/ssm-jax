@@ -18,6 +18,7 @@ import ssm.inference.fivo as fivo
 from ssm.inference.fivo_util import pretrain_encoder
 import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
+import ssm.inference.encoders as encoders
 
 
 def get_config():
@@ -31,10 +32,13 @@ def get_config():
     parser = argparse.ArgumentParser()
     parser.add_argument('--validation-interval', default=500, type=int)
 
-    parser.add_argument('--pretrain-encoder', default=1, type=int, help="{0, 1}")
-    parser.add_argument('--pretrain-encoder-opt-steps', default=100, type=int, help="")
-    parser.add_argument('--pretrain-encoder-lr', default=0.01, type=float, help="")
-    parser.add_argument('--pretrain-encoder-batch-size', default=4, type=float, help="")
+    parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
+    # parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
+    
+    parser.add_argument('--encoder-pretrain', default=0, type=int, help="{0, 1}")
+    parser.add_argument('--encoder-pretrain-opt-steps', default=100, type=int, help="")
+    parser.add_argument('--encoder-pretrain-lr', default=0.01, type=float, help="")
+    parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
 
     parser.add_argument('--dataset', default='jsb.pkl', type=str,
                         help="Dataset to apply method to.  {'piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl'}. ")
@@ -68,17 +72,18 @@ def get_config():
     parser.add_argument('--datasets-per-batch', default=2, type=int, help="Number of datasets averaged across per FIVO step.")
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
 
-    parser.add_argument('--lr-p', default=0.01, type=float, help="Learning rate of model parameters.")
-    parser.add_argument('--lr-q', default=0.0001, type=float, help="Learning rate of proposal parameters.")
-    parser.add_argument('--lr-r', default=0.0001, type=float, help="Learning rate of tilt parameters.")
+    parser.add_argument('--lr-p', default=0.001, type=float, help="Learning rate of model parameters.")
+    parser.add_argument('--lr-q', default=0.001, type=float, help="Learning rate of proposal parameters.")
+    parser.add_argument('--lr-r', default=0.001, type=float, help="Learning rate of tilt parameters.")
+    parser.add_argument('--lr-e', default=0.001, type=float, help="Learning rate of data encoder parameters.")
 
     # VRNN architecture args.
     parser.add_argument('--latent-dim', default=10, type=int, help="Dimension of z latent variable.")
-    parser.add_argument('--latent-enc-dim', default=None, type=int, help="Dimension of encoded latent z variable. (None -> latent-dim)")
-    parser.add_argument('--obs-enc-dim', default=None, type=int, help="Dimension of encoded observations. (None -> latent-dim)")
-    parser.add_argument('--rnn-state-dim', default=None, type=int, help="Dimension of the deterministic RNN. (None -> latent-dim)")
+    parser.add_argument('--latent-enc-dim', default=None, type=int, help="Dimension of encoded latent z variable. (None -> latent_dim)")
+    parser.add_argument('--obs-enc-dim', default=None, type=int, help="Dimension of encoded observations. (None -> latent_dim)")
+    parser.add_argument('--rnn-state-dim', default=None, type=int, help="Dimension of the deterministic RNN. (None -> latent_dim)")
     parser.add_argument('--fcnet-hidden-sizes', default=None, type=str,
-                        help="Layer widths of MLPs. CSV of widths, i.e. '10,10'. (None -> [latent-dim]). ")
+                        help="Layer widths of MLPs. CSV of widths, i.e. '10,10'. (None -> [latent_dim]). ")
 
     parser.add_argument('--T', default=10, type=int, help="Length of sequences.  (Overwritten for real data)")
     parser.add_argument('--emissions-dim', default=1, type=int, help="Dimension of observed value (Overwritten for real data)")
@@ -147,10 +152,15 @@ def define_test(key, env):
     key, subkey = jax.random.split(key)
     model, get_model_params, rebuild_model_fn = define_test_model(subkey, true_model, env)
 
+    # Define an encoder for the data.
+    key, subkey = jax.random.split(key)
+    encoder, encoder_params, rebuild_encoder_fn = define_data_encoder(subkey, true_model, env,
+                                                                      train_datasets, train_dataset_masks,
+                                                                      validation_datasets, validation_dataset_masks)
+
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, train_datasets, env,
-                                                                 train_dataset_masks, validation_datasets, validation_dataset_masks)
+    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, train_datasets, env, data_encoder=encoder)
 
     # Define the tilt.
     key, subkey = jr.split(key)
@@ -161,7 +171,48 @@ def define_test(key, env):
     ret_test = (model, get_model_params, rebuild_model_fn)
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
-    return ret_model, ret_test, ret_prop, ret_tilt
+    ret_enc = (encoder, encoder_params, rebuild_encoder_fn)
+    return ret_model, ret_test, ret_prop, ret_tilt, ret_enc
+
+
+def define_data_encoder(key, true_model, env, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks):
+    """
+
+    Args:
+        subkey:
+        true_model:
+        env:
+        train_datasets:
+        train_dataset_masks:
+
+    Returns:
+
+    """
+
+    # If there is no encoder, just pass nones through.
+    if (env.config.encoder_structure == 'NONE') or (env.config.encoder_structure is None):
+        return None, None, lambda *_args: None
+
+    key, subkey1, subkey2 = jr.split(key, num=3)
+
+    # # Define the reccurent bit.
+    # rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else env.config.latent_dim
+    # rnn_obj = nn_util.RnnWithReadoutLayer(train_datasets.shape[-1], rnn_state_dim)
+    rnn_obj = nn.LSTMCell()
+
+    data_encoder = encoders.IndependentBiRnnEncoder(env, subkey1, rnn_obj, train_datasets[0])
+
+    if env.config.encoder_pretrain:
+        encoder_params = pretrain_encoder(env, subkey2, data_encoder,
+                                          train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
+    else:
+        subkey1, subkey2 = jr.split(key)
+        init_carry = data_encoder.initialize_carry(subkey1)
+        encoder_params = data_encoder.init(subkey2, (init_carry, np.zeros(train_datasets.shape[-1])))
+
+    rebuild_encoder_fn = encoders.rebuild_encoder(data_encoder, env)
+
+    return data_encoder, encoder_params, rebuild_encoder_fn
 
 
 def define_tilt(subkey, model, dataset, env):
@@ -234,7 +285,7 @@ def define_tilt(subkey, model, dataset, env):
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def define_proposal(subkey, model, train_dataset, env, train_dataset_masks=None, validation_datasets=None, validation_dataset_masks=None):
+def define_proposal(subkey, model, train_dataset, env, data_encoder=None):
     """
 
     Args:
@@ -246,7 +297,6 @@ def define_proposal(subkey, model, train_dataset, env, train_dataset_masks=None,
     Returns:
 
     """
-    data_encoder = None  # Define the default.
     subkey, subkey1, subkey2, subkey3 = jr.split(subkey, num=4)
 
     if env.config.proposal_structure in [None, 'NONE', 'BOOTSTRAP']:
@@ -254,7 +304,7 @@ def define_proposal(subkey, model, train_dataset, env, train_dataset_masks=None,
 
     # Define the proposal that we will use.
     # Stock proposal input form is (dataset, model, particles, t, p_dist, ).
-    n_dummy_particles = 2
+    n_dummy_particles = 4
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(n_dummy_particles, ), )
     dummy_obs = np.repeat(np.expand_dims(train_dataset[0, 0], 0), n_dummy_particles, axis=0)
     dummy_p_dist = model.dynamics_distribution(dummy_particles, covariates=(dummy_obs, ))
@@ -289,20 +339,7 @@ def define_proposal(subkey, model, train_dataset, env, train_dataset_masks=None,
         proposal_window_length = None  # This will use just the current state of and RNN.
         dummy_q_state = None
 
-        # Define the reccurent bit.
-        RNN_CELL_TYPE = nn.LSTMCell
-        data_encoder = RNN_CELL_TYPE()
-        dummy_rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else env.config.latent_dim
-        dummy_rnn_carry = RNN_CELL_TYPE().initialize_carry(jr.PRNGKey(0), batch_dims=(), size=dummy_rnn_state_dim)
-        dummy_rnn_input = tuple((dummy_rnn_carry, train_dataset[0, 0]))
-
-        # If twe are using an LSTM, then we expose just the second part of the state.
-        if RNN_CELL_TYPE == nn.LSTMCell:
-            dummy_q_inputs = dummy_rnn_carry[1]
-        elif RNN_CELL_TYPE == nn.GRUCell:
-            dummy_q_inputs = dummy_rnn_carry
-        else:
-            raise NotImplementedError()
+        dummy_q_inputs = data_encoder.dummy_exposed_state
 
     else:
         raise NotImplementedError()
@@ -323,19 +360,8 @@ def define_proposal(subkey, model, train_dataset, env, train_dataset_masks=None,
     # Initialize the proposal network.
     proposal_params = proposal.init(subkey1)
 
-    if data_encoder is not None:
-
-        # TODO - place this somewhere more elegant than here.
-        if env.config.pretrain_encoder:
-            encoder_params = pretrain_encoder(env, subkey2, data_encoder,
-                                              train_dataset, train_dataset_masks, validation_datasets, validation_dataset_masks)
-        else:
-            encoder_params = data_encoder.init(subkey2, *dummy_rnn_input)
-
-        proposal_params = tuple((proposal_params, encoder_params))
-
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_prop_fn = proposals.rebuild_proposal(proposal, env, data_encoder=data_encoder)
+    rebuild_prop_fn = proposals.rebuild_proposal(proposal, env)
     return proposal, proposal_params, rebuild_prop_fn
 
 

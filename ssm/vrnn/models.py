@@ -379,13 +379,13 @@ class VrnnFilteringProposal(proposals.IndependentGaussianProposal):
 
     """
 
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
+    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_):
         """
-
+        NOTE - inputs are not used here.
         """
         assert self.proposal_window_length == 1, "ERROR: Must have a single-length window."
 
-        # This proposal gets a single encoded datapoint and the current particles.
+        # This proposal gets a single encoded datapoint (using the VRNN encoder) and the current particles.
         _raw_obs = jax.lax.dynamic_index_in_dim(_dataset, _t)
         _encoded_obs = _model._encoder_data_obj.apply(_model._params_encoder_data, jax.lax.dynamic_index_in_dim(_dataset, _t))
         _hidden_state = _particles[0]
@@ -408,21 +408,21 @@ class VrnnFilteringProposal(proposals.IndependentGaussianProposal):
 class VrnnSmoothingProposal(proposals.IndependentGaussianProposal):
     r"""
     Smoothing VRNN proposal.
-
     """
 
     def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
         """
-
+        NOTE - Encoded data (from an external RNN) are supplied through `inputs`.
         """
         assert self.proposal_window_length is None, "ERROR: Cannot use a window."
+        assert self.n_proposals == 1, "Can only use a single proposal."
 
-        # This proposal gets a single encoded datapoint, the reverse RNN encoder state, and the current particles.
+        # This proposal gets a single encoded datapoint (using the VRNN encoder), the data encoder state, and the current particles.
         _raw_obs = jax.lax.dynamic_index_in_dim(_dataset, _t)
         _encoded_obs = _model._encoder_data_obj.apply(_model._params_encoder_data, jax.lax.dynamic_index_in_dim(_dataset, _t))
         _exposed_vrnn_hidden_state = _particles[0][1]
-        _exposed_q_hidden_state = inputs[0]
-        _proposal_inputs = (_encoded_obs, _exposed_vrnn_hidden_state, _exposed_q_hidden_state)
+        _exposed_encoder_hidden_state = inputs[0]
+        _proposal_inputs = (_encoded_obs, _exposed_vrnn_hidden_state, _exposed_encoder_hidden_state)
 
         _model_latent_shape = (_model.latent_dim, )
 
@@ -434,28 +434,28 @@ class VrnnSmoothingProposal(proposals.IndependentGaussianProposal):
             _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0, None))
             return _vmapped(*_proposal_inputs)
 
-    def apply(self, params, dataset, model, particles, t, p_dist, q_state, *inputs):
-        """
-
-        Args:
-            params (FrozenDict):    FrozenDict of the parameters of the proposal.
-            dataset:
-            model:
-            particles:
-            t:
-            p_dist:
-            q_state:
-
-        Returns:
-            (Tuple): (TFP distribution over latent state, updated q internal state).
-
-        """
-
-        assert self.n_proposals == 1, "Can only use a single proposal."
-        params_at_t = jax.tree_map(lambda args: args[0], params)
-
-        proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state, *inputs)
-        q_dist = self.proposal.apply(params_at_t, proposal_inputs)
-
-        return q_dist, None
+    # def apply(self, params, dataset, model, particles, t, p_dist, q_state, *inputs):
+    #     """
+    #
+    #     Args:
+    #         params (FrozenDict):    FrozenDict of the parameters of the proposal.
+    #         dataset:
+    #         model:
+    #         particles:
+    #         t:
+    #         p_dist:
+    #         q_state:
+    #
+    #     Returns:
+    #         (Tuple): (TFP distribution over latent state, updated q internal state).
+    #
+    #     """
+    #
+    #     assert self.n_proposals == 1, "Can only use a single proposal."
+    #     params_at_t = jax.tree_map(lambda args: args[0], params)
+    #
+    #     proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state, *inputs)
+    #     q_dist = self.proposal.apply(params_at_t, proposal_inputs)
+    #
+    #     return q_dist, None
 
