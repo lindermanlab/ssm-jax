@@ -109,6 +109,23 @@ def log_params(_param_hist, _cur_params):
         print('[WARNING]: Failed logging parameter values: tilt.')
         _param_hist[1].append(None)
 
+    # ENCODER.
+    try:
+        if _cur_params[3] is not None:
+            _p = _cur_params[3]['params']._dict
+            _p_flat = {}
+            for _ko in _p.keys():
+                for _ki in _p[_ko].keys():
+                    _k = _ko + '_' + _ki
+                    _p_flat[_k] = dc(onp.array(_p[_ko][_ki]))
+
+            _param_hist[3].append(_p_flat)
+        else:
+            _param_hist[3].append(None)
+    except:
+        print('[WARNING]: Failed logging parameter values: encoder.')
+        _param_hist[3].append(None)
+
     return _param_hist
 
 
