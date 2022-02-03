@@ -46,6 +46,7 @@ def log_params(_param_hist, _cur_params):
     Returns:
 
     """
+    failed_str = ''
 
     # MODEL.
     try:
@@ -58,8 +59,8 @@ def log_params(_param_hist, _cur_params):
         else:
             _param_hist[0].append(None)
     except:
-        print('[WARNING]: Failed logging parameter values: model.')
         _param_hist[0].append(None)
+        failed_str += 'Model, '
 
     # PROPOSAL.
     try:
@@ -82,8 +83,8 @@ def log_params(_param_hist, _cur_params):
         else:
             _param_hist[1].append(None)
     except:
-        print('[WARNING]: Failed logging parameter values: proposal.')
         _param_hist[1].append(None)
+        failed_str += 'Proposal, '
 
     # TILT.
     try:
@@ -106,8 +107,8 @@ def log_params(_param_hist, _cur_params):
         else:
             _param_hist[2].append(None)
     except:
-        print('[WARNING]: Failed logging parameter values: tilt.')
         _param_hist[1].append(None)
+        failed_str += 'Tilt, '
 
     # ENCODER.
     try:
@@ -123,8 +124,11 @@ def log_params(_param_hist, _cur_params):
         else:
             _param_hist[3].append(None)
     except:
-        print('[WARNING]: Failed logging parameter values: encoder.')
         _param_hist[3].append(None)
+        failed_str += 'Encoder, '
+
+    if len(failed_str) > 0:
+        print('[WARNING]: Failed logging parameter values: {}.'.format(failed_str))
 
     return _param_hist
 
