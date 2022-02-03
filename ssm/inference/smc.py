@@ -8,6 +8,7 @@ from jax.scipy import special as spsp
 from jax import vmap
 from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
+import jax.scipy as jscipy
 
 # SSM imports.
 from ssm.utils import Verbosity
@@ -127,11 +128,14 @@ def smc(key,
             resampling_criterion = always_resample_criterion
         elif resampling_criterion == 'never_resample':
             resampling_criterion = never_resample_criterion
+        elif resampling_criterion == 'ess_criterion':
+            resampling_criterion = ess_criterion
         else:
             raise NotImplementedError()
 
     else:
-        assert resampling_criterion in [always_resample_criterion, never_resample_criterion], "Error: unrecognised resampling criterion."
+        assert resampling_criterion in [always_resample_criterion, never_resample_criterion, ess_criterion], \
+            "Error: unrecognised resampling criterion."
 
     # Select the resampling function.
     if resampling_function is None:
@@ -483,7 +487,7 @@ def _smc_forward_pass(key,
         # Resample particles depending on the resampling function chosen.
         # We don't want to resample on the final timestep, so dont...
         resampled_particles, ancestors, resampled_log_weights, should_resample = \
-            jax.lax.cond(False or np.any(mask[t] == 0),  # TODO: removed final resampling step and added mask evaluation.
+            jax.lax.cond(False or np.any(mask[t] == 0),  # TODO: removed final resampling step.
                          lambda *args: closed_do_resample(never_resample_criterion),
                          lambda *args: closed_do_resample(resampling_criterion),
                          None)
@@ -585,6 +589,15 @@ def always_resample_criterion(unused_log_weights, unused_t):
 def never_resample_criterion(unused_log_weights, unused_t):
     r"""A criterion that never resamples."""
     return False
+
+
+def ess_criterion(log_weights, unused_t):
+  """A criterion that resamples based on effective sample size."""
+  num_particles = log_weights.shape[0]
+  ess_num = 2 * jscipy.special.logsumexp(log_weights)
+  ess_denom = jscipy.special.logsumexp(2 * log_weights)
+  log_ess = ess_num - ess_denom
+  return log_ess <= np.log(num_particles / 2.0)
 
 
 def multinomial_resampling(key, log_weights, particles):

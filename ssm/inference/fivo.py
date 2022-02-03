@@ -142,9 +142,9 @@ def do_fivo_sweep(_param_vals,
                                   p_dist, q_state, ...)`, and returns a distribution over the latent state (z) and
                                   an updated `q_state` (if there is some recurrent state in the proposal).
 
-        _rebuild_tilt:            Callable that accepts... TODO.
+        _rebuild_tilt:            Callable that accepts...
 
-        _rebuild_data_encoder:    Callable that accepts... TODO.
+        _rebuild_data_encoder:    Callable that accepts...
 
         _datasets:                Dataset(s) to condition on.
 

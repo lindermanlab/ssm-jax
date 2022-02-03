@@ -125,7 +125,7 @@ class IndependentGaussianTilt:
 
         model_latent_shape = (model.latent_dim, )
 
-        is_batched = (model_latent_shape != particles.shape)  # TODO - note - removed the [0] from _particles.shape.
+        is_batched = (model_latent_shape != particles.shape)
         if not is_batched:
             return nn_util.vectorize_pytree(tilt_inputs)
         else:
@@ -190,7 +190,7 @@ class IGPerStepTilt(IndependentGaussianTilt):
 
             return jax.lax.cond(_score_all_future(),
                                 lambda *args: _dist.log_prob(np.asarray([_out])),
-                                lambda *args: np.zeros_like(_dist.log_prob(np.asarray([_out]))),  # TODO - changed from 1 to -1
+                                lambda *args: np.zeros_like(_dist.log_prob(np.asarray([_out]))),
                                 None)
 
         log_r_val = jax.vmap(_eval)(np.arange(means.shape[0]), means, sds, tilt_outputs).sum(axis=0)

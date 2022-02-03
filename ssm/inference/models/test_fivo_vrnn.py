@@ -32,12 +32,10 @@ def get_config():
     parser = argparse.ArgumentParser()
     parser.add_argument('--validation-interval', default=50, type=int)
 
-    parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
-
     parser.add_argument('--dataset', default='jsb.pkl', type=str,
                         help="Dataset to apply method to.  {'piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl'}. ")
 
-    parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # {'always_resample', 'never_resample'}.
+    parser.add_argument('--resampling-criterion', default='ess_criterion', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
     parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # {'multinomial_resampling', 'systematic_resampling'}.
     parser.add_argument('--use-sgr', default=1, type=int, help="{0, 1}.")
     parser.add_argument('--temper', default=0.0, type=float, help="{0.0 to disable,  >0.1 to temper}")
@@ -45,8 +43,10 @@ def get_config():
     # CSV: {'params_rnn', 'params_prior', 'params_decoder_latent', 'params_decoder_full', 'params_encoder_data'}.
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data',type=str)
 
-    parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
-    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
+    parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
+
+    parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
+    parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {None, }.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
@@ -54,6 +54,7 @@ def get_config():
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--tilt-window-length', default=2, type=int)  # {None, }.
     parser.add_argument('--tilt-fn-family', default='VRNN', type=str)  # {'VRNN'}.
+
 
     parser.add_argument('--num-particles', default=4, type=int, help="Number of particles per sweep during learning.")
     parser.add_argument('--datasets-per-batch', default=4, type=int, help="Number of datasets averaged across per FIVO step.")
