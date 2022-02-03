@@ -45,8 +45,8 @@ def get_config():
 
     parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
 
-    parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
-    parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
+    parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
+    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {None, }.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
