@@ -5,6 +5,7 @@ import numpy as onp
 from jax import random as jr
 from copy import deepcopy as dc
 import flax
+import pickle
 
 # Import some ssm stuff.
 import ssm.utils as utils
@@ -673,9 +674,7 @@ def pretrain_encoder(env, key, encoder, train_datasets, train_dataset_masks, val
         #                              reverse=True)
 
         encoded_states = encoder.encode(_encoder_params, _key, _obs)
-
-
-
+        raise NotImplementedError()
         return - np.sum(_log_probs) / np.sum(_mask)
 
     @jax.jit
@@ -703,6 +702,55 @@ def pretrain_encoder(env, key, encoder, train_datasets, train_dataset_masks, val
     # Now we return just the parameters of the RNN.
     rnn_params = flax.core.FrozenDict({'params': enc_opt.target['params']['rnn_cell']})
     return rnn_params
+
+
+def load_piano_data(dataset_pickle_name, phase='train'):
+    """
+
+    Returns:
+
+    """
+    from ssm.inference.data.datasets import sparse_pianoroll_to_dense
+
+    with open('./data/' + dataset_pickle_name, 'rb') as f:
+        dataset_sparse = pickle.load(f)
+
+    PAD_FLAG = 0.0
+    MAX_LENGTH = 10000
+
+    min_note = 21
+    max_note = 108
+    num_notes = max_note - min_note + 1
+
+    dataset_and_metadata = [sparse_pianoroll_to_dense(_d, min_note=min_note, num_notes=num_notes) for _d in dataset_sparse[phase]]
+    max_length = max([_d[1] for _d in dataset_and_metadata])
+
+    if max_length < MAX_LENGTH:
+        MAX_LENGTH = max_length
+
+    dataset_masks = []
+    dataset = []
+    for _i, _d in enumerate(dataset_and_metadata):
+
+        if len(_d[0]) > MAX_LENGTH:
+            print('[WARNING]: Removing dataset, over length 1000.')
+            continue
+
+        dataset.append(np.concatenate((_d[0], PAD_FLAG * np.ones((MAX_LENGTH - len(_d[0]), *_d[0].shape[1:])))))
+        dataset_masks.append(np.concatenate((np.ones(_d[0].shape[0]), 0.0 * np.ones((MAX_LENGTH - len(_d[0]))))))
+
+    print('{}: Loaded {} datasets.'.format(dataset_pickle_name, len(dataset)))
+
+    dataset = np.asarray(dataset)
+    dataset_masks = np.asarray(dataset_masks)
+    dataset_means = np.asarray(dataset_sparse['train_mean'])
+    true_states = None  # There are no true states!
+
+    # print('\n\n[WARNING]: trimming data further. \n\n')
+    # dataset = dataset[:, :20]
+    # dataset_masks = dataset_masks[:, :20]
+
+    return dataset, dataset_masks, true_states, dataset_means
 
 
 # def final_validation(get_marginals,

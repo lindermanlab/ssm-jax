@@ -1,6 +1,5 @@
 import jax
 import argparse
-import pickle
 import tensorflow as tf
 import flax.linen as nn
 import matplotlib.pyplot as plt
@@ -19,6 +18,7 @@ from ssm.inference.fivo_util import pretrain_encoder
 import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
 import ssm.inference.encoders as encoders
+import ssm.inference.fivo_util as fivo_util
 
 
 def get_config():
@@ -378,8 +378,8 @@ def define_true_model_and_data(key, env):
     else:
 
         if env.config.dataset in ['piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl']:
-            train_dataset, train_dataset_masks, train_true_states, train_dataset_means = load_piano_data(env.config.dataset, phase='train')
-            valid_dataset, valid_dataset_masks, valid_true_states, _ = load_piano_data(env.config.dataset, phase='valid')
+            train_dataset, train_dataset_masks, train_true_states, train_dataset_means = fivo_util.load_piano_data(env.config.dataset, phase='train')
+            valid_dataset, valid_dataset_masks, valid_true_states, _ = fivo_util.load_piano_data(env.config.dataset, phase='valid')
             emissions_dim = train_dataset.shape[-1]
             output_type = 'BERNOULLI'
         else:
@@ -520,17 +520,6 @@ def define_test_model(key, true_model, env):
 def do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params, param_figs):
     """
     Not plotting here.
-
-    Args:
-        _param_hist:
-        _loss_hist:
-        _true_loss_em:
-        _true_loss_smc:
-        _true_params:
-        param_figs:
-
-    Returns:
-
     """
     return param_figs
 
@@ -554,75 +543,16 @@ def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log
         format(_step, true_lml, pred_lml, pred_fivo_bound)
     if em_log_marginal_likelihood is not None:
         _str += '  EM Neg-LML: {:> 8.3f}'.format(em_log_marginal_likelihood)
-
     print(_str)
+
     if opt[0] is not None:
         if len(opt[0].target) > 0:
-            # print()
             print('\tModel:  Good luck printing that shite.')
     print()
 
 
 def get_true_target_marginal(model, data):
-    """
-    Take in a model and some data and return the tfd distribution representing the marginals of true posterior.
-    Args:
-        model:
-        data:
-
-    Returns:
-
-    """
     return None
-
-
-def load_piano_data(dataset_pickle_name, phase='train'):
-    """
-
-    Returns:
-
-    """
-    from ssm.inference.data.datasets import sparse_pianoroll_to_dense
-
-    with open('./data/' + dataset_pickle_name, 'rb') as f:
-        dataset_sparse = pickle.load(f)
-
-    PAD_FLAG = 0.0
-    MAX_LENGTH = 10000
-
-    min_note = 21
-    max_note = 108
-    num_notes = max_note - min_note + 1
-
-    dataset_and_metadata = [sparse_pianoroll_to_dense(_d, min_note=min_note, num_notes=num_notes) for _d in dataset_sparse[phase]]
-    max_length = max([_d[1] for _d in dataset_and_metadata])
-
-    if max_length < MAX_LENGTH:
-        MAX_LENGTH = max_length
-
-    dataset_masks = []
-    dataset = []
-    for _i, _d in enumerate(dataset_and_metadata):
-
-        if len(_d[0]) > MAX_LENGTH:
-            print('[WARNING]: Removing dataset, over length 1000.')
-            continue
-
-        dataset.append(np.concatenate((_d[0], PAD_FLAG * np.ones((MAX_LENGTH - len(_d[0]), *_d[0].shape[1:])))))
-        dataset_masks.append(np.concatenate((np.ones(_d[0].shape[0]), 0.0 * np.ones((MAX_LENGTH - len(_d[0]))))))
-
-    print('{}: Loaded {} datasets.'.format(dataset_pickle_name, len(dataset)))
-
-    dataset = np.asarray(dataset)
-    dataset_masks = np.asarray(dataset_masks)
-    dataset_means = np.asarray(dataset_sparse['train_mean'])
-    true_states = None  # There are no true states!
-
-    # print('\n\n[WARNING]: trimming data further. \n\n')
-    # dataset = dataset[:, :20]
-    # dataset_masks = dataset_masks[:, :20]
-
-    return dataset, dataset_masks, true_states, dataset_means
 
 
 if __name__ == '__main__':
@@ -630,7 +560,7 @@ if __name__ == '__main__':
     _phase = 'train'
 
     for _s in ['piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl']:
-        _dataset, _masks, _true_states, _means = load_piano_data(_s, _phase)
+        _dataset, _masks, _true_states, _means = fivo_util.load_piano_data(_s, _phase)
 
         print('Dataset dimensions (N x T x D): ', _dataset.shape)
 

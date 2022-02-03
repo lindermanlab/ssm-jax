@@ -82,6 +82,7 @@ def get_config():
     parser.add_argument('--log-group', default='debug-gdm', type=str)               # {'debug', 'gdm-v1.0'}
     parser.add_argument('--log-to-wandb-interval', default=1, type=int)
     parser.add_argument('--PLOT', default=1, type=int)
+    parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
 
     config = parser.parse_args().__dict__
 
