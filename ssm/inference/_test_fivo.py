@@ -31,7 +31,7 @@ default_verbosity = Verbosity.DEBUG
 # config.update("jax_debug_nans", True)
 
 # Disable jit for inspection.
-DISABLE_JIT = True
+DISABLE_JIT = False
 
 # Set the default model for local debugging.
 DEFAULT_MODEL = 'SVM'
