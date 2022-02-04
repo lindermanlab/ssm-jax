@@ -252,7 +252,7 @@ class IGWindowTilt(IndependentGaussianTilt):
         means = r_dist.mean()
         variances = r_dist.variance()
         dataset_length = len(dataset)
-        mask = (np.repeat(np.expand_dims(np.arange(self.tilt_window_length) + t, 0), dataset.shape[-1], axis=0) < dataset_length).flatten()
+        mask = (np.repeat(np.expand_dims(np.arange(self.tilt_window_length) + t + 1, 1), dataset.shape[-1], axis=1) < dataset_length).flatten()
 
         def _eval(_mu, _var, _mask, _obs):
             return tfd.Normal(_mu, np.sqrt(_var)).log_prob(_obs) * _mask
