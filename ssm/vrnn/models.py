@@ -380,30 +380,31 @@ class VrnnFilteringProposal(proposals.IndependentGaussianProposal):
 
     """
 
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_):
+    def _proposal_input_generator(self, dataset, model, particles, t, p_dist, q_state, *_):
         """
         NOTE - inputs are not used here.
         """
         assert self.proposal_window_length == 1, "ERROR: Must have a single-length window."
 
-        # This proposal gets a single encoded datapoint (using the VRNN encoder) and the current particles.
-        _raw_obs = jax.lax.dynamic_index_in_dim(_dataset, _t)
-        _encoded_obs = _model._encoder_data_obj.apply(_model._params_encoder_data, jax.lax.dynamic_index_in_dim(_dataset, _t))
-        _hidden_state = _particles[0]
-        _proposal_inputs = (_encoded_obs, _hidden_state)
+        raw_obs = jax.lax.dynamic_index_in_dim(dataset, _t)
+        encoded_obs = model._encoder_data_obj.apply(model._params_encoder_data, raw_obs)
 
-        _model_latent_shape = (_model.latent_dim, )
+        # TODO - this assumes that the VRNN is using an LSTM.
+        # Get the exposed state of the VRNN.
+        vrnn_carry, _ = particles
+        vrnn_exposed_hidden_state = vrnn_carry[1]
 
-        if type(_hidden_state) == tuple:
-            _is_batched = (_model_latent_shape != _hidden_state[0].shape)
-        else:
-            _is_batched = (_model_latent_shape != _hidden_state.shape)
+        # Construct the inputs.
+        proposal_inputs = (encoded_obs, vrnn_exposed_hidden_state)
 
+        # Map the application if required.
+        model_latent_shape = (model.latent_dim, )
+        _is_batched = (model_latent_shape != vrnn_exposed_hidden_state.shape)
         if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
+            return nn_util.vectorize_pytree(proposal_inputs)
         else:
             _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return _vmapped(*_proposal_inputs)
+            return _vmapped(*proposal_inputs)
 
 
 class VrnnSmoothingProposal(proposals.IndependentGaussianProposal):
@@ -414,83 +415,102 @@ class VrnnSmoothingProposal(proposals.IndependentGaussianProposal):
     def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
         """
         NOTE - Encoded data (from an external RNN) are supplied through `inputs`.
+
+        This proposal gets a single encoded datapoint (using the VRNN encoder), the data encoder state, and the current particles.
         """
         assert self.proposal_window_length is None, "ERROR: Cannot use a window."
         assert self.n_proposals == 1, "Can only use a single proposal."
 
-        # This proposal gets a single encoded datapoint (using the VRNN encoder), the data encoder state, and the current particles.
-        _raw_obs = jax.lax.dynamic_index_in_dim(_dataset, _t)
-        _encoded_obs = _model._encoder_data_obj.apply(_model._params_encoder_data, jax.lax.dynamic_index_in_dim(_dataset, _t))
-        _exposed_vrnn_hidden_state = _particles[0][1]
-        _exposed_encoder_hidden_state = inputs[0]
-        _proposal_inputs = (_encoded_obs, _exposed_vrnn_hidden_state, _exposed_encoder_hidden_state)
+        raw_obs = jax.lax.dynamic_index_in_dim(_dataset, _t)
+        encoded_obs = _model._encoder_data_obj.apply(_model._params_encoder_data, raw_obs)
 
-        _model_latent_shape = (_model.latent_dim, )
+        # TODO - this assumes that the VRNN is using an LSTM.
+        # Get the exposed state of the VRNN.
+        vrnn_carry, _ = _particles
+        vrnn_exposed_hidden_state = vrnn_carry[1]
 
-        _is_batched = (_model_latent_shape != _exposed_vrnn_hidden_state.shape)
+        # Grab the inputs (formatted as ( (forward_message, backwards_message), ).
+        encoder_exposed_hidden_state = inputs[0]
 
-        if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
+        # Construct the inputs.
+        proposal_inputs = (encoded_obs, vrnn_exposed_hidden_state, encoder_exposed_hidden_state)
+
+        # Map the application if required.
+        model_latent_shape = (_model.latent_dim, )
+        is_batched = (model_latent_shape != vrnn_exposed_hidden_state.shape)
+        if not is_batched:
+            return nn_util.vectorize_pytree(proposal_inputs)
         else:
-            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0, None))
-            return _vmapped(*_proposal_inputs)
+            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0, None))
+            return vmapped(*proposal_inputs)
 
 
-class VrnnTilt(tilts.IndependentGaussianTilt):
+class VrnnRawWindowTilt(tilts.IGWindowTilt):
     r"""
     Tilt for use with VRNN.
     """
 
-    def _tilt_input_generator(self, dataset, model, particles, t, *_inputs):
+    def _tilt_input_generator(self, dataset, model, particles, t, *inputs):
         """
-        NOTE - Encoded data (from an external RNN) are supplied through `inputs`.
+
         """
         assert self.n_tilts == 1, "Can only use a single tilt."
 
-        # This proposal gets a single encoded datapoint (using the VRNN encoder), the data encoder state, and the current particles.
-        _raw_obs = jax.lax.dynamic_index_in_dim(_dataset, _t)
-        _encoded_obs = _model._encoder_data_obj.apply(_model._params_encoder_data, jax.lax.dynamic_index_in_dim(_dataset, _t))
-        _exposed_vrnn_hidden_state = _particles[0][1]
+        # TODO - this assumes that the VRNN is using an LSTM.
+        vrnn_carry, vrnn_latent = particles
+        vrnn_exposed_hidden_state = vrnn_carry[1]
 
-        if len(_inputs) > 0:
-            _exposed_encoder_hidden_state = inputs[0]
+        # Build up the tilt inputs.
+        tilt_inputs = (vrnn_latent, vrnn_exposed_hidden_state)
+
+        # Test if the inputs are batched and then apply as required.
+        model_latent_shape = (model.latent_dim, )
+        is_batched = (model_latent_shape != vrnn_exposed_hidden_state.shape)
+        if not is_batched:
+            return nn_util.vectorize_pytree(tilt_inputs)
         else:
-            _exposed_encoder_hidden_state = ()
+            vmapped = jax.vmap(nn_util.vectorize_pytree)
+            return vmapped(*tilt_inputs)
 
-        _proposal_inputs = (_encoded_obs, _exposed_vrnn_hidden_state, _exposed_encoder_hidden_state)
 
-        _model_latent_shape = (_model.latent_dim, )
+class VrnnEncodedTilt(tilts.IndependentGaussianTilt):
+    r"""
+    Tilt for use with VRNN.
+    """
 
-        _is_batched = (_model_latent_shape != _exposed_vrnn_hidden_state.shape)
+    def _tilt_input_generator(self, dataset, model, particles, t, *inputs):
+        """
 
-        if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
+        """
+        assert self.n_tilts == 1, "Can only use a single tilt."
+        assert self.tilt_window_length is None, "Cannot use a window here."
+
+        # TODO - this assumes that the VRNN is using an LSTM.
+        vrnn_carry, vrnn_latent = particles
+        vrnn_exposed_hidden_state = vrnn_carry[1]
+
+        # Build up the tilt inputs.
+        tilt_inputs = (vrnn_latent, vrnn_exposed_hidden_state)
+
+        # Test if the inputs are batched and then apply as required.
+        model_latent_shape = (model.latent_dim,)
+        is_batched = (model_latent_shape != vrnn_exposed_hidden_state.shape)
+        if not is_batched:
+            return nn_util.vectorize_pytree(tilt_inputs)
         else:
-            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0, None))
-            return _vmapped(*_proposal_inputs)
+            vmapped = jax.vmap(nn_util.vectorize_pytree)
+            return vmapped(*tilt_inputs)
 
-    # def apply(self, params, dataset, model, particles, t, p_dist, q_state, *inputs):
-    #     """
-    #
-    #     Args:
-    #         params (FrozenDict):    FrozenDict of the parameters of the proposal.
-    #         dataset:
-    #         model:
-    #         particles:
-    #         t:
-    #         p_dist:
-    #         q_state:
-    #
-    #     Returns:
-    #         (Tuple): (TFP distribution over latent state, updated q internal state).
-    #
-    #     """
-    #
-    #     assert self.n_proposals == 1, "Can only use a single proposal."
-    #     params_at_t = jax.tree_map(lambda args: args[0], params)
-    #
-    #     proposal_inputs = self._proposal_input_generator(dataset, model, particles, t, p_dist, q_state, *inputs)
-    #     q_dist = self.proposal.apply(params_at_t, proposal_inputs)
-    #
-    #     return q_dist, None
+    @staticmethod
+    def _tilt_output_generator(dataset, model, particles, t, tilt_window_length, *inputs):
+        """
+        NOTE - external inputs are supplied through the `inputs` variable (as ((forward, backward), ).
+        """
+        assert tilt_window_length is None, "Cannot use a window here."
 
+        assert t + 1 <= len(dataset), "Cannot tilt at the last timestep."
+
+        encoded_future_obs = inputs[0][1]
+        encoded_future_obs_at_tp1 = jax.lax.index_in_dim(encoded_future_obs, t, axis=0)
+
+        tilt_outputs

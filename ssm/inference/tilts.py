@@ -94,7 +94,7 @@ class IndependentGaussianTilt:
         return log_r_val
 
     # Define a method for generating thei nputs to the tilt.
-    def _tilt_input_generator(self, dataset, model, particles, t, *_inputs):
+    def _tilt_input_generator(self, dataset, model, particles, t, *inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be input into the tilt.
@@ -113,10 +113,10 @@ class IndependentGaussianTilt:
 
             t:
 
-            *inputs_:
+            *inputs:
 
         Returns:
-            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
+            (ndarray):              Processed and vectorized version of `*inputs` ready to go into tilt.
 
         """
 
@@ -133,7 +133,7 @@ class IndependentGaussianTilt:
             return vmapped(*tilt_inputs)
 
     @staticmethod
-    def _tilt_output_generator(_dataset, _model, _particles, _t, _tilt_window_length, *_inputs):
+    def _tilt_output_generator(dataset, model, particles, t, tilt_window_length, *inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t) into a vector object that
         can be scored under into the tilt.
@@ -141,15 +141,15 @@ class IndependentGaussianTilt:
         NOTE - this is an abstract method and must be implemented by wherever this is being used.
 
         Args:
-            *_inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
+            *inputs (tuple):       Tuple of standard inputs to the tilt in SMC:
                                     (dataset, model, particles, time)
 
         Returns:
-            (ndarray):              Processed and vectorized version of `*_inputs` ready to go into tilt.
+            (ndarray):              Processed and vectorized version of `*inputs` ready to go into tilt.
 
         """
         # We will pass in whole data into the tilt and then filter out as required.
-        tilt_outputs = (_dataset, )
+        tilt_outputs = (dataset, )
         return nn_util.vectorize_pytree(tilt_outputs)
 
 
@@ -201,10 +201,11 @@ class IGWindowTilt(IndependentGaussianTilt):
 
     # We need to define the method for generating the inputs.
     @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, _tilt_window_length, *_inputs):
+    def _tilt_output_generator(dataset, model, particles, t, _tilt_window_length, *inputs):
         """
 
         """
+        assert inputs == (), "Cannot supply inputs with raw window."
 
         masked_idx = np.arange(_tilt_window_length)
         to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
@@ -257,13 +258,17 @@ class IGWindowTilt(IndependentGaussianTilt):
         def _eval(_mu, _var, _mask, _obs):
             return tfd.Normal(_mu, np.sqrt(_var)).log_prob(_obs) * _mask
 
-        r_vals = jax.vmap(_eval, in_axes=(1, 1, 0, 0))(means, variances, mask, tilt_outputs)
+        is_batched = (means.shape != mask.shape)
+        if is_batched:
+            r_vals = jax.vmap(_eval, in_axes=(1, 1, 0, 0))(means, variances, mask, tilt_outputs)
+        else:
+            r_vals = _eval(means, variances, mask, tilt_outputs)
         log_r_val = np.sum(r_vals, axis=0)
 
         return log_r_val
 
 
-def rebuild_tilt(tilt, tilt_structure):
+def rebuild_tilt(tilt, env):
     """
     """
 
@@ -274,7 +279,7 @@ def rebuild_tilt(tilt, tilt_structure):
 
         # We fork depending on the tilt type.
         # tilt takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
-        if tilt_structure == 'DIRECT':
+        if env.config.tilt_structure == 'DIRECT':
 
             def _tilt(_particles, _t, __dataset=None):
 

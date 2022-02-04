@@ -11,7 +11,7 @@ from flax import optim
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
-from ssm.vrnn.models import VRNN, VrnnFilteringProposal, VrnnSmoothingProposal
+from ssm.vrnn.models import VRNN, VrnnFilteringProposal, VrnnSmoothingProposal, VrnnEncodedTilt, VrnnRawWindowTilt
 import ssm.nn_util as nn_util
 import ssm.inference.fivo as fivo
 from ssm.inference.fivo_util import pretrain_encoder
@@ -58,10 +58,10 @@ def get_config():
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
     # Tilt args.
-    parser.add_argument('--tilt-structure', default='NONE', type=str)  # {None/'NONE', 'DIRECT', 'VRNN'}
-    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)  # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
-    parser.add_argument('--tilt-window-length', default=2, type=int)  # {None, }.
-    parser.add_argument('--tilt-fn-family', default='VRNN', type=str)  # {'VRNN'}.
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
+    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
+    parser.add_argument('--tilt-window-length', default=2, type=int, help="{int, None}.  Length of any window.")
+    parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'AFFINE', 'MLP'}. ")
 
     # VRNN architecture args.
     parser.add_argument('--latent-dim', default=32, type=int, help="Dimension of z latent variable.")
@@ -242,32 +242,41 @@ def define_tilt(subkey, model, dataset, env):
 
     # configure the tilt.
     if env.config.tilt_type == 'SINGLE_WINDOW':
-        tilt_fn = tilts.IGWindowTilt
-        n_tilts = 1
+        tilt_fn = VrnnRawWindowTilt
         tilt_window_length = env.config.tilt_window_length
+
+    elif env.config.tilt_type == 'ENCODED':
+        tilt_fn = VrnnEncodedTilt
+        tilt_window_length = None
 
     else:
         raise NotImplementedError()
 
+    n_tilts = 1
     tilt_inputs = ()
 
     # Tilt functions take in (dataset, model, particles, t-1).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
 
     # Generate the inputs.
-    stock_tilt_input = (dataset[-1], model, dummy_particles[0], 0, tilt_window_length, *tilt_inputs)
+    stock_tilt_input = (dataset[0], model, jax.tree_map(lambda _x: _x[0], dummy_particles), 0, tilt_window_length, *tilt_inputs)
 
     # Generate the outputs.
     dummy_tilt_output = tilt_fn._tilt_output_generator(*stock_tilt_input)
 
     # Define any custom link functions.
-    trunk_fn = None
-    head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
-    head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
+    if env.config.tilt_fn_family == 'AFFINE':
+        trunk_fn = None
+        head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
+        head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
 
-    # trunk_fn = nn_util.MLP([6, ], output_layer_relu=True)
-    # head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
-    # head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0], kernel_init=lambda *args: nn.initializers.lecun_normal()(*args) * 0.01, )
+    elif env.config.tilt_fn_family == 'MLP':
+        trunk_fn = nn_util.MLP([10, 10, ], output_layer_activation=True)
+        head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
+        head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0])
+
+    else:
+        raise NotImplementedError()
 
     # Define the tilts themselves.
     print('Defining {} tilts.'.format(n_tilts))

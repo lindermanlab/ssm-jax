@@ -33,6 +33,10 @@ default_verbosity = Verbosity.DEBUG
 # Disable jit for inspection.
 DISABLE_JIT = False
 
+# If we are on the remote, then hard disable this.
+if not LOCAL_SYSTEM:
+    DISABLE_JIT = False
+
 # Set the default model for local debugging.
 DEFAULT_MODEL = 'LDS'
 
@@ -174,7 +178,7 @@ def main():
             VI_MASK_BUFFER = []
 
             # Jit the update function/
-            do_vi_tilt_update_jit = jax.jit(fivo_vi.do_vi_tilt_update, static_argnums=(1, 3, 4, 9, 10))
+            do_vi_tilt_update_jit = jax.jit(fivo_vi.do_vi_tilt_update, static_argnums=(1, 3, 4, 5, 10, 11))
 
             print('\nVI HYPERPARAMETERS:')
             print('\tVI_BUFFER_LENGTH:', VI_BUFFER_LENGTH)
@@ -185,23 +189,23 @@ def main():
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
-        # # Test the initial models.
-        # key, subkey = jr.split(key)
-        # large_true_bpf_neg_lml, true_neg_bpf_fivo_bound, em_neg_lml, sweep_fig, filt_fig, initial_smc_neg_lml, initial_smc_neg_fivo_bound = \
-        #     fivo_util.initial_validation(env,
-        #                                  key,
-        #                                  true_model,
-        #                                  validation_datasets,
-        #                                  validation_dataset_masks,
-        #                                  true_states,
-        #                                  opt,
-        #                                  do_fivo_sweep_jitted,
-        #                                  smc_jit,
-        #                                  num_particles=env.config.validation_particles,
-        #                                  dset_to_plot=env.config.dset_to_plot,
-        #                                  init_model=model,
-        #                                  do_print=do_print,
-        #                                  do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
+        # Test the initial models.
+        key, subkey = jr.split(key)
+        large_true_bpf_neg_lml, true_neg_bpf_fivo_bound, em_neg_lml, sweep_fig, filt_fig, initial_smc_neg_lml, initial_smc_neg_fivo_bound = \
+            fivo_util.initial_validation(env,
+                                         key,
+                                         true_model,
+                                         validation_datasets,
+                                         validation_dataset_masks,
+                                         true_states,
+                                         opt,
+                                         do_fivo_sweep_jitted,
+                                         smc_jit,
+                                         num_particles=env.config.validation_particles,
+                                         dset_to_plot=env.config.dset_to_plot,
+                                         init_model=model,
+                                         do_print=do_print,
+                                         do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
 
         # Define some storage.
         param_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
@@ -243,8 +247,8 @@ def main():
                     opt = fivo.apply_gradient(grad, opt, )
                 else:
                     # Apply the gradient to the model and proposal
-                    _opt = fivo.apply_gradient(grad, tuple((opt[0], opt[1])), )
-                    opt = tuple((*_opt, opt[2]))  # Recapitulate the full optimizer.
+                    _opt = fivo.apply_gradient((grad[0], grad[1], None, grad[3]), tuple((opt[0], opt[1], None, opt[3])), )
+                    opt = tuple((_opt[0], _opt[1], opt[2], _opt[3]))  # Recapitulate the full optimizer.
             else:
                 print('[WARNING]: Skipped step: ', _step, min(smc_posteriors.log_normalizer), neg_fivo_bound)
 
@@ -277,7 +281,7 @@ def main():
                                                                                       opt[2],
                                                                                       _epochs=VI_EPOCHS,
                                                                                       _sgd_batch_size=VI_MINIBATCH_SIZE)
-                    opt = tuple((opt[0], opt[1], _vi_opt))  # Recapitulate the full optimizer.
+                    opt = tuple((opt[0], opt[1], _vi_opt, opt[3]))  # Recapitulate the full optimizer.
 
             # ----------------------------------------------------------------------------------------------------------------------------------------
 

@@ -258,7 +258,7 @@ def define_tilt(subkey, model, dataset, env):
     tilt_params = tilt.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed tilt.
-    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env.config.tilt_structure)
+    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env)
     return tilt, tilt_params, rebuild_tilt_fn
 
 
