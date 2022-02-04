@@ -216,7 +216,7 @@ class GdmTilt(tilts.IndependentGaussianTilt):
 
     # We need to define the method for generating the inputs.
     @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, _tilt_window_length, *_inputs):
+    def _tilt_output_generator(dataset, model, particles, t, tilt_window_length, *inputs):
         """
         Define the output generator for the gdm example.
         Args:
@@ -286,7 +286,7 @@ def define_tilt(subkey, model, dataset, env):
     tilt_params = tilt.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env.config.tilt_structure)
+    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env)
     return tilt, tilt_params, rebuild_tilt_fn
 
 
@@ -296,13 +296,13 @@ class GdmProposal(proposals.IndependentGaussianProposal):
     """
 
     # Define the required method for building the inputs.
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
+    def _proposal_input_generator(self, dataset, model, particles, t, p_dist, q_state, *inputs):
         """
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state) into a vector object that
         can be input into the proposal.
 
         Args:
-            *_inputs (tuple):       Tuple of standard inputs to the proposal in SMC:
+            *inputs (tuple):       Tuple of standard inputs to the proposal in SMC:
                                     (dataset, model, particles, time, p_dist)
 
         Returns:
@@ -310,17 +310,16 @@ class GdmProposal(proposals.IndependentGaussianProposal):
 
         """
 
-        _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset, index=len(_dataset)-1, axis=0, keepdims=False),
-                            _particles)
+        proposal_inputs = (jax.lax.dynamic_index_in_dim(dataset, index=len(dataset)-1, axis=0, keepdims=False), particles)
 
-        _model_latent_shape = (_model.latent_dim, )
+        model_latent_shape = (model.latent_dim, )
 
-        _is_batched = (_model_latent_shape != _particles.shape)
-        if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
+        is_batched = (model_latent_shape != particles.shape)
+        if not is_batched:
+            return nn_util.vectorize_pytree(proposal_inputs)
         else:
             vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return vmapped(*_proposal_inputs)
+            return vmapped(*proposal_inputs)
 
 
 def define_proposal(subkey, model, dataset, env):

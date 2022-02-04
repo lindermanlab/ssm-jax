@@ -52,7 +52,7 @@ def get_config():
     parser.add_argument('--tilt-window-length', default=2, type=int)  # {int, None}.
     parser.add_argument('--tilt-fn-family', default='AFFINE', type=str)             # {'AFFINE', 'MLP'}.
 
-    parser.add_argument('--vi-use-tilt-gradient', default=0, type=int)  # {0, 1}.
+    parser.add_argument('--vi-use-tilt-gradient', default=1, type=int)  # {0, 1}.
     parser.add_argument('--vi-buffer-length', default=10, type=int)  #
     parser.add_argument('--vi-minibatch-size', default=16, type=int)  #
     parser.add_argument('--vi-epochs', default=1, type=int)  #
@@ -253,7 +253,7 @@ def define_tilt(subkey, model, dataset, env):
     tilt_params = tilt.init(subkey)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env.config.tilt_structure)
+    rebuild_tilt_fn = tilts.rebuild_tilt(tilt, env)
     return tilt, tilt_params, rebuild_tilt_fn
 
 

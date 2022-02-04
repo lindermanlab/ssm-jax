@@ -122,18 +122,18 @@ class IndependentGaussianProposal:
 
         return q_dist, None
 
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
+    def _proposal_input_generator(self, dataset, model, particles, t, p_dist, q_state, *inputs):
         r"""
         Converts inputs of the form (dataset, model, particle[SINGLE], t, p_dist, q_state, *inputs) into a vector object that
         can be input directly into the proposal.
 
         Args:
-            _dataset:
-            _model:
-            _particles:
-            _t:
-            _p_dist:
-            _q_state:
+            dataset:
+            model:
+            particles:
+            t:
+            p_dist:
+            q_state:
             *inputs:
 
         Returns:
@@ -142,16 +142,16 @@ class IndependentGaussianProposal:
         """
 
         # This proposal gets the entire dataset and the current particles.
-        _proposal_inputs = (_dataset, _particles)
+        proposal_inputs = (dataset, particles)
 
-        _model_latent_shape = (_model.latent_dim, )
+        model_latent_shape = (model.latent_dim, )
 
-        _is_batched = (_model_latent_shape != _particles.shape)
-        if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
+        is_batched = (model_latent_shape != particles.shape)
+        if not is_batched:
+            return nn_util.vectorize_pytree(proposal_inputs)
         else:
-            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return _vmapped(*_proposal_inputs)
+            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
+            return vmapped(*proposal_inputs)
 
 
 class IGSingleObsProposal(IndependentGaussianProposal):
@@ -159,20 +159,20 @@ class IGSingleObsProposal(IndependentGaussianProposal):
     IndependentGaussianProposal but where only a single observation at time t is used.
     """
 
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *inputs):
+    def _proposal_input_generator(self, dataset, model, particles, t, p_dist, q_state, *inputs):
         assert self.proposal_window_length == 1, "ERROR: Must have a single-length window."
 
         # This proposal gets the single datapoint and the current particles.
-        _proposal_inputs = (jax.lax.dynamic_index_in_dim(_dataset, _t), _particles)
+        proposal_inputs = (jax.lax.dynamic_index_in_dim(dataset, t), particles)
 
-        _model_latent_shape = (_model.latent_dim, )
+        model_latent_shape = (model.latent_dim, )
 
-        _is_batched = (_model_latent_shape != _particles.shape)
-        if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
+        is_batched = (model_latent_shape != particles.shape)
+        if not is_batched:
+            return nn_util.vectorize_pytree(proposal_inputs)
         else:
-            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return _vmapped(*_proposal_inputs)
+            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
+            return vmapped(*proposal_inputs)
 
 
 class IGWindowProposal(IndependentGaussianProposal):
@@ -181,28 +181,28 @@ class IGWindowProposal(IndependentGaussianProposal):
     """
 
     # We need to define the method for generating the inputs.
-    def _proposal_input_generator(self, _dataset, _model, _particles, _t, _p_dist, _q_state, *_inputs):
+    def _proposal_input_generator(self, dataset, model, particles, t, p_dist, q_state, *inputs):
 
-        _masked_idx = np.arange(self.proposal_window_length)
-        _to_insert = (_t + 1 + _masked_idx < len(_dataset))  # We will insert where the window is inside the dataset.
+        masked_idx = np.arange(self.proposal_window_length)
+        to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
 
         # Zero out the elements outside of the valid range.
-        _clipped_dataset = jax.lax.dynamic_slice(_dataset,
-                                                 (_t+1, *tuple(0 * _d for _d in _dataset.shape[1:])),
-                                                 (self.proposal_window_length, *_dataset.shape[1:]))
-        _masked_dataset = _clipped_dataset * np.expand_dims(_to_insert.astype(np.int32), 1)
+        clipped_dataset = jax.lax.dynamic_slice(dataset,
+                                                (t+1, *tuple(0 * _d for _d in dataset.shape[1:])),
+                                                (self.proposal_window_length, *dataset.shape[1:]))
+        masked_dataset = clipped_dataset * np.expand_dims(to_insert.astype(np.int32), 1)
 
         # We will pass in whole data into the tilt and then filter out as required.
-        _proposal_inputs = (_masked_dataset, _particles)
+        proposal_inputs = (masked_dataset, particles)
 
-        _model_latent_shape = (_model.latent_dim, )
+        model_latent_shape = (model.latent_dim, )
 
-        _is_batched = (_model_latent_shape != _particles.shape)
-        if not _is_batched:
-            return nn_util.vectorize_pytree(_proposal_inputs)
+        is_batched = (model_latent_shape != particles.shape)
+        if not is_batched:
+            return nn_util.vectorize_pytree(proposal_inputs)
         else:
-            _vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
-            return _vmapped(*_proposal_inputs)
+            vmapped = jax.vmap(nn_util.vectorize_pytree, in_axes=(None, 0))
+            return vmapped(*proposal_inputs)
 
 
 def rebuild_proposal(proposal, env):
