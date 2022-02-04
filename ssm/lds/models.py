@@ -1,3 +1,5 @@
+import inspect
+
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
@@ -9,7 +11,7 @@ from ssm.lds.base import LDS
 from ssm.lds.initial import StandardInitialCondition
 from ssm.lds.dynamics import StationaryDynamics
 from ssm.lds.emissions import GaussianEmissions, PoissonEmissions
-from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, random_rotation
+from ssm.utils import Verbosity, random_rotation, make_named_tuple, ensure_has_batch_dim, auto_batch
 
 LDSPosterior = MultivariateNormalBlockTridiag
 
@@ -61,6 +63,7 @@ class GaussianLDS(LDS):
             seed (jr.PRNGKey, optional): random seed. Defaults to None.
         """
 
+        # Define the default/sampled parameter values if we didn't explicitly pass them in.
         if initial_state_mean is None:
             initial_state_mean = np.zeros(num_latent_dims)
 
@@ -87,6 +90,12 @@ class GaussianLDS(LDS):
         if emission_scale_tril is None:
             emission_scale_tril = 1.0**2 * np.eye(num_emission_dims)  # TODO: do we want 0.1**2 here?
 
+        # Grab the parameter values.  This allows us to explicitly re-build the object.
+        self._parameters = make_named_tuple(dict_in=locals(),
+                                            keys=list(inspect.signature(self.__init__)._parameters.keys()),
+                                            name=str(self.__class__.__name__) + 'Tuple')
+
+        # Build out the object.
         initial_condition = StandardInitialCondition(initial_mean=initial_state_mean,
                                                      initial_scale_tril=initial_state_scale_tril)
         transitions = StationaryDynamics(weights=dynamics_weights,

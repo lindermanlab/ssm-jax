@@ -4,9 +4,10 @@ Useful utility functions.
 
 import jax.numpy as np
 import jax.random as jr
-import jax.scipy.special as spsp
+import jax
 from jax import vmap, lax, tree_multimap
 from jax.tree_util import tree_map, tree_structure, tree_leaves, tree_reduce, tree_multimap
+from timeit import default_timer as dt
 
 import inspect
 from enum import IntEnum
@@ -14,7 +15,11 @@ from tqdm.auto import trange
 from scipy.optimize import linear_sum_assignment
 from typing import Sequence, Optional
 from functools import wraps, partial
-import copy
+from jax.scipy import special as spsp
+from contextlib import contextmanager
+from typing import NamedTuple
+from jax.tree_util import register_pytree_node
+from flax.core.frozen_dict import FrozenDict
 
 
 class Verbosity(IntEnum):
@@ -48,6 +53,7 @@ def tree_get(tree, idx):
     """
     return tree_map(lambda x: x[idx], tree)
 
+
 def tree_concatenate(tree1, tree2, axis=0):
     """Concatenate leaves of two pytrees along specified axis.
 
@@ -60,6 +66,7 @@ def tree_concatenate(tree1, tree2, axis=0):
         [type]: [description]
     """
     return tree_map(lambda x, y: np.concatenate((x, y), axis=axis), tree1, tree2)
+
 
 def tree_all_equal(tree1, tree2):
     """Check Pytree equality when tree leaves are arrays.
@@ -76,6 +83,7 @@ def tree_all_equal(tree1, tree2):
         tree_multimap(lambda x, y: np.all(x == y), tree1, tree2),
         True
     )
+
 
 def ssm_pbar(num_iters, verbose, description, *args):
     """
@@ -534,3 +542,149 @@ def debug_rejit(func):
     wrapper.prev_in = None
     wrapper.prev_out = None
     return wrapper
+
+
+@contextmanager
+def possibly_disable_jit(disable_jit=False):
+    """
+    Define a little context manager for whether we disable JIT or not.
+
+    Args:
+        disable_jit (bool):
+
+    Returns: None
+
+    """
+    if disable_jit:
+        with jax.disable_jit():
+            yield
+    else:
+        yield
+
+
+def lexp(_lmls, _axis=0):
+    """
+    Compute the log-expectation of a ndarray of log probabilities.
+
+    Args:
+        - _lmls (ndarray):
+        - _axis (int):
+
+    Returns:
+        - (ndarray):
+
+    """
+    _lml = spsp.logsumexp(_lmls, axis=_axis) - np.log(_lmls.shape[_axis])
+    return _lml
+
+
+def make_named_tuple(dict_in, keys=None, name='tup'):
+    """
+    Convert the dictionary `dict_in` into a named tuple, with object name `name`.  Optionally specify an
+    ordered iterable `keys` to only inscribe certain key-value pairs from dict_in, in the order that they are
+    specified in `keys`.
+
+    Args:
+        - dict:
+            Dictionary of key-value pairs that can be inscribed into a named tuple.
+
+        - keys:
+            Iterable of strings, defining the keys of the tuple. Use for enforcing a particular ordering in the tuple.
+
+        - name:
+            Name of the NamedTuple object.
+
+    Returns:
+        - Named tuple with fields defined by keys, or if keys is not specified, the keys of dict_in.
+    """
+
+    # Convert to a dict for easier indexing.
+    if (type(dict_in) != dict) and (type(dict_in) != FrozenDict):
+        dict_in = dict_in._asdict()
+
+    # Get all the keys if we haven't explicitly provided them.
+    if keys is None:
+        keys = dict_in.keys()
+
+    # Pick the elements off according to the keys.
+    list_in = [dict_in[_k] for _k in keys]
+
+    # Construct the named tuple class and create an object.
+    tup_class = NamedTuple(name, zip(keys, ['Any' for _ in range(len(list_in))]))
+
+    register_pytree_node(
+        tup_class,
+        lambda xs: (tuple(xs), None),  # tell JAX how to unpack to an iterable
+        lambda _, xs: tup_class(*xs)   # tell JAX how to pack back into a Point
+    )
+
+    tup = tup_class(*list_in)
+    return tup
+
+
+def mutate_named_tuple_by_key(tup, new_vals):
+    """
+    Mutate a named tuple by replacing the fields of tuple.
+
+    NOTE - if there are any fields that are provided in new_vals that aren't in tup this will create an error.
+
+    Args:
+        - tup:         Named tuple to whose fields are to be updated.
+        - new_vals:    Named tuple or dictionary of new key-value pairs.  All keys must be present in tup.
+
+    Returns:
+        - `tup`, with values updated to those specified by `new_vals`.
+    """
+
+    # If there are no values to mutate then leave.
+    if new_vals is None:
+        return tup
+
+    # If its zero-length then leave.
+    if len(new_vals) is None:
+        return tup
+
+    # Convert the type.
+    if type(new_vals) != dict:
+        new_vals = new_vals._asdict()
+
+    # Get the new keys
+    assert all([_k in tup._fields for _k in new_vals.keys()]), "[Error]: Unrecognised key to update."
+
+    # Iterate over the fields and update elements.
+    for _k in new_vals.keys():
+        tup = tup._replace(**{_k: new_vals.get(_k, getattr(tup, _k))})
+
+    return tup
+
+
+def mutate_named_tuple_by_idx(tup, new_vals, idxes):
+    """
+    Mutate a named tuple by inscribing new values at certain indices.
+
+    Args:
+        tup:
+        new_vals:
+        idxes:
+
+    Returns:
+
+    """
+    assert len(new_vals) == len(idxes), "Must supply index-value pairs."
+    raise NotImplementedError
+
+
+def clock(_st, _str='', _verbose=True):
+    """
+    Helper function for clocking the application time of functions.
+
+    Args:
+        _st:            start time (evaluated elsewhere using dt()).
+        _str:           tag the printout.
+        _verbose:        disable printing with flag.
+
+    Returns:
+
+    """
+    if _verbose: print('CLOCK:', _str, '{:5.3f}'.format(dt() - _st))
+    return dt()

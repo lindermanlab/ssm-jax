@@ -1,6 +1,7 @@
 import jax.numpy as np
 import jax.nn as nn
 from jax.tree_util import register_pytree_node_class
+import inspect
 
 import tensorflow_probability.substrates.jax as tfp
 tfd = tfp.distributions
@@ -8,6 +9,7 @@ tfd = tfp.distributions
 from ssm.base import SSM
 import ssm.hmm.initial
 import ssm.hmm.transitions
+from ssm.utils import Verbosity, random_rotation, make_named_tuple, ensure_has_batch_dim, auto_batch
 
 
 # class SLDS(SSM):
@@ -45,6 +47,11 @@ class GaussianSLDS(SSM):
         self.emissions_matrices = emissions_matrices
         self.emissions_biases = emissions_biases
         self.emissions_scale_trils = emissions_scale_trils
+
+        # Grab the parameter values.  This allows us to explicitly re-build the object.
+        self._parameters = make_named_tuple(dict_in=locals(),
+                                            keys=list(inspect.signature(self.__init__)._parameters.keys()),
+                                            name=str(self.__class__.__name__) + 'Tuple')
 
     @property
     def latent_dim(self):

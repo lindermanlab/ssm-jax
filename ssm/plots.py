@@ -78,3 +78,77 @@ def plot_dynamics_2d(dynamics_matrix,
 
     plt.gca().set_aspect(1.0)
     return q
+
+
+def plot_single_sweep(particles, true_states, tag='', preprocessed=False, fig=None, _obs=None):
+    """
+
+    Stock code for plotting the results of an SMC sweep.
+
+    Args:
+        particles:
+            N x T x D ndarray of particles to plot. -- OR -- if `preprocessed == True`, then this should be equal to a
+            tuple ((TxD), (TxD), (TxD)) representing the median, lower and upper quantiles of the particles.  This is
+            useful for when closed-form densities have been pre-computed.
+
+        true_states:
+            T x D ndarray of true latent states.
+
+        tag:
+            String to attach to the title of the plot.
+
+        preprocessed:
+            Bool indicating whether `particles` is an ndarray of particles, or, a preprocessed tuple of summary stats.\
+
+        fig:
+            plt.Figure object.  Allows a figure to be provided, which will be cleared and the sweep will be plotted.
+
+    Returns:
+        plt.Figure object on which the sweep was plotted.
+
+    """
+    # Define the standard plotting colours.
+    color_names = [
+        "tab:blue",
+        "tab:orange",
+        "tab:green",
+        "tab:red",
+        "tab:purple"
+    ]
+
+    # Label just the first instance.
+    gen_label = lambda _k, _s: _s if _k == 0 else None
+
+    # Pull out the summary stats if they aren't preprocessed.
+    if not preprocessed:
+        single_sweep_median = np.median(particles, axis=0)
+        single_sweep_lsd = np.quantile(particles, 0.17, axis=0)
+        single_sweep_usd = np.quantile(particles, 0.83, axis=0)
+    else:
+        single_sweep_median = particles[0]
+        single_sweep_lsd = particles[1]
+        single_sweep_usd = particles[2]
+
+    ts = np.arange(len(true_states))
+
+    # Generate a new figure or clean the old figure.
+    if fig is not None:
+        plt.figure(fig.number)
+        plt.clf()
+    else:
+        fig = plt.figure(figsize=(14, 6))
+
+    # Plot the data.
+    for _i, _c in zip(range(single_sweep_median.shape[1]), color_names):
+        plt.plot(ts, single_sweep_median[:, _i], c=_c, label=gen_label(_i, 'Predicted'))
+        plt.fill_between(ts, single_sweep_lsd[:, _i], single_sweep_usd[:, _i], color=_c, alpha=0.1)
+        plt.plot(ts, true_states[:, _i], c=_c, linestyle='--', label=gen_label(_i, 'True'))
+
+    # Finalize and draw the plot.
+    plt.title(tag)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.legend()
+    plt.pause(0.0001)
+
+    return fig
