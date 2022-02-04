@@ -205,7 +205,7 @@ class IGWindowTilt(IndependentGaussianTilt):
         """
 
         """
-        assert inputs == (), "Cannot supply inputs with raw window."
+        assert (inputs == ()) or (inputs == (None, )), "Cannot supply inputs with raw window."
 
         masked_idx = np.arange(_tilt_window_length)
         to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
@@ -281,12 +281,15 @@ def rebuild_tilt(tilt, env):
         # tilt takes arguments of (dataset, model, particles, time, p_dist, q_state, ...).
         if env.config.tilt_structure == 'DIRECT':
 
-            def _tilt(_particles, _t, __dataset=None):
+            def _tilt(_particles, _t, __dataset=None, __encoded_data=None):
 
                 if __dataset is None:
                     __dataset = _dataset
 
-                r_log_val = tilt.apply(_param_vals, __dataset, _model, _particles, _t)
+                if __encoded_data is None:
+                    __encoded_data = _encoded_data
+
+                r_log_val = tilt.apply(_param_vals, __dataset, _model, _particles, _t, __encoded_data)
                 return r_log_val
         else:
             raise NotImplementedError()

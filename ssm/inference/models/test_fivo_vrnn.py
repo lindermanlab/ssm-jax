@@ -49,7 +49,7 @@ def get_config():
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data',type=str)
 
     # Data encoder args.
-    parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
+    parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
 
     # Proposal args.
     parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
@@ -138,6 +138,9 @@ def get_config():
     # If there is no RNN state dim specified, then just copy the latent dim.
     if config['rnn_state_dim'] is None:
         config['rnn_state_dim'] = config['latent_dim']
+
+    if config['proposal_structure'] == 'VRNN_FILTERING_RESQ':
+        assert config['encoder_structure'] == 'NONE', "Cannot use filtering VRNN proposal and data encoder."
 
     return config, do_print, define_test, do_plot, get_true_target_marginal
 
