@@ -21,9 +21,8 @@ def vectorize_pytree(*args):
     :param args:
     :return:
     """
-    flat_tree, _ = jax.tree_util.tree_flatten(args)
-    flat_vs = [x.flatten() for x in flat_tree]
-    return np.concatenate(flat_vs, axis=0)
+    vectorized_tree, _ = jax.flatten_util.ravel_pytree(args)
+    return vectorized_tree
 
 
 class MLP(nn.Module):
