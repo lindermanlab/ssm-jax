@@ -49,11 +49,11 @@ def get_config():
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data',type=str)
 
     # Data encoder args.
-    parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
+    parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
 
     # Proposal args.
-    parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
-    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
+    parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
+    parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {None, }.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
@@ -142,6 +142,13 @@ def get_config():
     if config['proposal_structure'] == 'VRNN_FILTERING_RESQ':
         assert config['encoder_structure'] == 'NONE', "Cannot use filtering VRNN proposal and data encoder."
 
+    # # TODO - this behaviour should be discouraged to prevent erroroneous settings, but let it slide for the time being.
+    # if config['tilt_type'] == 'SINGLE_WINDOW':
+    #     assert config['encoder_structure'] == 'NONE', "Cannot use encoder with windowed tilt."
+
+    if config['tilt_type'] == 'ENCODED':
+        assert config['encoder_structure'] != 'NONE', "Cannot use encoded tilt without a data encoder."
+
     return config, do_print, define_test, do_plot, get_true_target_marginal
 
 
@@ -177,7 +184,7 @@ def define_test(key, env):
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, train_datasets, env)
+    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, train_datasets, env, data_encoder=encoder)
 
     # Return this big pile of stuff.
     ret_model = (true_model, train_true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
@@ -228,7 +235,7 @@ def define_data_encoder(key, true_model, env, train_datasets, train_dataset_mask
     return data_encoder, encoder_params, rebuild_encoder_fn
 
 
-def define_tilt(subkey, model, dataset, env):
+def define_tilt(subkey, model, dataset, env, data_encoder=None):
     """
 
     Args:
@@ -247,16 +254,20 @@ def define_tilt(subkey, model, dataset, env):
     if env.config.tilt_type == 'SINGLE_WINDOW':
         tilt_fn = VrnnRawWindowTilt
         tilt_window_length = env.config.tilt_window_length
+        tilt_inputs = ()
 
     elif env.config.tilt_type == 'ENCODED':
         tilt_fn = VrnnEncodedTilt
         tilt_window_length = None
 
+        assert data_encoder is not None, "Must supply an encoder to use encoded representations."
+        dummy_encoded_dataset = jax.tree_map(lambda _d: np.repeat(np.expand_dims(_d, 0), dataset.shape[1], axis=0), data_encoder.dummy_exposed_state)
+        tilt_inputs = (dummy_encoded_dataset, )
+
     else:
         raise NotImplementedError()
 
     n_tilts = 1
-    tilt_inputs = ()
 
     # Tilt functions take in (dataset, model, particles, t-1).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
