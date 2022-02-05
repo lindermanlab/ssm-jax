@@ -507,11 +507,11 @@ class VrnnEncodedTilt(tilts.IndependentGaussianTilt):
         NOTE - external inputs are supplied through the `inputs` variable (as ((forward, backward), ).
         """
         assert tilt_window_length is None, "Cannot use a window here."
-        assert t + 1 <= len(dataset), "Cannot tilt at the last timestep."
+        # assert t < len(dataset), "Cannot tilt at the last timestep."
 
         encoded_future_obs = inputs[0][1]
-        encoded_future_obs_at_tp1 = jax.lax.index_in_dim(encoded_future_obs, t, axis=0, keepdims=False)
+        encoded_future_obs_at_tp1 = jax.lax.dynamic_index_in_dim(encoded_future_obs, t, axis=0, keepdims=False)
 
         tilt_outputs = (encoded_future_obs_at_tp1, )
 
-        return tilt_outputs
+        return nn_util.vectorize_pytree(tilt_outputs)

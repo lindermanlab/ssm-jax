@@ -62,6 +62,7 @@ def main():
         # Define some holders that will be overwritten later.
         large_true_bpf_neg_lml, em_neg_lml, pred_em_nlml, true_bpf_nlml = 0.0, 0.0, 0.0, 0.0
         filt_fig, sweep_fig_filter, sweep_fig_smooth, true_bpf_kls, true_bpf_upc, true_bpf_ess = None, None, None, None, None, None,
+        kl_metrics, upc_metrics = None, None
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 

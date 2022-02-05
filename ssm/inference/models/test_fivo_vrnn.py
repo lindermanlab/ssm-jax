@@ -36,7 +36,7 @@ def get_config():
                         help="Dataset to apply method to.  {'piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl'}. ")
 
     # General sweep settings.
-    parser.add_argument('--validation-interval', default=50, type=int)
+    parser.add_argument('--validation-interval', default=500, type=int)
     parser.add_argument('--resampling-criterion', default='ess_criterion', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
     parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # {'multinomial_resampling', 'systematic_resampling'}.
     parser.add_argument('--use-sgr', default=1, type=int, help="{0, 1}.")
@@ -59,7 +59,7 @@ def get_config():
 
     # Tilt args.
     parser.add_argument('--tilt-structure', default='DIRECT', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
-    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
+    parser.add_argument('--tilt-type', default='ENCODED', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
     parser.add_argument('--tilt-window-length', default=2, type=int, help="{int, None}.  Length of any window.")
     parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'AFFINE', 'MLP'}. ")
 
@@ -72,10 +72,10 @@ def get_config():
                         help="Layer widths of MLPs. CSV of widths, i.e. '10,10'. (None -> [latent_dim]). ")
 
     # Learning rates.
-    parser.add_argument('--lr-p', default=3.0e-5, type=float, help="Learning rate of model parameters.")
-    parser.add_argument('--lr-q', default=3.0e-5, type=float, help="Learning rate of proposal parameters.")
-    parser.add_argument('--lr-r', default=3.0e-5, type=float, help="Learning rate of tilt parameters.")
-    parser.add_argument('--lr-e', default=3.0e-5, type=float, help="Learning rate of data encoder parameters.")
+    parser.add_argument('--lr-p', default=1.0e-3, type=float, help="Learning rate of model parameters.")
+    parser.add_argument('--lr-q', default=1.0e-3, type=float, help="Learning rate of proposal parameters.")
+    parser.add_argument('--lr-r', default=1.0e-3, type=float, help="Learning rate of tilt parameters.")
+    parser.add_argument('--lr-e', default=1.0e-3, type=float, help="Learning rate of data encoder parameters.")
 
     # Misc settings.
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
@@ -283,9 +283,13 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
         trunk_fn = None
         head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
         head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
+        print('[WARNING]:  This is a bad idea.')
 
     elif env.config.tilt_fn_family == 'MLP':
-        trunk_fn = nn_util.MLP([10, 10, ], output_layer_activation=True)
+        layer_dims = env.config.fcnet_hidden_sizes + env.config.fcnet_hidden_sizes
+        print('Using MLP tilt with layer widths: ', layer_dims)
+
+        trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
         head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
         head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0])
 
@@ -594,7 +598,7 @@ if __name__ == '__main__':
 
     _phase = 'train'
 
-    for _s in ['piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl']:
+    for _s in ['jsb.pkl', 'piano-midi.pkl', 'musedata.pkl', 'nottingham.pkl']:
         _dataset, _masks, _true_states, _means = fivo_util.load_piano_data(_s, _phase)
 
         print('Dataset dimensions (N x T x D): ', _dataset.shape)
@@ -602,7 +606,7 @@ if __name__ == '__main__':
         plt.figure()
         plt.imshow(_dataset[0].T)
         plt.title(_s)
-        plt.xlim(0, 500)
+        # plt.xlim(0, 500)
         plt.pause(0.1)
 
     print('Done')
