@@ -135,7 +135,7 @@ def main():
                     'resampling_function': resampling_function}
 
         # Jit the smc subroutine for completeness.
-        smc_jit = jax.jit(smc, static_argnums=(7, 8))
+        smc_jit = jax.jit(smc, static_argnums=(7, 8, 9))
 
         # Close over constant parameters.
         do_fivo_sweep_closed = lambda _key, _params, _num_particles, _datasets, _masks, _temperature=1.0: \
@@ -164,7 +164,7 @@ def main():
                                         true_model,
                                         validation_datasets,
                                         validation_dataset_masks,
-                                        **gen_smc_kwargs(_temperature=1.0))
+                                        **gen_smc_kwargs())
             return _sweep_posteriors
 
         # Wrap another call to fivo for validation.
