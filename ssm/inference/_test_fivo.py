@@ -111,6 +111,12 @@ def main():
                                     lr_e=env.config.lr_e,
                                     )
 
+        def gen_smc_kwargs(_temperature=1.0):
+            return {'use_stop_gradient_resampling': env.config.use_sgr,
+                    'tilt_temperature': _temperature,
+                    'resampling_criterion': env.config.resampling_criterion,
+                    'resampling_function': env.config.resampling_function}
+
         # Jit the smc subroutine for completeness.
         smc_jit = jax.jit(smc, static_argnums=(7, 8))
 
@@ -126,10 +132,7 @@ def main():
                                _masks,
                                _num_particles,
                                env.config.use_bootstrap_initial_distribution,
-                               **{'use_stop_gradient_resampling': env.config.use_sgr,
-                                  'tilt_temperature': _temperature,
-                                  'resampling_criterion': env.config.resampling_criterion,
-                                  'resampling_function': env.config.resampling_function})
+                               **gen_smc_kwargs(_temperature=_temperature))
 
         # Jit this badboy.
         do_fivo_sweep_jitted = jax.jit(do_fivo_sweep_closed, static_argnums=(2, ))
@@ -144,8 +147,7 @@ def main():
                                         true_model,
                                         validation_datasets,
                                         validation_dataset_masks,
-                                        num_particles=env.config.sweep_test_particles,
-                                        resampling_criterion=env.config.resampling_criterion)
+                                        **gen_smc_kwargs(_temperature=1.0))
             return _sweep_posteriors
 
         # Wrap another call to fivo for validation.

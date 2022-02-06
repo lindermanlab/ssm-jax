@@ -264,11 +264,9 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
 
     """
 
-    # TODO i think there may be a bug in here as to how im computing these metrics.
-
     key, subkey1, subkey2 = jr.split(key, num=3)
-    small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, 20), params)
 
+    # TODO i think there may be a bug in here as to how im computing these metrics.
     if model != 'VRNN':
         small_true_bpf_posteriors = single_bpf_true_eval_small_vmap(jr.split(subkey2, 20))
         small_true_bpf_lml_all = small_true_bpf_posteriors.log_normalizer
@@ -282,6 +280,7 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
         small_true_bpf_neg_fivo_mean = None
         small_true_bpf_neg_fivo_var = None
 
+    small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, 20), params)
     small_pred_smc_lml_all = small_pred_smc_posteriors.log_normalizer
     small_pred_smc_neg_lml = - utils.lexp(utils.lexp(small_pred_smc_lml_all, axis=1))
     small_pred_smc_neg_lml_var = np.mean(np.var(small_pred_smc_lml_all, axis=0))

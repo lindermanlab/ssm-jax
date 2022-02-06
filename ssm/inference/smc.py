@@ -139,7 +139,7 @@ def smc(key,
 
     # Select the resampling function.
     if resampling_function is None:
-        resampling_function = systematic_resampling  # NOTE - changed default from multinomial_resampling.
+        resampling_function = multinomial_resampling  # NOTE - changed default from multinomial_resampling.
 
     elif type(resampling_function) == str:
         if resampling_function == 'multinomial_resampling':
