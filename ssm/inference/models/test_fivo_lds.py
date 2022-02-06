@@ -33,8 +33,8 @@ def get_config():
     parser.add_argument('--dataset', default='default', type=str)
     parser.add_argument('--synthetic-data', default=1, type=int)
 
-    parser.add_argument('--resampling-criterion', default='ess_criterion', type=str)  # CSV.  # {'always_resample', 'never_resample', 'ess_criterion'}.
-    parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # CSV.  # {'multinomial_resampling', 'systematic_resampling'}.
+    parser.add_argument('--resampling-criterion', default='always_resample', type=str)  # CSV.  # {'always_resample', 'never_resample', 'ess_criterion'}.
+    parser.add_argument('--resampling-function', default='systematic_resampling', type=str)  # CSV.  # {'multinomial_resampling', 'systematic_resampling'}.
     parser.add_argument('--use-sgr', default=0, type=int)  # {0, 1}
     parser.add_argument('--temper', default=0.2, type=float)  # {0.0 to disable,  >0.1 to temper}.
 
@@ -74,7 +74,7 @@ def get_config():
     parser.add_argument('--num-val-datasets', default=100, type=int)
 
     parser.add_argument('--dset-to-plot', default=2, type=int)
-    parser.add_argument('--validation-particles', default=250, type=int)
+    parser.add_argument('--validation-particles', default=128, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
     parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
