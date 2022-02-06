@@ -134,7 +134,7 @@ def log_params(_param_hist, _cur_params):
     return _param_hist
 
 
-def initial_validation(env, key, true_model, dataset, masks, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
+def initial_validation(env, key, true_model, dataset, masks, true_states, opt, do_fivo_sweep_jitted, _smc_jit, smc_kwargs,
                        num_particles=1000, dset_to_plot=0, init_model=None, GLOBAL_PLOT=True, do_print=None, do_plot=True):
     """
 
@@ -153,15 +153,8 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
     Returns:
 
     """
-    true_lml, em_log_marginal_likelihood = 0.0, 0.0
-    init_bpf_posterior = None
-    em_posterior = None
-    true_bpf_posterior = None
-    true_lml = 0.0
-    initial_fivo_bound = 0.0
-    init_smc_posterior = None
-    initial_lml = 0.0
-    em_posterior = None
+    true_lml, em_log_marginal_likelihood, true_lml, initial_fivo_bound, initial_lml = 0.0, 0.0, 0.0, 0.0, 0.0
+    init_bpf_posterior, em_posterior, true_bpf_posterior, init_smc_posterior, em_posterior, sweep_fig, filt_fig = None, None, None, None, None, None, None
     em_log_marginal_likelihood = np.nan
 
     # Test against EM (which for the LDS is exact).
@@ -173,15 +166,15 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
 
     # Test BPF in the true model..
     key, subkey = jr.split(key)
-    true_bpf_posterior = _smc_jit(subkey, true_model, dataset, masks, num_particles=num_particles, resampling_criterion=env.config.resampling_criterion)
+    true_bpf_posterior = _smc_jit(subkey, true_model, dataset, masks, num_particles=num_particles, **smc_kwargs)
     true_neg_fivo_bound = - np.mean(true_bpf_posterior.log_normalizer)
     true_neg_lml = - utils.lexp(true_bpf_posterior.log_normalizer)
 
-    if init_model is not None:
-        # Test BPF in the initial model..
-        key, subkey = jr.split(key)
-        init_bpf_posterior = _smc_jit(subkey, init_model, dataset, masks, num_particles=num_particles)
-        initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
+    # if init_model is not None:
+    #     # Test BPF in the initial model..
+    #     key, subkey = jr.split(key)
+    #     init_bpf_posterior = _smc_jit(subkey, init_model, dataset, masks, num_particles=num_particles, **smc_kwargs)
+    #     initial_bpf_lml = - utils.lexp(init_bpf_posterior.log_normalizer)
 
     # Test SMC in the initial model.
     key, subkey = jr.split(key)
@@ -196,51 +189,51 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
     # temp_validation_code(key, true_model, dataset, true_states, opt, do_fivo_sweep_jitted, _smc_jit,
     #                      num_particles=10, dset_to_plot=dset_to_plot, init_model=init_model)
 
-    # Do some plotting.
-    if do_plot:
-
-        if em_posterior is not None:
-            sweep_em_mean = em_posterior.mean()[dset_to_plot]
-            sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset_to_plot]
-            sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
-            _plot_single_sweep(sweep_em_statistics, true_states[dset_to_plot],
-                               tag='EM smoothing', preprocessed=True, obs=dataset[dset_to_plot])
-
-        if true_bpf_posterior is not None:
-            _plot_single_sweep(true_bpf_posterior[dset_to_plot].filtering_particles,
-                               true_states[dset_to_plot],
-                               tag='True BPF Filtering (' + str(num_particles) + ' particles).',
-                               obs=dataset[dset_to_plot])
-            _plot_single_sweep(true_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
-                               true_states[dset_to_plot],
-                               tag='True BPF Smoothing (' + str(num_particles) + ' particles).',
-                               obs=dataset[dset_to_plot])
-
-        if init_bpf_posterior is not None:
-            _plot_single_sweep(init_bpf_posterior[dset_to_plot].filtering_particles,
-                               true_states[dset_to_plot],
-                               tag='Initial BPF Filtering (' + str(num_particles) + ' particles).',
-                               obs=dataset[dset_to_plot])
-            _plot_single_sweep(init_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
-                               true_states[dset_to_plot],
-                               tag='Initial BPF Smoothing (' + str(num_particles) + ' particles).',
-                               obs=dataset[dset_to_plot])
-
-        if init_smc_posterior is not None:
-            filt_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].filtering_particles,
-                                          true_states[dset_to_plot],
-                                          tag='Initial SMC Filtering (' + str(num_particles) + ' particles).',
-                                          obs=dataset[dset_to_plot])
-            sweep_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
-                                           true_states[dset_to_plot],
-                                           tag='Initial SMC Smoothing (' + str(num_particles) + ' particles).',
-                                           obs=dataset[dset_to_plot])
-        else:
-            sweep_fig = None
-            filt_fig = None
-    else:
-        sweep_fig = None
-        filt_fig = None
+    # # Do some plotting.
+    # if do_plot:
+    #
+    #     if em_posterior is not None:
+    #         sweep_em_mean = em_posterior.mean()[dset_to_plot]
+    #         sweep_em_sds = np.sqrt(np.asarray([[np.diag(__k) for __k in _k] for _k in em_posterior.covariance()]))[dset_to_plot]
+    #         sweep_em_statistics = (sweep_em_mean, sweep_em_mean - sweep_em_sds, sweep_em_mean + sweep_em_sds)
+    #         _plot_single_sweep(sweep_em_statistics, true_states[dset_to_plot],
+    #                            tag='EM smoothing', preprocessed=True, obs=dataset[dset_to_plot])
+    #
+    #     if true_bpf_posterior is not None:
+    #         _plot_single_sweep(true_bpf_posterior[dset_to_plot].filtering_particles,
+    #                            true_states[dset_to_plot],
+    #                            tag='True BPF Filtering (' + str(num_particles) + ' particles).',
+    #                            obs=dataset[dset_to_plot])
+    #         _plot_single_sweep(true_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
+    #                            true_states[dset_to_plot],
+    #                            tag='True BPF Smoothing (' + str(num_particles) + ' particles).',
+    #                            obs=dataset[dset_to_plot])
+    #
+    #     if init_bpf_posterior is not None:
+    #         _plot_single_sweep(init_bpf_posterior[dset_to_plot].filtering_particles,
+    #                            true_states[dset_to_plot],
+    #                            tag='Initial BPF Filtering (' + str(num_particles) + ' particles).',
+    #                            obs=dataset[dset_to_plot])
+    #         _plot_single_sweep(init_bpf_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
+    #                            true_states[dset_to_plot],
+    #                            tag='Initial BPF Smoothing (' + str(num_particles) + ' particles).',
+    #                            obs=dataset[dset_to_plot])
+    #
+    #     if init_smc_posterior is not None:
+    #         filt_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].filtering_particles,
+    #                                       true_states[dset_to_plot],
+    #                                       tag='Initial SMC Filtering (' + str(num_particles) + ' particles).',
+    #                                       obs=dataset[dset_to_plot])
+    #         sweep_fig = _plot_single_sweep(init_smc_posterior[dset_to_plot].sample(sample_shape=(num_particles,), seed=jr.PRNGKey(0)),
+    #                                        true_states[dset_to_plot],
+    #                                        tag='Initial SMC Smoothing (' + str(num_particles) + ' particles).',
+    #                                        obs=dataset[dset_to_plot])
+    #     else:
+    #         sweep_fig = None
+    #         filt_fig = None
+    # else:
+    #     sweep_fig = None
+    #     filt_fig = None
 
     # Do some print.
     if do_print is not None:
