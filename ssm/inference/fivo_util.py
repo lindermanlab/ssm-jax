@@ -263,27 +263,30 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
     Returns:
 
     """
+
+    # TODO i think there may be a bug in here as to how im computing these metrics.
+
     key, subkey1, subkey2 = jr.split(key, num=3)
     small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, 20), params)
 
     if model != 'VRNN':
         small_true_bpf_posteriors = single_bpf_true_eval_small_vmap(jr.split(subkey2, 20))
-        small_true_bpf_neg_lml_all = - small_true_bpf_posteriors.log_normalizer
-        small_true_bpf_neg_lml = utils.lexp(utils.lexp(small_true_bpf_neg_lml_all, _axis=1))
-        small_true_bpf_neg_lml_var = np.mean(np.var(small_true_bpf_neg_lml_all, axis=0))
-        small_true_bpf_neg_fivo_mean = np.mean(small_true_bpf_neg_lml_all)
-        small_true_bpf_neg_fivo_var = np.var(np.mean(small_true_bpf_neg_lml_all, axis=1))
+        small_true_bpf_lml_all = small_true_bpf_posteriors.log_normalizer
+        small_true_bpf_neg_lml = - utils.lexp(utils.lexp(small_true_bpf_lml_all, axis=1))
+        small_true_bpf_neg_lml_var = np.mean(np.var(small_true_bpf_lml_all, axis=0))
+        small_true_bpf_neg_fivo_mean = - np.mean(small_true_bpf_lml_all)
+        small_true_bpf_neg_fivo_var = np.var(np.mean(small_true_bpf_lml_all, axis=1))
     else:
         small_true_bpf_neg_lml = None
         small_true_bpf_neg_lml_var = None
         small_true_bpf_neg_fivo_mean = None
         small_true_bpf_neg_fivo_var = None
 
-    small_pred_smc_neg_lml_all = - small_pred_smc_posteriors.log_normalizer
-    small_pred_smc_neg_lml = utils.lexp(utils.lexp(small_pred_smc_neg_lml_all, _axis=1))
-    small_pred_smc_neg_lml_var = np.mean(np.var(small_pred_smc_neg_lml_all, axis=0))
-    small_pred_smc_neg_fivo_mean = np.mean(small_pred_smc_neg_lml_all)
-    small_pred_smc_neg_fivo_var = np.var(np.mean(small_pred_smc_neg_lml_all, axis=1))
+    small_pred_smc_lml_all = small_pred_smc_posteriors.log_normalizer
+    small_pred_smc_neg_lml = - utils.lexp(utils.lexp(small_pred_smc_lml_all, axis=1))
+    small_pred_smc_neg_lml_var = np.mean(np.var(small_pred_smc_lml_all, axis=0))
+    small_pred_smc_neg_fivo_mean = - np.mean(small_pred_smc_lml_all)
+    small_pred_smc_neg_fivo_var = np.var(np.mean(small_pred_smc_lml_all, axis=1))  # TODO  think this might be the wrong line.
 
     try:
         small_nlml_metrics = {'mean': {'em_true': em_neg_lml,

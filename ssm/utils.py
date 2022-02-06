@@ -550,26 +550,26 @@ def possibly_disable_jit(disable_jit=False):
         yield
 
 
-def lexp(_lmls, _axis=0):
+def lexp(lmls, axis=0):
     """
     Compute the log-expectation of a ndarray of log probabilities.
 
     Args:
-        - _lmls (ndarray):
-        - _axis (int):
+        - lmls (ndarray):
+        - axis (int):
 
     Returns:
         - (ndarray):
 
     """
-    if len(_lmls.shape) == 0:
-        return _lmls
+    if len(lmls.shape) == 0:
+        return lmls
 
-    if _axis >= len(_lmls.shape):
-        return _lmls
+    if axis >= len(lmls.shape):
+        return lmls
 
-    _lml = spsp.logsumexp(_lmls, axis=_axis) - np.log(_lmls.shape[_axis])
-    return _lml
+    lml = spsp.logsumexp(lmls, axis=axis) - np.log(lmls.shape[axis])
+    return lml
 
 
 def make_named_tuple(dict_in, keys=None, name='tup'):

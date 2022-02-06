@@ -38,7 +38,7 @@ if not LOCAL_SYSTEM:
     DISABLE_JIT = False
 
 # Set the default model for local debugging.
-DEFAULT_MODEL = 'VRNN'
+DEFAULT_MODEL = 'LDS'
 
 # Import and configure WandB.
 try:
