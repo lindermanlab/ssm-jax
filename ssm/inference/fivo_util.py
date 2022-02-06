@@ -248,23 +248,45 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
 
     return true_neg_lml, true_neg_fivo_bound, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
 
-def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_eval_small_vmap, em_neg_lml):
+
+def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_eval_small_vmap, em_neg_lml, model=None):
+    """
+
+    Args:
+        key:
+        params:
+        single_fivo_eval_small_vmap:
+        single_bpf_true_eval_small_vmap:
+        em_neg_lml:
+        model:
+
+    Returns:
+
+    """
+
+    # TODO i think there may be a bug in here as to how im computing these metrics.
 
     key, subkey1, subkey2 = jr.split(key, num=3)
     small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, 20), params)
-    small_true_bpf_posteriors = single_bpf_true_eval_small_vmap(jr.split(subkey2, 20))
 
-    small_true_bpf_neg_lml_all = - small_true_bpf_posteriors.log_normalizer
-    small_true_bpf_neg_lml = utils.lexp(utils.lexp(small_true_bpf_neg_lml_all, _axis=1))
-    small_true_bpf_neg_lml_var = np.mean(np.var(small_true_bpf_neg_lml_all, axis=0))
-    small_true_bpf_neg_fivo_mean = np.mean(small_true_bpf_neg_lml_all)
-    small_true_bpf_neg_fivo_var = np.var(np.mean(small_true_bpf_neg_lml_all, axis=1))
+    if model != 'VRNN':
+        small_true_bpf_posteriors = single_bpf_true_eval_small_vmap(jr.split(subkey2, 20))
+        small_true_bpf_lml_all = small_true_bpf_posteriors.log_normalizer
+        small_true_bpf_neg_lml = - utils.lexp(utils.lexp(small_true_bpf_lml_all, axis=1))
+        small_true_bpf_neg_lml_var = np.mean(np.var(small_true_bpf_lml_all, axis=0))
+        small_true_bpf_neg_fivo_mean = - np.mean(small_true_bpf_lml_all)
+        small_true_bpf_neg_fivo_var = np.var(np.mean(small_true_bpf_lml_all, axis=1))
+    else:
+        small_true_bpf_neg_lml = None
+        small_true_bpf_neg_lml_var = None
+        small_true_bpf_neg_fivo_mean = None
+        small_true_bpf_neg_fivo_var = None
 
-    small_pred_smc_neg_lml_all = - small_pred_smc_posteriors.log_normalizer
-    small_pred_smc_neg_lml = utils.lexp(utils.lexp(small_pred_smc_neg_lml_all, _axis=1))
-    small_pred_smc_neg_lml_var = np.mean(np.var(small_pred_smc_neg_lml_all, axis=0))
-    small_pred_smc_neg_fivo_mean = np.mean(small_pred_smc_neg_lml_all)
-    small_pred_smc_neg_fivo_var = np.var(np.mean(small_pred_smc_neg_lml_all, axis=1))
+    small_pred_smc_lml_all = small_pred_smc_posteriors.log_normalizer
+    small_pred_smc_neg_lml = - utils.lexp(utils.lexp(small_pred_smc_lml_all, axis=1))
+    small_pred_smc_neg_lml_var = np.mean(np.var(small_pred_smc_lml_all, axis=0))
+    small_pred_smc_neg_fivo_mean = - np.mean(small_pred_smc_lml_all)
+    small_pred_smc_neg_fivo_var = np.var(np.mean(small_pred_smc_lml_all, axis=1))  # TODO  think this might be the wrong line.
 
     try:
         small_nlml_metrics = {'mean': {'em_true': em_neg_lml,
@@ -709,7 +731,10 @@ def load_piano_data(dataset_pickle_name, phase='train'):
         dataset_sparse = pickle.load(f)
 
     PAD_FLAG = 0.0
-    MAX_LENGTH = 10000
+    MAX_LENGTH = {'jsb.pkl': 10000,
+                  'piano-midi.pkl': 10000,
+                  'musedata.pkl': 10000,
+                  'nottingham.pkl': 300}
 
     min_note = 21
     max_note = 108
@@ -718,30 +743,39 @@ def load_piano_data(dataset_pickle_name, phase='train'):
     dataset_and_metadata = [sparse_pianoroll_to_dense(_d, min_note=min_note, num_notes=num_notes) for _d in dataset_sparse[phase]]
     max_length = max([_d[1] for _d in dataset_and_metadata])
 
-    if max_length < MAX_LENGTH:
-        MAX_LENGTH = max_length
+    if max_length > MAX_LENGTH[dataset_pickle_name]:
+        max_length = MAX_LENGTH[dataset_pickle_name]
 
     dataset_masks = []
     dataset = []
+    removed_datasets = 0
     for _i, _d in enumerate(dataset_and_metadata):
 
-        if len(_d[0]) > MAX_LENGTH:
-            print('[WARNING]: Removing dataset, over length 1000.')
+        if len(_d[0]) > max_length:
+            # print('[WARNING]: Removing dataset, over length {}.'.format(max_length))
+            removed_datasets += 1
             continue
 
-        dataset.append(np.concatenate((_d[0], PAD_FLAG * np.ones((MAX_LENGTH - len(_d[0]), *_d[0].shape[1:])))))
-        dataset_masks.append(np.concatenate((np.ones(_d[0].shape[0]), 0.0 * np.ones((MAX_LENGTH - len(_d[0]))))))
-
-    print('{}: Loaded {} datasets.'.format(dataset_pickle_name, len(dataset)))
+        dataset.append(np.concatenate((_d[0], PAD_FLAG * np.ones((max_length - len(_d[0]), *_d[0].shape[1:])))))
+        dataset_masks.append(np.concatenate((np.ones(_d[0].shape[0]), 0.0 * np.ones((max_length - len(_d[0]))))))
 
     dataset = np.asarray(dataset)
     dataset_masks = np.asarray(dataset_masks)
     dataset_means = np.asarray(dataset_sparse['train_mean'])
     true_states = None  # There are no true states!
 
+    if removed_datasets > 0:
+        total_datasets = removed_datasets + len(dataset)
+        removed_percent = 100.0 * float(removed_datasets) / float(total_datasets)
+        print('\n\n[WARNING]:')
+        print('[WARNING]: Removed {:5.2f}pct of datasets (all datasets over length {}).'.format(removed_percent, max_length))
+        print('[WARNING]:\n\n')
+
     # print('\n\n[WARNING]: trimming data further. \n\n')
     # dataset = dataset[:, :20]
     # dataset_masks = dataset_masks[:, :20]
+
+    print('{}: Loaded {} datasets.'.format(dataset_pickle_name, len(dataset)))
 
     return dataset, dataset_masks, true_states, dataset_means
 

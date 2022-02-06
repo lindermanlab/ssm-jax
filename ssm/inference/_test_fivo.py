@@ -38,7 +38,7 @@ if not LOCAL_SYSTEM:
     DISABLE_JIT = False
 
 # Set the default model for local debugging.
-DEFAULT_MODEL = 'VRNN'
+DEFAULT_MODEL = 'LDS'
 
 # Import and configure WandB.
 try:
@@ -62,6 +62,7 @@ def main():
         # Define some holders that will be overwritten later.
         large_true_bpf_neg_lml, em_neg_lml, pred_em_nlml, true_bpf_nlml = 0.0, 0.0, 0.0, 0.0
         filt_fig, sweep_fig_filter, sweep_fig_smooth, true_bpf_kls, true_bpf_upc, true_bpf_ess = None, None, None, None, None, None,
+        kl_metrics, upc_metrics = None, None
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -312,32 +313,35 @@ def main():
                                                                                             fivo.get_params_from_opt(opt),
                                                                                             single_fivo_eval_small_vmap,
                                                                                             single_bpf_true_eval_small_vmap,
-                                                                                            em_neg_lml)
+                                                                                            em_neg_lml,
+                                                                                            model=env.config.model)
 
                 # Test the KLs.
-                key, subkey = jr.split(key)
-                kl_metrics, true_bpf_kls = fivo_util.compare_kls(get_marginals,
-                                                                 env,
-                                                                 opt,
-                                                                 validation_datasets,
-                                                                 validation_dataset_masks,
-                                                                 true_model,
-                                                                 subkey,
-                                                                 do_fivo_sweep_jitted,
-                                                                 smc_jit,
-                                                                 true_bpf_kls=true_bpf_kls)
+                if env.config.model != 'VRNN':
+                    key, subkey = jr.split(key)
+                    kl_metrics, true_bpf_kls = fivo_util.compare_kls(get_marginals,
+                                                                     env,
+                                                                     opt,
+                                                                     validation_datasets,
+                                                                     validation_dataset_masks,
+                                                                     true_model,
+                                                                     subkey,
+                                                                     do_fivo_sweep_jitted,
+                                                                     smc_jit,
+                                                                     true_bpf_kls=true_bpf_kls)
 
                 # Compare the number of unique particles.
-                key, subkey = jr.split(key)
-                upc_metrics, true_bpf_upc = fivo_util.compare_unqiue_particle_counts(env,
-                                                                                     opt,
-                                                                                     validation_datasets,
-                                                                                     validation_dataset_masks,
-                                                                                     true_model,
-                                                                                     subkey,
-                                                                                     do_fivo_sweep_jitted,
-                                                                                     smc_jit,
-                                                                                     true_bpf_upc=true_bpf_upc)
+                if env.config.model != 'VRNN':
+                    key, subkey = jr.split(key)
+                    upc_metrics, true_bpf_upc = fivo_util.compare_unqiue_particle_counts(env,
+                                                                                         opt,
+                                                                                         validation_datasets,
+                                                                                         validation_dataset_masks,
+                                                                                         true_model,
+                                                                                         subkey,
+                                                                                         do_fivo_sweep_jitted,
+                                                                                         smc_jit,
+                                                                                         true_bpf_upc=true_bpf_upc)
 
                 # Log the validation step.
                 val_hist = fivo_util.log_params(val_hist, cur_params,)

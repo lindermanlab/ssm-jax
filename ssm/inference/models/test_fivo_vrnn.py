@@ -36,7 +36,7 @@ def get_config():
                         help="Dataset to apply method to.  {'piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl'}. ")
 
     # General sweep settings.
-    parser.add_argument('--validation-interval', default=50, type=int)
+    parser.add_argument('--validation-interval', default=500, type=int)
     parser.add_argument('--resampling-criterion', default='ess_criterion', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
     parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # {'multinomial_resampling', 'systematic_resampling'}.
     parser.add_argument('--use-sgr', default=1, type=int, help="{0, 1}.")
@@ -49,17 +49,17 @@ def get_config():
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data',type=str)
 
     # Data encoder args.
-    parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
+    parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
 
     # Proposal args.
-    parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
-    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
+    parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
+    parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {None, }.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
     # Tilt args.
     parser.add_argument('--tilt-structure', default='DIRECT', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
-    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
+    parser.add_argument('--tilt-type', default='ENCODED', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
     parser.add_argument('--tilt-window-length', default=2, type=int, help="{int, None}.  Length of any window.")
     parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'AFFINE', 'MLP'}. ")
 
@@ -72,10 +72,10 @@ def get_config():
                         help="Layer widths of MLPs. CSV of widths, i.e. '10,10'. (None -> [latent_dim]). ")
 
     # Learning rates.
-    parser.add_argument('--lr-p', default=3.0e-5, type=float, help="Learning rate of model parameters.")
-    parser.add_argument('--lr-q', default=3.0e-5, type=float, help="Learning rate of proposal parameters.")
-    parser.add_argument('--lr-r', default=3.0e-5, type=float, help="Learning rate of tilt parameters.")
-    parser.add_argument('--lr-e', default=3.0e-5, type=float, help="Learning rate of data encoder parameters.")
+    parser.add_argument('--lr-p', default=1.0e-3, type=float, help="Learning rate of model parameters.")
+    parser.add_argument('--lr-q', default=1.0e-3, type=float, help="Learning rate of proposal parameters.")
+    parser.add_argument('--lr-r', default=1.0e-3, type=float, help="Learning rate of tilt parameters.")
+    parser.add_argument('--lr-e', default=1.0e-3, type=float, help="Learning rate of data encoder parameters.")
 
     # Misc settings.
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
@@ -142,6 +142,13 @@ def get_config():
     if config['proposal_structure'] == 'VRNN_FILTERING_RESQ':
         assert config['encoder_structure'] == 'NONE', "Cannot use filtering VRNN proposal and data encoder."
 
+    # # TODO - this behaviour should be discouraged to prevent erroroneous settings, but let it slide for the time being.
+    # if config['tilt_type'] == 'SINGLE_WINDOW':
+    #     assert config['encoder_structure'] == 'NONE', "Cannot use encoder with windowed tilt."
+
+    if config['tilt_type'] == 'ENCODED':
+        assert config['encoder_structure'] != 'NONE', "Cannot use encoded tilt without a data encoder."
+
     return config, do_print, define_test, do_plot, get_true_target_marginal
 
 
@@ -177,7 +184,7 @@ def define_test(key, env):
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, train_datasets, env)
+    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, train_datasets, env, data_encoder=encoder)
 
     # Return this big pile of stuff.
     ret_model = (true_model, train_true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
@@ -228,7 +235,7 @@ def define_data_encoder(key, true_model, env, train_datasets, train_dataset_mask
     return data_encoder, encoder_params, rebuild_encoder_fn
 
 
-def define_tilt(subkey, model, dataset, env):
+def define_tilt(subkey, model, dataset, env, data_encoder=None):
     """
 
     Args:
@@ -247,16 +254,20 @@ def define_tilt(subkey, model, dataset, env):
     if env.config.tilt_type == 'SINGLE_WINDOW':
         tilt_fn = VrnnRawWindowTilt
         tilt_window_length = env.config.tilt_window_length
+        tilt_inputs = ()
 
     elif env.config.tilt_type == 'ENCODED':
         tilt_fn = VrnnEncodedTilt
         tilt_window_length = None
 
+        assert data_encoder is not None, "Must supply an encoder to use encoded representations."
+        dummy_encoded_dataset = jax.tree_map(lambda _d: np.repeat(np.expand_dims(_d, 0), dataset.shape[1], axis=0), data_encoder.dummy_exposed_state)
+        tilt_inputs = (dummy_encoded_dataset, )
+
     else:
         raise NotImplementedError()
 
     n_tilts = 1
-    tilt_inputs = ()
 
     # Tilt functions take in (dataset, model, particles, t-1).
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
@@ -272,9 +283,13 @@ def define_tilt(subkey, model, dataset, env):
         trunk_fn = None
         head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
         head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
+        print('[WARNING]:  This is a bad idea.')
 
     elif env.config.tilt_fn_family == 'MLP':
-        trunk_fn = nn_util.MLP([10, 10, ], output_layer_activation=True)
+        layer_dims = env.config.fcnet_hidden_sizes + env.config.fcnet_hidden_sizes
+        print('Using MLP tilt with layer widths: ', layer_dims)
+
+        trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
         head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
         head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0])
 
@@ -583,7 +598,7 @@ if __name__ == '__main__':
 
     _phase = 'train'
 
-    for _s in ['piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl']:
+    for _s in ['jsb.pkl', 'piano-midi.pkl', 'musedata.pkl', 'nottingham.pkl']:
         _dataset, _masks, _true_states, _means = fivo_util.load_piano_data(_s, _phase)
 
         print('Dataset dimensions (N x T x D): ', _dataset.shape)
@@ -591,7 +606,7 @@ if __name__ == '__main__':
         plt.figure()
         plt.imshow(_dataset[0].T)
         plt.title(_s)
-        plt.xlim(0, 500)
+        # plt.xlim(0, 500)
         plt.pause(0.1)
 
     print('Done')

@@ -205,7 +205,8 @@ class IGWindowTilt(IndependentGaussianTilt):
         """
 
         """
-        assert (inputs == ()) or (inputs == (None, )), "Cannot supply inputs with raw window."
+        # # TODO - this behaviour should be discouraged to prevent erroroneous settings, but let it slide for the time being.
+        # assert (inputs == ()) or (inputs == (None, )), "Cannot supply inputs with raw window."
 
         masked_idx = np.arange(_tilt_window_length)
         to_insert = (t + 1 + masked_idx < len(dataset))  # We will insert where the window is inside the dataset.
