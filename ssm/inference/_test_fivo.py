@@ -80,6 +80,13 @@ def main():
         large_true_bpf_neg_lml, em_neg_lml, pred_em_nlml, true_bpf_nlml = 0.0, 0.0, 0.0, 0.0
         filt_fig, sweep_fig_filter, sweep_fig_smooth, true_bpf_kls, true_bpf_upc, true_bpf_ess = None, None, None, None, None, None,
         kl_metrics, upc_metrics = None, None
+        param_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
+        val_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
+        param_figures = [None, None, None, None]  # Model, proposal, tilt, encoder.
+        nlml_hist = []
+        smoothed_training_loss = np.nan
+        VI_STATE_BUFFER, VI_OBS_BUFFER, VI_MASK_BUFFER = [], [], []
+        VI_BUFFER_FULL = False
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -105,6 +112,9 @@ def main():
                 encoder_params = loaded_params[3]
         except:
             pass
+
+        # Back up the true parameters.
+        true_hist = fivo_util.log_params([[], [], [], []], [get_model_free_params(true_model), None, None, None],)  # Model, proposal, tilt, encoder.
 
         # Decide if we are going to anneal the tilt.
         # This is done by dividing the log tilt value by a temperature.
@@ -138,9 +148,9 @@ def main():
         smc_jit = jax.jit(smc, static_argnums=(7, 8, 9, 11, 12))
 
         # Close over constant parameters.
-        do_fivo_sweep_closed = lambda _key, _params, _num_particles, _datasets, _masks, _temperature=1.0: \
+        do_fivo_sweep_closed = lambda _subkey, _params, _num_particles, _datasets, _masks, _temperature=1.0: \
             fivo.do_fivo_sweep(_params,
-                               _key,
+                               _subkey,
                                rebuild_model_fn,
                                rebuild_prop_fn,
                                rebuild_tilt_fn,
@@ -157,7 +167,7 @@ def main():
         # Convert into value and grad.
         do_fivo_sweep_val_and_grad = jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
 
-        # Wrap another call to fivo for validation.
+        # Wrap another call to SMC for validation.
         @jax.jit
         def _single_bpf_true_eval_small(_subkey):
             _sweep_posteriors = smc_jit(_subkey,
@@ -194,9 +204,6 @@ def main():
             VI_FREQUENCY = int(VI_EPOCHS * np.floor(VI_BUFFER_LENGTH / VI_MINIBATCH_SIZE))
 
             # Define defaults.
-            VI_STATE_BUFFER = []
-            VI_OBS_BUFFER = []
-            VI_MASK_BUFFER = []
 
             # Jit the update function/
             do_vi_tilt_update_jit = jax.jit(fivo_vi.do_vi_tilt_update, static_argnums=(1, 3, 4, 5, 10, 11))
@@ -222,21 +229,12 @@ def main():
                                          opt,
                                          do_fivo_sweep_jitted,
                                          smc_jit,
+                                         smc_kwargs=gen_smc_kwargs(_temperature=1.0),
                                          num_particles=env.config.validation_particles,
                                          dset_to_plot=env.config.dset_to_plot,
                                          init_model=model,
                                          do_print=do_print,
                                          do_plot=False)  # Re-enable plotting with: env.config.PLOT .
-
-        # Define some storage.
-        param_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
-        val_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
-        param_figures = [None, None, None, None]  # Model, proposal, tilt, encoder.
-        nlml_hist = []
-        smoothed_training_loss = np.nan
-
-        # Back up the true parameters.
-        true_hist = fivo_util.log_params([[], [], [], []], [get_model_free_params(true_model), None, None, None],)  # Model, proposal, tilt, encoder.
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -283,8 +281,6 @@ def main():
                     del VI_STATE_BUFFER[0]
                     del VI_OBS_BUFFER[0]
                     del VI_MASK_BUFFER[0]
-                else:
-                    VI_BUFFER_FULL = False
                 VI_STATE_BUFFER.append(smc_posteriors.weighted_particles[0])
                 VI_OBS_BUFFER.append(batched_dataset)
                 VI_MASK_BUFFER.append(batched_dataset)
