@@ -12,7 +12,7 @@ import platform
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, possibly_disable_jit
-from ssm.inference.smc import smc
+from ssm.inference.smc import smc, multinomial_resampling, systematic_resampling, always_resample_criterion, never_resample_criterion, ess_criterion
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
 import ssm.inference.fivo_vi as fivo_vi
@@ -58,6 +58,23 @@ def main():
 
         # Set up the experiment and log to WandB
         env, key, do_print, define_test, do_plot, get_marginals = fivo.do_fivo_config(DEFAULT_MODEL, USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM)
+
+        # TODO - this is a bit grotty.  type convert the resampling function.
+        if env.config.resampling_function == 'multinomial_resampling':
+            resampling_function = multinomial_resampling
+        elif env.config.resampling_function == 'systematic_resampling':
+            resampling_function = systematic_resampling
+        else:
+            raise NotImplementedError()
+
+        if env.config.resampling_criterion == 'always_resample':
+            resampling_criterion = always_resample_criterion
+        elif env.config.resampling_criterion == 'never_resample':
+            resampling_criterion = never_resample_criterion
+        elif env.config.resampling_criterion == 'ess_criterion':
+            resampling_criterion = ess_criterion
+        else:
+            raise NotImplementedError()
 
         # Define some holders that will be overwritten later.
         large_true_bpf_neg_lml, em_neg_lml, pred_em_nlml, true_bpf_nlml = 0.0, 0.0, 0.0, 0.0
@@ -114,8 +131,8 @@ def main():
         def gen_smc_kwargs(_temperature=1.0):
             return {'use_stop_gradient_resampling': env.config.use_sgr,
                     'tilt_temperature': _temperature,
-                    'resampling_criterion': env.config.resampling_criterion,
-                    'resampling_function': env.config.resampling_function}
+                    'resampling_criterion': resampling_criterion,
+                    'resampling_function': resampling_function}
 
         # Jit the smc subroutine for completeness.
         smc_jit = jax.jit(smc, static_argnums=(7, 8))
