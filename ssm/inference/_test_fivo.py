@@ -206,7 +206,7 @@ def main():
                                          dset_to_plot=env.config.dset_to_plot,
                                          init_model=model,
                                          do_print=do_print,
-                                         do_plot=False)  # TODO - re-enable plotting.  env.config.PLOT)
+                                         do_plot=False)  # Re-enable plotting with: env.config.PLOT .
 
         # Define some storage.
         param_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
