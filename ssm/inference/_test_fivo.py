@@ -38,7 +38,7 @@ if not LOCAL_SYSTEM:
     DISABLE_JIT = False
 
 # Set the default model for local debugging.
-DEFAULT_MODEL = 'LDS'
+DEFAULT_MODEL = 'VRNN'
 
 # Import and configure WandB.
 try:
@@ -190,15 +190,6 @@ def main():
 
         single_bpf_true_eval_small_vmap = jax.vmap(_single_bpf_true_eval_small)
         single_fivo_eval_small_vmap = jax.vmap(_single_fivo_eval_small, in_axes=(0, None))
-
-        key, subkey = jr.split(key)
-        small_neg_lml_metrics, small_neg_fivo_metrics = fivo_util.test_small_sweeps(subkey,
-                                                                                    fivo.get_params_from_opt(opt),
-                                                                                    single_fivo_eval_small_vmap,
-                                                                                    single_bpf_true_eval_small_vmap,
-                                                                                    em_neg_lml,
-                                                                                    model=env.config.model)
-
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -432,7 +423,7 @@ def main():
                     print("VI: Step {:>5d}:  Final VI NEG-ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
                           format(_step, final_vi_elbo, vi_gradient_steps, VI_FREQUENCY))
 
-                do_print(_step, true_model, opt, large_true_bpf_neg_lml, large_pred_smc_neg_lml, large_pred_smc_neg_fivo_bound, em_neg_lml)
+                do_print(_step, true_model, opt, large_true_bpf_neg_lml, true_neg_bpf_fivo_bound, large_pred_smc_neg_lml, large_pred_smc_neg_fivo_bound, em_neg_lml, smoothed_training_loss)
 
                 # # Compare the effective sample size.
                 # key, subkey = jr.split(key)

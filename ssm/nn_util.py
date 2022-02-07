@@ -83,46 +83,46 @@ class Static(nn.Module):
         return kernel
 
 
-class RnnWithReadoutLayer(nn.Module):
-    """
-    Combine an RNN with a readout layer to encode the (exposed) hidden state.
-    """
-    emissions_dim: int
-    latent_dim: int = 64
-    _rnn_cell: nn.recurrent.RNNCellBase = nn.LSTMCell()
-    _readout_network: nn.Module = nn.Dense
-
-    def setup(self):
-        self.rnn_cell = self._rnn_cell
-        self.readout_network = self._readout_network(self.emissions_dim)
-
-    def initialize_carry(self, rng, batch_dims=(), init_fn=zeros):
-        """
-
-        Args:
-            rng:
-            batch_dims:
-            size:
-            init_fn:
-
-        Returns:
-
-        """
-        return self._rnn_cell.initialize_carry(rng, batch_dims, self.latent_dim, init_fn)
-
-    def __call__(self, carry, x):
-        """
-
-        Args:
-            carry:
-            x:
-
-        Returns:
-
-        """
-        rnn_carry, rnn_carry_exposed = self.rnn_cell(carry, x)
-        rnn_y_out = self.readout_network(rnn_carry_exposed)
-        return rnn_carry, rnn_y_out
+# class RnnWithReadoutLayer(nn.Module):
+#     """
+#     Combine an RNN with a readout layer to encode the (exposed) hidden state.
+#     """
+#     emissions_dim: int
+#     latent_dim: int = 64
+#     _rnn_cell: nn.recurrent.RNNCellBase = nn.LSTMCell()
+#     _readout_network: nn.Module = nn.Dense
+#
+#     def setup(self):
+#         self.rnn_cell = self._rnn_cell
+#         self.readout_network = self._readout_network(self.emissions_dim)
+#
+#     def initialize_carry(self, rng):
+#         """
+#
+#         Args:
+#             rng:
+#             batch_dims:
+#             size:
+#             init_fn:
+#
+#         Returns:
+#
+#         """
+#         return self._rnn_cell.initialize_carry(rng, batch_dims=(), size=self.latent_dim, init_fn=zeros)
+#
+#     def __call__(self, carry, x):
+#         """
+#
+#         Args:
+#             carry:
+#             x:
+#
+#         Returns:
+#
+#         """
+#         rnn_carry, rnn_carry_exposed = self.rnn_cell(carry, x)
+#         rnn_y_out = self.readout_network(rnn_carry_exposed)
+#         return rnn_carry, rnn_y_out
 
 
 # if __name__ == '__main__':

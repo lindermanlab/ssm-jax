@@ -51,6 +51,12 @@ def get_config():
     # Data encoder args.
     parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
 
+    # Encoder pre-training hyperparameters.
+    parser.add_argument('--encoder-pretrain', default=1, type=int, help="{0, 1}")
+    parser.add_argument('--encoder-pretrain-opt-steps', default=200, type=int, help="")
+    parser.add_argument('--encoder-pretrain-lr', default=0.01, type=float, help="")
+    parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
+
     # Proposal args.
     parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
     parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
@@ -72,10 +78,10 @@ def get_config():
                         help="Layer widths of MLPs. CSV of widths, i.e. '10,10'. (None -> [latent_dim]). ")
 
     # Learning rates.
-    parser.add_argument('--lr-p', default=1.0e-3, type=float, help="Learning rate of model parameters.")
-    parser.add_argument('--lr-q', default=1.0e-3, type=float, help="Learning rate of proposal parameters.")
-    parser.add_argument('--lr-r', default=1.0e-3, type=float, help="Learning rate of tilt parameters.")
-    parser.add_argument('--lr-e', default=1.0e-3, type=float, help="Learning rate of data encoder parameters.")
+    parser.add_argument('--lr-p', default=3.0e-5, type=float, help="Learning rate of model parameters.")
+    parser.add_argument('--lr-q', default=3.0e-5, type=float, help="Learning rate of proposal parameters.")
+    parser.add_argument('--lr-r', default=3.0e-5, type=float, help="Learning rate of tilt parameters.")
+    parser.add_argument('--lr-e', default=1.0e-5, type=float, help="Learning rate of data encoder parameters.")
 
     # Misc settings.
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
@@ -100,12 +106,6 @@ def get_config():
     parser.add_argument('--emissions-dim', default=1, type=int, help="Dimension of observed value (Overwritten for real data)")
     parser.add_argument('--num-trials', default=100000, type=int, help="Number of datasets to generate.  (Overwritten for real data)")
     parser.add_argument('--num-val-datasets', default=100, type=int, help="(Overwritten for real data)")
-
-    # Encoder pre-training hyperparameters.
-    parser.add_argument('--encoder-pretrain', default=0, type=int, help="{0, 1}")
-    parser.add_argument('--encoder-pretrain-opt-steps', default=100, type=int, help="")
-    parser.add_argument('--encoder-pretrain-lr', default=0.01, type=float, help="")
-    parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
 
     # Variational / M.L. learning of tilt function.
     parser.add_argument('--vi-use-tilt-gradient', default=0, type=int, help="Learn tilt using VI.")
@@ -146,7 +146,7 @@ def get_config():
     # if config['tilt_type'] == 'SINGLE_WINDOW':
     #     assert config['encoder_structure'] == 'NONE', "Cannot use encoder with windowed tilt."
 
-    if config['tilt_type'] == 'ENCODED':
+    if (config['tilt_structure'] != 'NONE') and (config['tilt_type'] == 'ENCODED'):
         assert config['encoder_structure'] != 'NONE', "Cannot use encoded tilt without a data encoder."
 
     return config, do_print, define_test, do_plot, get_true_target_marginal
@@ -563,7 +563,7 @@ def do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params
     return param_figs
 
 
-def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
+def do_print(_step, true_model, opt, true_lml, true_fivo, pred_lml, pred_fivo_bound, em_log_marginal_likelihood, smoothed_training_loss):
     """
 
     Args:
@@ -578,10 +578,8 @@ def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log
     Returns:
 
     """
-    _str = 'Step: {:> 7d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred neg FIVO bound {:> 8.3f}'. \
-        format(_step, true_lml, pred_lml, pred_fivo_bound)
-    if em_log_marginal_likelihood is not None:
-        _str += '  EM Neg-LML: {:> 8.3f}'.format(em_log_marginal_likelihood)
+    _str = 'Step: {:> 5d},   EM Neg-LML: {:> 8.3f},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  True neg FIVO bound: {:> 8.3f},  Pred neg FIVO bound: {:> 8.3f},  Smoothed training loss: {:> 8.3f},'.\
+        format(_step, em_log_marginal_likelihood, true_lml, pred_lml, true_fivo, pred_fivo_bound, smoothed_training_loss)
     print(_str)
 
     if opt[0] is not None:

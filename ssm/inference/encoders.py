@@ -41,7 +41,7 @@ class IndependentBiRnnEncoder:
         backward_params = self._backward_rnn.init(subkey2, dummy_input[0][1], dummy_input[1])
         return (forward_params, backward_params)
 
-    def initialize_carry(self, key):
+    def initialize_carry(self, key, batch_dims=(), size=1, init_fn=nn.zeros):
         """
 
         Args:
@@ -88,6 +88,9 @@ class IndependentBiRnnEncoder:
                                                 reverse=True)
 
         return (forward_encoded_data, backward_encoded_data)
+
+    def __call__(self, *args, **kwargs):
+        p = 0
 
     # def bind(self, _param_vals):
     #     """
