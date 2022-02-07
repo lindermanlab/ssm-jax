@@ -313,7 +313,11 @@ def define_proposal(subkey, model, dataset, env):
 
     elif env.config.proposal_type == 'SINGLE_WINDOW':
         proposal_cls = proposals.IGWindowProposal
-        n_props = 2  # NOTE - 2 specifies an initial proposal and then a single proposal therein.
+
+        if env.config.proposal_fn_family == 'MLP':
+            n_props = 1  # If we are using an MLP, it should be able to handle this.
+        elif env.config.proposal_fn_family == 'AFFINE':
+            n_props = 2  # NOTE - 2 specifies an initial proposal and then a single proposal therein.
         proposal_window_length = env.config.proposal_window_length
 
     else:
