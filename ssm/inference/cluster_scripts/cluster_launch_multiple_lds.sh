@@ -1,7 +1,7 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-glob_tag='LDS-v7-0-1-longwindow'
+glob_tag='LDS-v7-0-0-shortwindow'
 model='LDS'
 proposal_type='SINGLE_WINDOW'
 tilt_type='SINGLE_WINDOW'
