@@ -64,7 +64,7 @@ def get_config():
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
     # Tilt args.
-    parser.add_argument('--tilt-structure', default='NONE', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
     parser.add_argument('--tilt-type', default='ENCODED', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
     parser.add_argument('--tilt-window-length', default=2, type=int, help="{int, None}.  Length of any window.")
     parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'AFFINE', 'MLP'}. ")
@@ -81,7 +81,7 @@ def get_config():
     parser.add_argument('--lr-p', default=3.0e-5, type=float, help="Learning rate of model parameters.")
     parser.add_argument('--lr-q', default=3.0e-5, type=float, help="Learning rate of proposal parameters.")
     parser.add_argument('--lr-r', default=3.0e-5, type=float, help="Learning rate of tilt parameters.")
-    parser.add_argument('--lr-e', default=3.0e-5, type=float, help="Learning rate of data encoder parameters.")
+    parser.add_argument('--lr-e', default=1.0e-5, type=float, help="Learning rate of data encoder parameters.")
 
     # Misc settings.
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
