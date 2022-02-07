@@ -10,7 +10,7 @@ emissions_dim=1
 num_particles=8
 encoder_struct='NONE'
 
-launch_cmd () { sbatch -J ${glob_tag} --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},PROPOSAL_TYPE=${proposal_type},TILT_STRUCTURE=${tilt_structure},TILT_TYPE=${tilt_type},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim},USE_VI=${use_vi},N_PART=${num_particles},ENCODER_STRUCT=${encoder_struct} cluster_scripts/_cluster_launch_multiple.sh ; }
+launch_cmd () { sbatch -J ${glob_tag} --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},PROPOSAL_TYPE=${proposal_type},TILT_STRUCTURE=${tilt_structure},TILT_TYPE=${tilt_type},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim},USE_VI=${use_vi},N_PART=${num_particles},ENCODER_STRUCT=${encoder_struct},RESAMP_CRIT=${resamp_crit} cluster_scripts/_cluster_launch_multiple.sh ; }
 
 # BPF-SGR
 exp_tag='bpf-sgr'
@@ -19,7 +19,19 @@ proposal_structure='BOOTSTRAP'
 tilt_structure='NONE'
 temper=0.0
 use_vi=0
+resamp_crit='ess_criterion'
 launch_cmd
+
+# BPF-SGR
+exp_tag='iwae'
+use_sgr=1
+proposal_structure='BOOTSTRAP'
+tilt_structure='NONE'
+temper=0.0
+use_vi=0
+resamp_crit='never_resample'
+launch_cmd
+
 
 # FIVO
 exp_tag='fivo'
@@ -28,6 +40,7 @@ proposal_structure='RESQ'
 tilt_structure='NONE'
 temper=0.0
 use_vi=0
+resamp_crit='ess_criterion'
 launch_cmd
 
 # FIVO-SGR
@@ -37,6 +50,7 @@ proposal_structure='RESQ'
 tilt_structure='NONE'
 temper=0.0
 use_vi=0
+resamp_crit='ess_criterion'
 launch_cmd
 
 # FIVO-AUX
@@ -46,6 +60,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
 use_vi=0
+resamp_crit='ess_criterion'
 launch_cmd
 
 
@@ -56,6 +71,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
 use_vi=0
+resamp_crit='ess_criterion'
 launch_cmd
 
 # FIVO-AUX-SGR-TEMPERED
@@ -65,6 +81,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=1.0
 use_vi=0
+resamp_crit='ess_criterion'
 launch_cmd
 
 
@@ -75,6 +92,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
 use_vi=1
+resamp_crit='ess_criterion'
 launch_cmd
 
 # FIVO-AUX-VI-SGR
@@ -84,6 +102,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
 use_vi=1
+resamp_crit='ess_criterion'
 launch_cmd
 
 
@@ -103,5 +122,6 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=1.0
 use_vi=1
+resamp_crit='ess_criterion'
 launch_cmd
 

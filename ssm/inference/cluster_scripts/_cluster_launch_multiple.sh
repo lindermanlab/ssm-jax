@@ -31,5 +31,6 @@ echo "EM DIM:     " $EMISSIONS_DIM
 echo "USE VI:     " $USE_VI
 echo "N PARTICLE: " $N_PART
 echo "ENC STRUCT: " $ENCODER_STRUCT
+echo "resamp_crit:" $RESAMP_CRIT
 
-python3.9 _test_fivo.py --model ${MODEL} --seed ${SLURM_ARRAY_TASK_ID} --PLOT 0 --use-sgr ${USE_SGR} --proposal-structure ${PROPOSAL_STRUCTURE} --proposal-type ${PROPOSAL_TYPE} --tilt-structure ${TILT_STRUCTURE} --tilt-type ${TILT_TYPE} --log-group ${GLOB_TAG}-${EXP_TAG} --temper "${TEMPER}" --latent-dim ${LATENT_DIM} --emissions-dim ${EMISSIONS_DIM} --vi-use-tilt-gradient ${USE_VI} --num-particles ${N_PART} --encoder-structure ${ENCODER_STRUCT}
+python3.9 _test_fivo.py --model ${MODEL} --seed ${SLURM_ARRAY_TASK_ID} --PLOT 0 --use-sgr ${USE_SGR} --proposal-structure ${PROPOSAL_STRUCTURE} --proposal-type ${PROPOSAL_TYPE} --tilt-structure ${TILT_STRUCTURE} --tilt-type ${TILT_TYPE} --log-group ${GLOB_TAG}-${EXP_TAG} --temper "${TEMPER}" --latent-dim ${LATENT_DIM} --emissions-dim ${EMISSIONS_DIM} --vi-use-tilt-gradient ${USE_VI} --num-particles ${N_PART} --encoder-structure ${ENCODER_STRUCT} --resampling-criterion ${RESAMP_CRIT}
