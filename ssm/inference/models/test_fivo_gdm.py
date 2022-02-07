@@ -575,24 +575,25 @@ def do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params
     return param_figs
 
 
-def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
-    """
-    Do menial print stuff.
-    :param _step:
-    :param pred_lml:
-    :param true_model:
-    :param true_lml:
-    :param opt:
-    :param em_log_marginal_likelihood:
-    :return:
+def do_print(_step, true_model, opt, true_lml, true_fivo, pred_lml, pred_fivo_bound, em_log_marginal_likelihood, smoothed_training_loss):
     """
 
-    _str = 'Step: {: >5d},  True Neg-LML: {: >8.3f},  Pred Neg-LML: {: >8.3f},  Pred neg FIVO bound {: >8.3f}'.\
-        format(_step, true_lml, pred_lml, pred_fivo_bound)
-    if em_log_marginal_likelihood is not None:
-        _str += '  EM Neg-LML: {: >8.3f}'.format(em_log_marginal_likelihood)
+    Args:
+        _step:
+        true_model:
+        opt:
+        true_lml:
+        pred_lml:
+        pred_fivo_bound:
+        em_log_marginal_likelihood:
 
+    Returns:
+
+    """
+    _str = 'Step: {:> 5d},   EM Neg-LML: {:> 8.3f},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  True neg FIVO bound: {:> 8.3f},  Pred neg FIVO bound: {:> 8.3f},  Smoothed training loss: {:> 8.3f},'.\
+        format(_step, em_log_marginal_likelihood, true_lml, pred_lml, true_fivo, pred_fivo_bound, smoothed_training_loss)
     print(_str)
+
     if opt[0] is not None:
         if len(opt[0].target) > 0:
             # print()

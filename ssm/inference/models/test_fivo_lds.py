@@ -57,8 +57,8 @@ def get_config():
     parser.add_argument('--vi-minibatch-size', default=16, type=int)  #
     parser.add_argument('--vi-epochs', default=1, type=int)  #
 
-    parser.add_argument('--num-particles', default=8, type=int)
-    parser.add_argument('--datasets-per-batch', default=16, type=int)
+    parser.add_argument('--num-particles', default=4, type=int)
+    parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--lr-p', default=0.001, type=float)
@@ -568,7 +568,7 @@ def do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params
     return param_figs
 
 
-def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
+def do_print(_step, true_model, opt, true_lml, true_fivo, pred_lml, pred_fivo_bound, em_log_marginal_likelihood, smoothed_training_loss):
     """
 
     Args:
@@ -583,12 +583,10 @@ def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log
     Returns:
 
     """
-    _str = 'Step: {:> 7d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred neg FIVO bound {:> 8.3f}'.\
-        format(_step, true_lml, pred_lml, pred_fivo_bound)
-    if em_log_marginal_likelihood is not None:
-        _str += '  EM Neg-LML: {:> 8.3f}'.format(em_log_marginal_likelihood)
-
+    _str = 'Step: {:> 5d},   EM Neg-LML: {:> 8.3f},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  True neg FIVO bound: {:> 8.3f},  Pred neg FIVO bound: {:> 8.3f},  Smoothed training loss: {:> 8.3f},'.\
+        format(_step, em_log_marginal_likelihood, true_lml, pred_lml, true_fivo, pred_fivo_bound, smoothed_training_loss)
     print(_str)
+
     if opt[0] is not None:
         if len(opt[0].target) > 0:
             # print()

@@ -41,28 +41,28 @@ def get_config():
 
     parser.add_argument('--free-parameters', default='log_Q,invsig_phi,mu', type=str)  # CSV.  # {'log_Q', 'mu', 'log_beta'}.
 
-    parser.add_argument('--proposal-structure', default='RESQ', type=str)           # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-structure', default='NONE', type=str)           # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)       # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
-    parser.add_argument('--proposal-window-length', default=5, type=int)            # {int, None}.
-    parser.add_argument('--proposal-fn-family', default='MLP', type=str)         # {'AFFINE', 'MLP'}.
+    parser.add_argument('--proposal-window-length', default=2, type=int)            # {int, None}.
+    parser.add_argument('--proposal-fn-family', default='AFFINE', type=str)         # {'AFFINE', 'MLP'}.
 
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str)             # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-structure', default='NONE', type=str)             # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)           # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
-    parser.add_argument('--tilt-window-length', default=5, type=int)                # {int, None}.
-    parser.add_argument('--tilt-fn-family', default='MLP', type=str)             # {'AFFINE', 'MLP'}.
+    parser.add_argument('--tilt-window-length', default=2, type=int)                # {int, None}.
+    parser.add_argument('--tilt-fn-family', default='AFFINE', type=str)             # {'AFFINE', 'MLP'}.
 
     parser.add_argument('--vi-use-tilt-gradient', default=0, type=int)
     parser.add_argument('--vi-buffer-length', default=10, type=int)
     parser.add_argument('--vi-minibatch-size', default=16, type=int)
     parser.add_argument('--vi-epochs', default=1, type=int)
 
-    parser.add_argument('--num-particles', default=4, type=int)
+    parser.add_argument('--num-particles', default=16, type=int)
     parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
     parser.add_argument('--lr-p', default=0.0001, type=float)
-    parser.add_argument('--lr-q', default=0.001, type=float)
-    parser.add_argument('--lr-r', default=0.001, type=float)
+    parser.add_argument('--lr-q', default=0.0001, type=float)
+    parser.add_argument('--lr-r', default=0.0001, type=float)
     parser.add_argument('--lr-e', default=3.0e-5, type=float, help="Learning rate of data encoder parameters.")
 
     parser.add_argument('--T', default=49, type=int)  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
@@ -73,7 +73,7 @@ def get_config():
     parser.add_argument('--num-val-datasets', default=100, type=int)
 
     parser.add_argument('--dset-to-plot', default=0, type=int)
-    parser.add_argument('--validation-particles', default=250, type=int)
+    parser.add_argument('--validation-particles', default=128, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
     parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
@@ -392,7 +392,8 @@ def define_true_model_and_data(key, env):
 
     # Create the true model.
     key, subkey = jr.split(key)
-    true_model = SVM()
+    mu = np.asarray([-1.0])  # Use a slightly less variable model to begin with.
+    true_model = SVM(mu=mu)
 
     # Sample some data.
     key, subkey = jr.split(key)
@@ -443,7 +444,7 @@ def define_test_model(key, true_model, env):
             key, subkey = jr.split(key)
 
             # TODO - This needs to be made model-specific.
-            new_val = {_k: _base + (1.0 * jr.normal(key=subkey, shape=_base.shape))}
+            new_val = {_k: _base + (0.1 * jr.normal(key=subkey, shape=_base.shape))}
 
             default_params = utils.mutate_named_tuple_by_key(default_params, new_val)
 
@@ -513,7 +514,7 @@ def do_plot(_param_hist, _loss_hist, _true_loss_em, _true_loss_smc, _true_params
     return param_figs
 
 
-def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log_marginal_likelihood=None):
+def do_print(_step, true_model, opt, true_lml, true_fivo, pred_lml, pred_fivo_bound, em_log_marginal_likelihood, smoothed_training_loss):
     """
 
     Args:
@@ -528,12 +529,10 @@ def do_print(_step, true_model, opt, true_lml, pred_lml, pred_fivo_bound, em_log
     Returns:
 
     """
-    _str = 'Step: {:> 5d},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  Pred neg FIVO bound {:> 8.3f}'.\
-        format(_step, true_lml, pred_lml, pred_fivo_bound)
-    if em_log_marginal_likelihood is not None:
-        _str += '  EM Neg-LML: {:> 8.3f}'.format(em_log_marginal_likelihood)
-
+    _str = 'Step: {:> 5d},   EM Neg-LML: {:> 8.3f},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  True neg FIVO bound: {:> 8.3f},  Pred neg FIVO bound: {:> 8.3f},  Smoothed training loss: {:> 8.3f},'.\
+        format(_step, em_log_marginal_likelihood, true_lml, pred_lml, true_fivo, pred_fivo_bound, smoothed_training_loss)
     print(_str)
+
     if opt[0] is not None:
         if len(opt[0].target) > 0:
             print('\tModel:')

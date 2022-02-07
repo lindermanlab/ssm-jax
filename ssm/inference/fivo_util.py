@@ -237,7 +237,8 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
 
     # Do some print.
     if do_print is not None:
-        do_print(0, true_model, opt, true_lml, initial_lml, initial_fivo_bound, em_log_marginal_likelihood)
+        _smoothed_training_loss = initial_lml
+        do_print(0, true_model, opt, true_lml, true_neg_fivo_bound, initial_lml, initial_fivo_bound, em_log_marginal_likelihood, _smoothed_training_loss)
 
     return true_neg_lml, true_neg_fivo_bound, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
 
@@ -649,22 +650,41 @@ def pretrain_encoder(env, key, encoder, train_datasets, train_dataset_masks, val
     Returns:
 
     """
-
-    raise NotImplementedError("Need to re-think how to separate the RNN object from the encoder head.")
-
+    print('Pretraining data encoder. ')
     rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else env.config.latent_dim
-    wrapped_encoder = nn_util.RnnWithReadoutLayer(train_datasets.shape[-1], rnn_state_dim, encoder)
+
+    # wrapped_encoder = nn_util.RnnWithReadoutLayer(train_datasets.shape[-1], rnn_state_dim, encoder)
+    #
+    # key, subkey = jr.split(key)
+    # init_carry = wrapped_encoder.initialize_carry(subkey)
+    #
+    # key, subkey = jr.split(key)
+    # encoder_params = wrapped_encoder.init(subkey, *(init_carry, np.zeros(train_datasets.shape[-1])))
+    #
+    # # We can pre-train the encoder to fit the data.  Do that here.
+    # # Note that when training we sweep over the parameters backward train in reverse.
+    # enc_opt_def = optim.Adam(learning_rate=env.config.encoder_pretrain_lr)
+    # enc_opt = enc_opt_def.create(encoder_params)
+
+    train_mean = np.mean(train_datasets, axis=(0, 1))
+    clipped_train_dataset_means = np.clip(train_mean, 0.001, 0.999)
+    clipped_log_odds = np.log(clipped_train_dataset_means) - np.log(1 - clipped_train_dataset_means)
+    output_bias_init = lambda *_args: clipped_log_odds
+
+    forward_readout_network = nn.Dense(train_datasets.shape[-1], bias_init=output_bias_init)
+    backward_readout_network = nn.Dense(train_datasets.shape[-1], bias_init=output_bias_init)
 
     key, subkey = jr.split(key)
-    init_carry = wrapped_encoder.initialize_carry(subkey)
+    init_carry = encoder.initialize_carry(subkey)
 
-    key, subkey = jr.split(key)
-    encoder_params = wrapped_encoder.init(subkey, (init_carry, np.zeros(train_datasets.shape[-1])))
+    key, subkey1, subkey2, subkey3 = jr.split(key, num=4)
+    _encoder_params = encoder.init(subkey1, (init_carry, np.zeros(train_datasets.shape[-1])))
+    _forward_readout_params = forward_readout_network.init(subkey2, init_carry[0][1])
+    _backward_readout_params = backward_readout_network.init(subkey2, init_carry[1][1])
+    full_params = (_encoder_params, _forward_readout_params, _backward_readout_params)
 
-    # We can pre-train the encoder to fit the data.  Do that here.
-    # Note that when training we sweep over the parameters backward train in reverse.
-    enc_opt_def = optim.Adam(learning_rate=env.config.encoder_pretrain_lr)
-    enc_opt = enc_opt_def.create(encoder_params)
+    full_opt_def = optim.Adam(learning_rate=env.config.encoder_pretrain_lr)
+    full_opt = full_opt_def.create(full_params)
 
     # Create the batches
     full_idx = np.arange(len(train_datasets))
@@ -677,32 +697,24 @@ def pretrain_encoder(env, key, encoder, train_datasets, train_dataset_masks, val
     batch_idx = np.asarray(batch_idx)[:total_samples]
     batch_idx = np.reshape(batch_idx, (env.config.encoder_pretrain_opt_steps, env.config.encoder_pretrain_batch_size))
 
-    # def _rnn_scan(_carry, _input, ):
-    #     _current_h, _encoder_params, _prev_obs = _carry
-    #     _curr_obs, _curr_mask = _input
-    #     _next_h, _next_obs_pred = encoder.apply(_encoder_params, _current_h, _prev_obs)
-    #
-    #     _loss = tfd.Bernoulli(_next_obs_pred).log_prob(_curr_obs) * _curr_mask
-    #     # _loss = np.mean(np.square(_next_obs_pred - _curr_obs))
-    #
-    #     return (_current_h, _encoder_params, _curr_obs), _loss
+    def _single_loss(_full_params, _key, _obs, _mask):
+        _forward_encoded_states, _backward_encoded_states = encoder.encode(_full_params[0], _key, _obs)
 
-    def _single_loss(_encoder_params, _key, _obs, _mask):
-        # _init_state = encoder.initialize_carry(_key)
-        # _, _log_probs = jax.lax.scan(_rnn_scan,
-        #                              (_init_state, _encoder_params, np.zeros(_obs.shape[-1])),
-        #                              (_obs, _mask),
-        #                              length=len(_obs),
-        #                              reverse=True)
+        _forward_decoded_states = forward_readout_network.apply(_full_params[1], _forward_encoded_states)
+        _backward_decoded_states = backward_readout_network.apply(_full_params[2], _backward_encoded_states)
 
-        encoded_states = encoder.encode(_encoder_params, _key, _obs)
-        raise NotImplementedError()
-        return - np.sum(_log_probs) / np.sum(_mask)
+        _forward_log_probs = tfd.Independent(tfd.Bernoulli(_forward_decoded_states), reinterpreted_batch_ndims=1).log_prob(_obs)
+        _backward_log_probs = tfd.Independent(tfd.Bernoulli(_backward_decoded_states), reinterpreted_batch_ndims=1).log_prob(_obs)
+
+        _forward_loss = - np.sum(_forward_log_probs) / np.sum(_mask)
+        _backward_loss = - np.sum(_backward_log_probs) / np.sum(_mask)
+
+        return _forward_loss + _backward_loss
 
     @jax.jit
-    def loss(_key, _encoder_params, _batch, _batch_mask):
+    def loss(_key, _full_params, _batch, _batch_mask):
         _subkeys = jr.split(_key, len(_batch))
-        _losses = jax.vmap(_single_loss, in_axes=(None, 0, 0, 0))(_encoder_params, _subkeys, _batch, _batch_mask)
+        _losses = jax.vmap(_single_loss, in_axes=(None, 0, 0, 0))(_full_params, _subkeys, _batch, _batch_mask)
         return np.mean(_losses)
 
     # Compile into val and grad.
@@ -715,14 +727,15 @@ def pretrain_encoder(env, key, encoder, train_datasets, train_dataset_masks, val
         key, subkey = jr.split(key)
         batch = train_datasets[batch_idx[_step]]
         batch_mask = train_dataset_masks[batch_idx[_step]]
-        loss, grad = loss_val_and_grad(subkey, enc_opt.target, batch, batch_mask)
-        enc_opt = enc_opt.apply_gradient(grad)
+        loss, grad = loss_val_and_grad(subkey, full_opt.target, batch, batch_mask)
+        full_opt = full_opt.apply_gradient(grad)
 
         if _step % print_regularity == 0: print('{:> 6d}: {:> 7.3f}'.format(_step, loss))
         if loss < min_loss: min_loss = loss
 
     # Now we return just the parameters of the RNN.
-    rnn_params = flax.core.FrozenDict({'params': enc_opt.target['params']['rnn_cell']})
+    rnn_params = full_opt.target[0]
+    print('Done pretraining data encoder. ')
     return rnn_params
 
 
