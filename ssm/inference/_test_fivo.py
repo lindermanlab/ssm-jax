@@ -31,7 +31,7 @@ default_verbosity = Verbosity.DEBUG
 # config.update("jax_debug_nans", True)
 
 # Disable jit for inspection.
-DISABLE_JIT = True
+DISABLE_JIT = False
 
 # If we are on the remote, then hard disable this.
 if not LOCAL_SYSTEM:

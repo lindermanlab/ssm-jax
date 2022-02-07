@@ -277,7 +277,7 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
         small_true_bpf_neg_fivo_mean = None
         small_true_bpf_neg_fivo_var = None
 
-    _small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, n_reps), [utils.mutate_named_tuple_by_key(params[0], {'dynamics_weights': ((params[0][0] * 0.0) + 1.004)}), None, None, None])
+    _small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, n_reps), [utils.mutate_named_tuple_by_key(params[0], {'dynamics_weights': ((params[0][0] * 0.0) + 1.0)}), None, None, None])
     _small_pred_smc_lml_all = _small_pred_smc_posteriors.log_normalizer
     _small_pred_smc_neg_lml = - utils.lexp(utils.lexp(_small_pred_smc_lml_all, axis=1))
     _small_pred_smc_neg_lml_var = np.mean(np.var(_small_pred_smc_lml_all, axis=0))
@@ -289,8 +289,7 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
            (_small_pred_smc_neg_fivo_mean, small_true_bpf_neg_fivo_mean),
            (_small_pred_smc_neg_fivo_var, small_true_bpf_neg_fivo_var))
 
-    print(tmp)
-    raise NotImplementedError()
+    # raise NotImplementedError()
 
     small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, n_reps), params)
     small_pred_smc_lml_all = small_pred_smc_posteriors.log_normalizer
@@ -304,6 +303,7 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
             (small_pred_smc_neg_fivo_mean, _small_pred_smc_neg_fivo_mean, small_true_bpf_neg_fivo_mean),
             (small_pred_smc_neg_fivo_var, _small_pred_smc_neg_fivo_var, small_true_bpf_neg_fivo_var))
 
+    print(tmp1)
 
     try:
         small_nlml_metrics = {'mean': {'em_true': em_neg_lml,

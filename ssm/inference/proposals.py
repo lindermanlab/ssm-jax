@@ -188,7 +188,7 @@ class IGWindowProposal(IndependentGaussianProposal):
 
         # Zero out the elements outside of the valid range.
         clipped_dataset = jax.lax.dynamic_slice(dataset,
-                                                (t+1, *tuple(0 * _d for _d in dataset.shape[1:])),
+                                                (t, *tuple(0 * _d for _d in dataset.shape[1:])),  # NOTE - removed t+1.
                                                 (self.proposal_window_length, *dataset.shape[1:]))
         masked_dataset = clipped_dataset * np.expand_dims(to_insert.astype(np.int32), 1)
 
