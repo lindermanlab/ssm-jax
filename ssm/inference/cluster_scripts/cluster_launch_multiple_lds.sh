@@ -1,7 +1,7 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-glob_tag='LDS-v5-0-7-bugfix'
+glob_tag='LDS-v6-0-0-shortwindow'
 model='LDS'
 proposal_type='SINGLE_WINDOW'
 tilt_type='SINGLE_WINDOW'
@@ -37,7 +37,7 @@ proposal_structure='RESQ'
 tilt_structure='NONE'
 temper=0.0
 use_vi=0
-# launch_cmd
+launch_cmd
 
 # FIVO-AUX
 exp_tag='fivo-aux'
@@ -46,7 +46,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
 use_vi=0
-# launch_cmd
+launch_cmd
 
 
 # FIVO-AUX-SGR
@@ -65,7 +65,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=1.0
 use_vi=0
-# launch_cmd
+launch_cmd
 
 
 # FIVO-AUX-VI
@@ -75,7 +75,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
 use_vi=1
-# launch_cmd
+launch_cmd
 
 # FIVO-AUX-VI-SGR
 exp_tag='fivo-aux-vi-sgr'
@@ -84,7 +84,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
 use_vi=1
-# launch_cmd
+launch_cmd
 
 
 # FIVO-AUX-VI-TEMPERED
@@ -94,7 +94,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=1.0
 use_vi=1
-# launch_cmd
+launch_cmd
 
 # FIVO-AUX-VI-SGR-TEMPERED
 exp_tag='fivo-aux-vi-sgr-tempered'
@@ -103,5 +103,5 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=1.0
 use_vi=1
-# launch_cmd
+launch_cmd
 
