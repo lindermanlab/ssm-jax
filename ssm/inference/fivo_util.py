@@ -256,14 +256,10 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
     Returns:
 
     """
-
+    n_reps = 50
+    small_true_bpf_neg_lml, small_true_bpf_neg_lml_var, small_true_bpf_neg_fivo_mean, small_true_bpf_neg_fivo_var = None, None, None, None
     key, subkey1, subkey2 = jr.split(key, num=3)
 
-    # TODO : REVERT TO USING FORKED KEYS.
-
-    n_reps = 100  # TODO - reduce the number of reps.
-
-    # TODO i think there may be a bug in here as to how im computing these metrics.
     if model != 'VRNN':
         small_true_bpf_posteriors = single_bpf_true_eval_small_vmap(jr.split(subkey1, n_reps))
         small_true_bpf_lml_all = small_true_bpf_posteriors.log_normalizer
@@ -271,13 +267,8 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
         small_true_bpf_neg_lml_var = np.mean(np.var(small_true_bpf_lml_all, axis=0))
         small_true_bpf_neg_fivo_mean = - np.mean(small_true_bpf_lml_all)
         small_true_bpf_neg_fivo_var = np.var(np.mean(small_true_bpf_lml_all, axis=1))
-    else:
-        small_true_bpf_neg_lml = None
-        small_true_bpf_neg_lml_var = None
-        small_true_bpf_neg_fivo_mean = None
-        small_true_bpf_neg_fivo_var = None
 
-    small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, n_reps), params)
+    small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey2, n_reps), params)
     small_pred_smc_lml_all = small_pred_smc_posteriors.log_normalizer
     small_pred_smc_neg_lml = - utils.lexp(utils.lexp(small_pred_smc_lml_all, axis=1))
     small_pred_smc_neg_lml_var = np.mean(np.var(small_pred_smc_lml_all, axis=0))
@@ -285,19 +276,19 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
     small_pred_smc_neg_fivo_var = np.var(np.mean(small_pred_smc_lml_all, axis=1))
 
     try:
-        small_nlml_metrics = {'mean': {'em_true': em_neg_lml,
-                                       'bpf_true': small_true_bpf_neg_lml,
-                                       'pred': small_pred_smc_neg_lml, },
-                              'variance': {'bpf_true': small_true_bpf_neg_lml_var,
-                                           'pred': small_pred_smc_neg_lml_var}, }
+        small_nlml_metrics = {'mean':       {'em_true':     em_neg_lml,
+                                             'bpf_true':    small_true_bpf_neg_lml,
+                                             'pred':        small_pred_smc_neg_lml, },
+                              'variance':   {'bpf_true':    small_true_bpf_neg_lml_var,
+                                             'pred':        small_pred_smc_neg_lml_var}, }
     except:
         small_nlml_metrics = None
 
     try:
-        small_fivo_metrics = {'mean': {'bpf_true': small_true_bpf_neg_fivo_mean,
-                                       'pred': small_pred_smc_neg_fivo_mean, },
-                              'variance': {'bpf_true': small_true_bpf_neg_fivo_var,
-                                           'pred': small_pred_smc_neg_fivo_var, }, }
+        small_fivo_metrics = {'mean':       {'bpf_true':    small_true_bpf_neg_fivo_mean,
+                                             'pred':        small_pred_smc_neg_fivo_mean, },
+                              'variance':   {'bpf_true':    small_true_bpf_neg_fivo_var,
+                                             'pred':        small_pred_smc_neg_fivo_var, }, }
     except:
         small_fivo_metrics = None
 
