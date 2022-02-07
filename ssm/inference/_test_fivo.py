@@ -31,7 +31,7 @@ default_verbosity = Verbosity.DEBUG
 # config.update("jax_debug_nans", True)
 
 # Disable jit for inspection.
-DISABLE_JIT = False
+DISABLE_JIT = True
 
 # If we are on the remote, then hard disable this.
 if not LOCAL_SYSTEM:
@@ -191,6 +191,15 @@ def main():
         single_bpf_true_eval_small_vmap = jax.vmap(_single_bpf_true_eval_small)
         single_fivo_eval_small_vmap = jax.vmap(_single_fivo_eval_small, in_axes=(0, None))
 
+        key, subkey = jr.split(key)
+        small_neg_lml_metrics, small_neg_fivo_metrics = fivo_util.test_small_sweeps(subkey,
+                                                                                    fivo.get_params_from_opt(opt),
+                                                                                    single_fivo_eval_small_vmap,
+                                                                                    single_bpf_true_eval_small_vmap,
+                                                                                    em_neg_lml,
+                                                                                    model=env.config.model)
+
+
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
         # Set up a buffer for doing an alternate VI loop.
@@ -344,6 +353,7 @@ def main():
                                                                      subkey,
                                                                      do_fivo_sweep_jitted,
                                                                      smc_jit,
+                                                                     gen_smc_kwargs(),
                                                                      true_bpf_kls=true_bpf_kls)
 
                 # Compare the number of unique particles.
@@ -357,6 +367,7 @@ def main():
                                                                                          subkey,
                                                                                          do_fivo_sweep_jitted,
                                                                                          smc_jit,
+                                                                                         gen_smc_kwargs(),
                                                                                          true_bpf_upc=true_bpf_upc)
 
                 # Log the validation step.
@@ -385,6 +396,7 @@ def main():
 
                           'large_true_em_neg_lml': em_neg_lml,
                           'large_true_bpf_neg_lml': large_true_bpf_neg_lml,
+                          'large_true_bpf_neg_fivo_bound': true_neg_bpf_fivo_bound,
                           'large_pred_smc_neg_lml': large_pred_smc_neg_lml,
                           'large_pred_smc_neg_fivo_bound': large_pred_smc_neg_fivo_bound,
 
@@ -410,7 +422,7 @@ def main():
 
                     key, subkey = jr.split(key)
                     fivo_util.compare_sweeps(env, opt, validation_datasets, validation_dataset_masks, true_model, subkey, do_fivo_sweep_jitted,
-                                             smc_jit, tag=_step, nrep=2, true_states=true_states)
+                                             smc_jit, gen_smc_kwargs(), tag=_step, nrep=2, true_states=true_states)
 
                     param_figures = do_plot(param_hist, nlml_hist, em_neg_lml, large_true_bpf_neg_lml,
                                             get_model_free_params(true_model), param_figures)

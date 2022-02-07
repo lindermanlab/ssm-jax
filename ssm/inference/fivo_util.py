@@ -259,9 +259,13 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
 
     key, subkey1, subkey2 = jr.split(key, num=3)
 
+    # TODO : REVERT TO USING FORKED KEYS.
+
+    n_reps = 100  # TODO - reduce the number of reps.
+
     # TODO i think there may be a bug in here as to how im computing these metrics.
     if model != 'VRNN':
-        small_true_bpf_posteriors = single_bpf_true_eval_small_vmap(jr.split(subkey2, 20))
+        small_true_bpf_posteriors = single_bpf_true_eval_small_vmap(jr.split(subkey1, n_reps))
         small_true_bpf_lml_all = small_true_bpf_posteriors.log_normalizer
         small_true_bpf_neg_lml = - utils.lexp(utils.lexp(small_true_bpf_lml_all, axis=1))
         small_true_bpf_neg_lml_var = np.mean(np.var(small_true_bpf_lml_all, axis=0))
@@ -273,12 +277,33 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
         small_true_bpf_neg_fivo_mean = None
         small_true_bpf_neg_fivo_var = None
 
-    small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, 20), params)
+    _small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, n_reps), [utils.mutate_named_tuple_by_key(params[0], {'dynamics_weights': ((params[0][0] * 0.0) + 1.004)}), None, None, None])
+    _small_pred_smc_lml_all = _small_pred_smc_posteriors.log_normalizer
+    _small_pred_smc_neg_lml = - utils.lexp(utils.lexp(_small_pred_smc_lml_all, axis=1))
+    _small_pred_smc_neg_lml_var = np.mean(np.var(_small_pred_smc_lml_all, axis=0))
+    _small_pred_smc_neg_fivo_mean = - np.mean(_small_pred_smc_lml_all)
+    _small_pred_smc_neg_fivo_var = np.var(np.mean(_small_pred_smc_lml_all, axis=1))
+
+    tmp = ((_small_pred_smc_neg_lml, small_true_bpf_neg_lml),
+           (_small_pred_smc_neg_lml_var, small_true_bpf_neg_lml_var),
+           (_small_pred_smc_neg_fivo_mean, small_true_bpf_neg_fivo_mean),
+           (_small_pred_smc_neg_fivo_var, small_true_bpf_neg_fivo_var))
+
+    print(tmp)
+    raise NotImplementedError()
+
+    small_pred_smc_posteriors = single_fivo_eval_small_vmap(jr.split(subkey1, n_reps), params)
     small_pred_smc_lml_all = small_pred_smc_posteriors.log_normalizer
     small_pred_smc_neg_lml = - utils.lexp(utils.lexp(small_pred_smc_lml_all, axis=1))
     small_pred_smc_neg_lml_var = np.mean(np.var(small_pred_smc_lml_all, axis=0))
     small_pred_smc_neg_fivo_mean = - np.mean(small_pred_smc_lml_all)
-    small_pred_smc_neg_fivo_var = np.var(np.mean(small_pred_smc_lml_all, axis=1))  # TODO  think this might be the wrong line.
+    small_pred_smc_neg_fivo_var = np.var(np.mean(small_pred_smc_lml_all, axis=1))
+
+    tmp1 = ((small_pred_smc_neg_lml, _small_pred_smc_neg_lml, small_true_bpf_neg_lml),
+            (small_pred_smc_neg_lml_var, _small_pred_smc_neg_lml_var, small_true_bpf_neg_lml_var),
+            (small_pred_smc_neg_fivo_mean, _small_pred_smc_neg_fivo_mean, small_true_bpf_neg_fivo_mean),
+            (small_pred_smc_neg_fivo_var, _small_pred_smc_neg_fivo_var, small_true_bpf_neg_fivo_var))
+
 
     try:
         small_nlml_metrics = {'mean': {'em_true': em_neg_lml,
@@ -300,7 +325,7 @@ def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_
     return small_nlml_metrics, small_fivo_metrics
 
 
-def compare_kls(get_marginals, env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_kls=None):
+def compare_kls(get_marginals, env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, smc_kw_args, plot=True, true_bpf_kls=None):
     """
 
     Args:
@@ -367,7 +392,7 @@ def compare_kls(get_marginals, env, opt, dataset, mask, true_model, key, do_fivo
     # Compare the KLs of the smoothing distributions.
     if true_bpf_kls is None:
         key, subkey = jr.split(key)
-        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, mask, num_particles=num_particles)
+        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, mask, num_particles=num_particles, **smc_kw_args)
         true_bpf_kls = compute_marginal_kls(true_bpf_posterior.weighted_smoothing_particles)
 
     key, subkey = jr.split(key)
@@ -434,7 +459,7 @@ def compare_kls(get_marginals, env, opt, dataset, mask, true_model, key, do_fivo
     return kl_metrics, true_bpf_kls
 
 
-def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, plot=True, true_bpf_upc=None):
+def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, smc_kwargs, plot=True, true_bpf_upc=None):
     """
 
     Args:
@@ -477,7 +502,7 @@ def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_
     # Compare the KLs of the smoothing distributions.
     if true_bpf_upc is None:
         key, subkey = jr.split(key)
-        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, mask, num_particles=num_particles)
+        true_bpf_posterior = smc_jitted(subkey, true_model, dataset, mask, num_particles=num_particles, **smc_kwargs)
         true_bpf_upc = calculate_unique_particle_counts(true_bpf_posterior.weighted_smoothing_particles)
 
     key, subkey = jr.split(key)
@@ -525,7 +550,7 @@ def compare_unqiue_particle_counts(env, opt, dataset, mask, true_model, key, do_
     return upc_metrics, true_bpf_upc
 
 
-def compare_sweeps(env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted,
+def compare_sweeps(env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitted, smc_jitted, smc_kw_args,
                    tag='', nrep=10, true_states=None, num_particles=None):
     """
 
@@ -556,7 +581,9 @@ def compare_sweeps(env, opt, dataset, mask, true_model, key, do_fivo_sweep_jitte
                                               true_model,
                                               dataset,
                                               mask,
-                                              num_particles=num_particles)
+                                              num_particles=num_particles,
+                                              **smc_kw_args
+                                              )
 
     # SMC with tilt.
     key, subkey = jr.split(key)

@@ -174,19 +174,19 @@ def do_fivo_sweep(_param_vals,
                                                 _use_bootstrap_initial_distribution,
                                                 **_smc_kw_args)
     else:
-        _single_fivo_sweep_closed = lambda _single_dataset, _single_mask: _do_single_fivo_sweep(_param_vals,
-                                                                                                _key,
-                                                                                                _rebuild_model,
-                                                                                                _rebuild_proposal,
-                                                                                                _rebuild_tilt,
-                                                                                                _rebuild_data_encoder,
-                                                                                                _single_dataset,
-                                                                                                _single_mask,
-                                                                                                _num_particles,
-                                                                                                _use_bootstrap_initial_distribution,
-                                                                                                **_smc_kw_args)
+        _single_fivo_sweep_closed = lambda _single_dataset, _single_mask, _k: _do_single_fivo_sweep(_param_vals,
+                                                                                                    _k,
+                                                                                                    _rebuild_model,
+                                                                                                    _rebuild_proposal,
+                                                                                                    _rebuild_tilt,
+                                                                                                    _rebuild_data_encoder,
+                                                                                                    _single_dataset,
+                                                                                                    _single_mask,
+                                                                                                    _num_particles,
+                                                                                                    _use_bootstrap_initial_distribution,
+                                                                                                    **_smc_kw_args)
 
-        _smc_posteriors = jax.vmap(_single_fivo_sweep_closed)(_datasets, _masks)
+        _smc_posteriors = jax.vmap(_single_fivo_sweep_closed)(_datasets, _masks, jr.split(_key, len(_datasets)))
 
     # Compute the mean of the log marginal (this is negative of the FIVO bound).
     _negative_fivo_bound = - np.mean(_smc_posteriors.log_normalizer)
