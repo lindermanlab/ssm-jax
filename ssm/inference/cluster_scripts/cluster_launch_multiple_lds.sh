@@ -1,14 +1,16 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-glob_tag='LDS-v4-0-0'
+glob_tag='LDS-v5-0-7-bugfix'
 model='LDS'
 proposal_type='SINGLE_WINDOW'
 tilt_type='SINGLE_WINDOW'
 latent_dim=1
 emissions_dim=1
+num_particles=8
+encoder_struct='NONE'
 
-launch_cmd () { sbatch -J ${glob_tag} --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},PROPOSAL_TYPE=${proposal_type},TILT_STRUCTURE=${tilt_structure},TILT_TYPE=${tilt_type},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim},USE_VI=${use_vi} cluster_scripts/_cluster_launch_multiple.sh ; }
+launch_cmd () { sbatch -J ${glob_tag} --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},PROPOSAL_TYPE=${proposal_type},TILT_STRUCTURE=${tilt_structure},TILT_TYPE=${tilt_type},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim},USE_VI=${use_vi},N_PART=${num_particles},ENCODER_STRUCT=${encoder_struct} cluster_scripts/_cluster_launch_multiple.sh ; }
 
 # BPF-SGR
 exp_tag='bpf-sgr'
@@ -35,7 +37,7 @@ proposal_structure='RESQ'
 tilt_structure='NONE'
 temper=0.0
 use_vi=0
-launch_cmd
+# launch_cmd
 
 # FIVO-AUX
 exp_tag='fivo-aux'
@@ -44,7 +46,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
 use_vi=0
-launch_cmd
+# launch_cmd
 
 
 # FIVO-AUX-SGR
@@ -63,7 +65,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=1.0
 use_vi=0
-launch_cmd
+# launch_cmd
 
 
 # FIVO-AUX-VI
@@ -73,7 +75,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
 use_vi=1
-launch_cmd
+# launch_cmd
 
 # FIVO-AUX-VI-SGR
 exp_tag='fivo-aux-vi-sgr'
@@ -82,7 +84,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=0.0
 use_vi=1
-launch_cmd
+# launch_cmd
 
 
 # FIVO-AUX-VI-TEMPERED
@@ -92,6 +94,7 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=1.0
 use_vi=1
+# launch_cmd
 
 # FIVO-AUX-VI-SGR-TEMPERED
 exp_tag='fivo-aux-vi-sgr-tempered'
@@ -100,5 +103,5 @@ proposal_structure='RESQ'
 tilt_structure='DIRECT'
 temper=1.0
 use_vi=1
-
+# launch_cmd
 
