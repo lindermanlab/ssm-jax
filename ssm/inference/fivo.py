@@ -76,7 +76,10 @@ def do_fivo_config(DEFAULT_MODEL, USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM):
     # Get everything.
     if USE_WANDB:
         # Set up WandB
-        env = wandb.init(project=PROJECT, entity=USERNAME, group=config['log_group'], config=config)
+        tags = [config['model']]
+        if 'debug' in config['log_group']:
+            tags.append('debug')
+        env = wandb.init(project=PROJECT, entity=USERNAME, group=config['log_group'], config=config, tags=tags)
     else:
         log_group = 'none'
         env = SimpleNamespace(**{'config': SimpleNamespace(**config),
