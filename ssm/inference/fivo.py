@@ -79,6 +79,8 @@ def do_fivo_config(DEFAULT_MODEL, USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM):
         tags = [config['model']]
         if 'debug' in config['log_group']:
             tags.append('debug')
+        if config['model'] == 'VRNN':
+            tags.append(config['dataset'])
         env = wandb.init(project=PROJECT, entity=USERNAME, group=config['log_group'], config=config, tags=tags)
     else:
         log_group = 'none'

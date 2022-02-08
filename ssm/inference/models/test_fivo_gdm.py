@@ -8,15 +8,12 @@ from copy import deepcopy as dc
 from tensorflow_probability.substrates.jax import distributions as tfd
 
 # Import some ssm stuff.
-from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
 from ssm.lds.models import GaussianLDS
 import ssm.nn_util as nn_util
 import ssm.utils as utils
 import ssm.inference.fivo as fivo
 import ssm.inference.proposals as proposals
 import ssm.inference.tilts as tilts
-from ssm.inference.fivo_util import pretrain_encoder
-import ssm.inference.encoders as encoders
 
 
 def get_config():
