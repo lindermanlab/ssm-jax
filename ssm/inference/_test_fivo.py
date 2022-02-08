@@ -312,8 +312,6 @@ def main():
                 # Capture the parameters.
                 param_hist = fivo_util.log_params(param_hist, cur_params)
 
-                print('a')
-
                 # Do a FIVO-AUX sweep.
                 key, subkey = jr.split(key)
                 large_pred_smc_neg_fivo_bound, large_pred_sweep = do_fivo_sweep_jitted(subkey,
@@ -324,8 +322,6 @@ def main():
                 large_pred_smc_neg_lml = - utils.lexp(large_pred_sweep.log_normalizer)
                 nlml_hist.append(dc(large_pred_smc_neg_lml))
 
-                print('b')
-
                 # Test the variance of the estimators with a small number of particles.
                 key, subkey = jr.split(key)
                 small_neg_lml_metrics, small_neg_fivo_metrics = fivo_util.test_small_sweeps(subkey,
@@ -334,8 +330,6 @@ def main():
                                                                                             single_bpf_true_eval_small_vmap,
                                                                                             em_neg_lml,
                                                                                             model=env.config.model)
-
-                print('c')
 
                 # Test the KLs.
                 if env.config.model != 'VRNN':
@@ -374,8 +368,6 @@ def main():
                             params_to_dump[0] = params_to_dump[0]._asdict()
                         p.dump(params_to_dump, f)
 
-                print('d')
-
                 # Dump some stuff out to WandB.
                 # NOTE - we don't dump everything here because it hurts WandBs brain.
                 to_log = {'step': _step,
@@ -401,8 +393,6 @@ def main():
                                                  'upc': upc_metrics, },
                           }
 
-                print('e')
-
                 # If we are not on the local system, push less frequently (or WandB starts to cry).
                 if env.config.use_wandb:
                     utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb, _commit=False)
@@ -412,8 +402,6 @@ def main():
                             utils.log_to_wandb()
                     else:
                         utils.log_to_wandb()
-
-                print('f')
 
                 # Do some plotting if we are plotting.
                 if env.config.PLOT:
@@ -425,16 +413,12 @@ def main():
                     param_figures = do_plot(param_hist, nlml_hist, em_neg_lml, large_true_bpf_neg_lml,
                                             get_model_free_params(true_model), param_figures)
 
-                print('g')
-
                 # Do some printing.
                 if VI_USE_VI_GRAD:
                     print("VI: Step {:>5d}:  Final VI NEG-ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
                           format(_step, final_vi_elbo, vi_gradient_steps, VI_FREQUENCY))
 
                 do_print(_step, true_model, opt, large_true_bpf_neg_lml, true_neg_bpf_fivo_bound, large_pred_smc_neg_lml, large_pred_smc_neg_fivo_bound, em_neg_lml, smoothed_training_loss)
-
-                print('h')
 
                 # # Compare the effective sample size.
                 # key, subkey = jr.split(key)

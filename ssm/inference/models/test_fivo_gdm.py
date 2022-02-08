@@ -590,8 +590,13 @@ def do_print(_step, true_model, opt, true_lml, true_fivo, pred_lml, pred_fivo_bo
     Returns:
 
     """
-    _str = 'Step: {:> 5d},   EM Neg-LML: {:> 8.3f},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  True neg FIVO bound: {:> 8.3f},  Pred neg FIVO bound: {:> 8.3f},  Smoothed training loss: {:> 8.3f},'.\
-        format(_step, em_log_marginal_likelihood, true_lml, pred_lml, true_fivo, pred_fivo_bound, smoothed_training_loss)
+    _str = 'Step: {:> 5d},  '.format(_step) + \
+           'Smoothed training loss: {:> 8.3f},   '.format(smoothed_training_loss) + \
+           'Val EM Neg-LML: {:> 8.3f},  '.format(em_log_marginal_likelihood) + \
+           'Val True Neg-LML: {:> 8.3f},  '.format(true_lml) + \
+           'Val Pred Neg-LML: {:> 8.3f},  '.format(pred_lml) + \
+           'Val True neg FIVO bound: {:> 8.3f},  '.format(true_fivo) + \
+           'Val Pred neg FIVO bound: {:> 8.3f},'.format(pred_fivo_bound)
     print(_str)
 
     if opt[0] is not None:
