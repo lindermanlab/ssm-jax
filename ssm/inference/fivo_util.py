@@ -747,7 +747,7 @@ def load_piano_data(dataset_pickle_name, phase='train'):
     """
     from ssm.inference.data.datasets import sparse_pianoroll_to_dense
 
-    with open('./data/' + dataset_pickle_name, 'rb') as f:
+    with open('./data/' + dataset_pickle_name + '.pkl', 'rb') as f:
         dataset_sparse = pickle.load(f)
 
     PAD_FLAG = 0.0

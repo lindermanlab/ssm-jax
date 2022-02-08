@@ -7,10 +7,8 @@ import jax.numpy as np
 from jax import random as jr
 from copy import deepcopy as dc
 from tensorflow_probability.substrates.jax import distributions as tfd
-from flax import optim
 
 # Import some ssm stuff.
-from ssm.utils import Verbosity, random_rotation, possibly_disable_jit
 from ssm.vrnn.models import VRNN, VrnnFilteringProposal, VrnnSmoothingProposal, VrnnEncodedTilt, VrnnRawWindowTilt
 import ssm.nn_util as nn_util
 import ssm.inference.fivo as fivo
@@ -32,8 +30,8 @@ def get_config():
     parser = argparse.ArgumentParser()
 
     # Dataset args.
-    parser.add_argument('--dataset', default='jsb.pkl', type=str,
-                        help="Dataset to apply method to.  {'piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl'}. ")
+    parser.add_argument('--dataset', default='jsb', type=str,
+                        help="Dataset to apply method to.  {'piano-midi', 'nottingham', 'musedata', 'jsb'}. ")
 
     # General sweep settings.
     parser.add_argument('--validation-interval', default=500, type=int)
@@ -70,7 +68,7 @@ def get_config():
     parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'AFFINE', 'MLP'}. ")
 
     # VRNN architecture args.
-    parser.add_argument('--latent-dim', default=32, type=int, help="Dimension of z latent variable.")
+    parser.add_argument('--latent-dim', default=64, type=int, help="Dimension of z latent variable.")
     parser.add_argument('--latent-enc-dim', default=None, type=int, help="Dimension of encoded latent z variable. (None -> latent_dim)")
     parser.add_argument('--obs-enc-dim', default=None, type=int, help="Dimension of encoded observations. (None -> latent_dim)")
     parser.add_argument('--rnn-state-dim', default=None, type=int, help="Dimension of the deterministic RNN. (None -> latent_dim)")
@@ -148,6 +146,10 @@ def get_config():
 
     if (config['tilt_structure'] != 'NONE') and (config['tilt_type'] == 'ENCODED'):
         assert config['encoder_structure'] != 'NONE', "Cannot use encoded tilt without a data encoder."
+
+    if config['dataset'] == 'jsb':
+        config['latent_dim'] /= 2
+        print('[WARNING]: Halving latent dimension for JSB.')
 
     return config, do_print, define_test, do_plot, get_true_target_marginal
 
@@ -416,7 +418,7 @@ def define_true_model_and_data(key, env):
 
     else:
 
-        if env.config.dataset in ['piano-midi.pkl', 'nottingham.pkl', 'musedata.pkl', 'jsb.pkl']:
+        if env.config.dataset in ['piano-midi', 'nottingham', 'musedata', 'jsb']:
             train_dataset, train_dataset_masks, train_true_states, train_dataset_means = fivo_util.load_piano_data(env.config.dataset, phase='train')
             valid_dataset, valid_dataset_masks, valid_true_states, _ = fivo_util.load_piano_data(env.config.dataset, phase='valid')
             emissions_dim = train_dataset.shape[-1]
@@ -601,7 +603,7 @@ if __name__ == '__main__':
 
     _phase = 'train'
 
-    for _s in ['jsb.pkl', 'piano-midi.pkl', 'musedata.pkl', 'nottingham.pkl']:
+    for _s in ['jsb', 'piano-midi', 'musedata', 'nottingham']:
         _dataset, _masks, _true_states, _means = fivo_util.load_piano_data(_s, _phase)
 
         print('Dataset dimensions (N x T x D): ', _dataset.shape)
