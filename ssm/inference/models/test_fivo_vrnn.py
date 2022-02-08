@@ -47,7 +47,7 @@ def get_config():
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data',type=str)
 
     # Data encoder args.
-    parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
+    parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
 
     # Encoder pre-training hyperparameters.
     parser.add_argument('--encoder-pretrain', default=1, type=int, help="{0, 1}")
@@ -117,6 +117,20 @@ def get_config():
     # Make sure this one is formatted correctly.
     config['model'] = 'VRNN'
 
+    # JSB uses half the number of latent states.
+    if config['dataset'] == 'jsb':
+        config['latent_dim'] = int(config['latent_dim'] / 2)
+        print('[WARNING]: Halving latent dimension for JSB.')
+
+        if config['rnn_state_dim'] is not None:
+            config['rnn_state_dim'] = int(config['rnn_state_dim'] / 2)
+
+        if config['obs_enc_dim'] is not None:
+            config['obs_enc_dim'] = int(config['obs_enc_dim'] / 2)
+
+        if config['latent_enc_dim'] is not None:
+            config['latent_enc_dim'] = int(config['latent_enc_dim'] / 2)
+
     assert not config['vi_use_tilt_gradient'], "NO IDEA IF THIS WILL WORK YET..."
     assert len(config['free_parameters'].split(',')) == 5, "NOT OPTIMIZING ALL VRNN PARAMETERS..."
 
@@ -147,14 +161,10 @@ def get_config():
     if (config['tilt_structure'] != 'NONE') and (config['tilt_type'] == 'ENCODED'):
         assert config['encoder_structure'] != 'NONE', "Cannot use encoded tilt without a data encoder."
 
-    if config['dataset'] == 'jsb':
-        config['latent_dim'] = int(config['latent_dim'] / 2)
-        print('[WARNING]: Halving latent dimension for JSB.')
-
     if 'SMOOTHING' in config['proposal_structure']:
-        assert config['encoder_structure'] is not None, "To use smoothing proposal, there must be an encoder."
+        assert config['encoder_structure'] != 'NONE', "To use smoothing proposal, there must be an encoder."
     if 'ENCODED' in config['tilt_type']:
-        assert config['encoder_structure'] is not None, "To use encoded tilt representations, there must be an encoder."
+        assert config['encoder_structure'] != 'NONE', "To use encoded tilt representations, there must be an encoder."
 
     return config, do_print, define_test, do_plot, get_true_target_marginal
 
