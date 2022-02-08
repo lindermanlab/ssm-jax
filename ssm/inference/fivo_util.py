@@ -751,10 +751,10 @@ def load_piano_data(dataset_pickle_name, phase='train'):
         dataset_sparse = pickle.load(f)
 
     PAD_FLAG = 0.0
-    MAX_LENGTH = {'jsb.pkl': 10000,
-                  'piano-midi.pkl': 10000,
-                  'musedata.pkl': 10000,
-                  'nottingham.pkl': 300}
+    MAX_LENGTH = {'jsb': 10000,
+                  'piano-midi': 10000,
+                  'musedata': 10000,
+                  'nottingham': 300}
 
     min_note = 21
     max_note = 108

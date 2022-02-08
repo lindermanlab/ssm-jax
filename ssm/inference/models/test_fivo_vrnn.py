@@ -56,14 +56,14 @@ def get_config():
     parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
 
     # Proposal args.
-    parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
-    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
+    parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
+    parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {None, }.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
     # Tilt args.
-    parser.add_argument('--tilt-structure', default='NONE', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
-    parser.add_argument('--tilt-type', default='ENCODED', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
+    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
     parser.add_argument('--tilt-window-length', default=2, type=int, help="{int, None}.  Length of any window.")
     parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'AFFINE', 'MLP'}. ")
 
