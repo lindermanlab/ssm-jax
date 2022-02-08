@@ -99,9 +99,9 @@ def do_fivo_config(DEFAULT_MODEL, USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM):
         git_is_dirty = repo.is_dirty()
     except:
         print('[WARNING]: Failed to grab git info...')
-        env.config.git_commit = git_commit
-        env.config.git_branch = git_branch
-        env.config.git_is_dirty = git_is_dirty
+    env.config.git_commit = git_commit
+    env.config.git_branch = git_branch
+    env.config.git_is_dirty = git_is_dirty
 
     # Set up the first key
     key = jr.PRNGKey(env.config.seed)

@@ -245,7 +245,7 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
 
 def test_small_sweeps(key, params, single_fivo_eval_small_vmap, single_bpf_true_eval_small_vmap, em_neg_lml, model=None):
     """
-
+    TODO - this is quite a slow subroutine.  50 reps may be too many.
     Args:
         key:
         params:

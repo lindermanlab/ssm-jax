@@ -39,7 +39,7 @@ def get_config():
     parser.add_argument('--validation-interval', default=500, type=int)
     parser.add_argument('--resampling-criterion', default='ess_criterion', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
     parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # {'multinomial_resampling', 'systematic_resampling'}.
-    parser.add_argument('--use-sgr', default=1, type=int, help="{0, 1}.")
+    parser.add_argument('--use-sgr', default=0, type=int, help="{0, 1}.")
     parser.add_argument('--temper', default=0.0, type=float, help="{0.0 to disable,  >0.1 to temper}")
     parser.add_argument('--num-particles', default=4, type=int, help="Number of particles per sweep during learning.")
     parser.add_argument('--datasets-per-batch', default=4, type=int, help="Number of datasets averaged across per FIVO step.")
@@ -49,7 +49,7 @@ def get_config():
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data',type=str)
 
     # Data encoder args.
-    parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
+    parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
 
     # Encoder pre-training hyperparameters.
     parser.add_argument('--encoder-pretrain', default=1, type=int, help="{0, 1}")
@@ -58,13 +58,13 @@ def get_config():
     parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
 
     # Proposal args.
-    parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
-    parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
+    parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
+    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {None, }.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
     # Tilt args.
-    parser.add_argument('--tilt-structure', default='DIRECT', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
+    parser.add_argument('--tilt-structure', default='NONE', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
     parser.add_argument('--tilt-type', default='ENCODED', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
     parser.add_argument('--tilt-window-length', default=2, type=int, help="{int, None}.  Length of any window.")
     parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'AFFINE', 'MLP'}. ")
@@ -578,8 +578,13 @@ def do_print(_step, true_model, opt, true_lml, true_fivo, pred_lml, pred_fivo_bo
     Returns:
 
     """
-    _str = 'Step: {:> 5d},   EM Neg-LML: {:> 8.3f},  True Neg-LML: {:> 8.3f},  Pred Neg-LML: {:> 8.3f},  True neg FIVO bound: {:> 8.3f},  Pred neg FIVO bound: {:> 8.3f},  Smoothed training loss: {:> 8.3f},'.\
-        format(_step, em_log_marginal_likelihood, true_lml, pred_lml, true_fivo, pred_fivo_bound, smoothed_training_loss)
+    _str = 'Step: {:> 5d},  '.format(_step) + \
+           'Smoothed training loss: {:> 8.3f},   '.format(smoothed_training_loss) + \
+           'Val EM Neg-LML: {:> 8.3f},  '.format(em_log_marginal_likelihood) + \
+           'Val True Neg-LML: {:> 8.3f},  '.format(true_lml) + \
+           'Val Pred Neg-LML: {:> 8.3f},  '.format(pred_lml) + \
+           'Val True neg FIVO bound: {:> 8.3f},  '.format(true_fivo) + \
+           'Val Pred neg FIVO bound: {:> 8.3f},'.format(pred_fivo_bound)
     print(_str)
 
     if opt[0] is not None:
