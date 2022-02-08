@@ -81,7 +81,6 @@ def main():
         filt_fig, sweep_fig_filter, sweep_fig_smooth, true_bpf_kls, true_bpf_upc, true_bpf_ess = None, None, None, None, None, None,
         kl_metrics, upc_metrics = None, None
         param_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
-        val_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
         param_figures = [None, None, None, None]  # Model, proposal, tilt, encoder.
         nlml_hist = []
         smoothed_training_loss = np.nan
@@ -313,6 +312,8 @@ def main():
                 # Capture the parameters.
                 param_hist = fivo_util.log_params(param_hist, cur_params)
 
+                print('a')
+
                 # Do a FIVO-AUX sweep.
                 key, subkey = jr.split(key)
                 large_pred_smc_neg_fivo_bound, large_pred_sweep = do_fivo_sweep_jitted(subkey,
@@ -323,6 +324,8 @@ def main():
                 large_pred_smc_neg_lml = - utils.lexp(large_pred_sweep.log_normalizer)
                 nlml_hist.append(dc(large_pred_smc_neg_lml))
 
+                print('b')
+
                 # Test the variance of the estimators with a small number of particles.
                 key, subkey = jr.split(key)
                 small_neg_lml_metrics, small_neg_fivo_metrics = fivo_util.test_small_sweeps(subkey,
@@ -331,6 +334,8 @@ def main():
                                                                                             single_bpf_true_eval_small_vmap,
                                                                                             em_neg_lml,
                                                                                             model=env.config.model)
+
+                print('c')
 
                 # Test the KLs.
                 if env.config.model != 'VRNN':
@@ -361,9 +366,6 @@ def main():
                                                                                          gen_smc_kwargs(),
                                                                                          true_bpf_upc=true_bpf_upc)
 
-                # Log the validation step.
-                val_hist = fivo_util.log_params(val_hist, cur_params,)
-
                 # Save out to a temporary location.
                 if (env.config.save_path is not None) and (env.config.load_path is None):
                     with open(env.config.save_path, 'wb') as f:
@@ -372,31 +374,34 @@ def main():
                             params_to_dump[0] = params_to_dump[0]._asdict()
                         p.dump(params_to_dump, f)
 
+                print('d')
+
                 # Dump some stuff out to WandB.
                 # NOTE - we don't dump everything here because it hurts WandBs brain.
                 to_log = {'step': _step,
                           'tilt_temperature': temperature,
-
-                          'params_p_true': true_hist[0][-1],
-                          'params_p_pred': param_hist[0][-1],
-                          'params_q_pred': param_hist[1][-1],
-                          'params_r_pred': param_hist[2][-1],
-                          'params_e_pred': param_hist[3][-1],
-
                           'smoothed_training_loss': smoothed_training_loss,
 
-                          'large_true_em_neg_lml': em_neg_lml,
-                          'large_true_bpf_neg_lml': large_true_bpf_neg_lml,
-                          'large_true_bpf_neg_fivo_bound': true_neg_bpf_fivo_bound,
-                          'large_pred_smc_neg_lml': large_pred_smc_neg_lml,
-                          'large_pred_smc_neg_fivo_bound': large_pred_smc_neg_fivo_bound,
+                          'params': {'p_true': true_hist[0][-1],
+                                     'p_pred': param_hist[0][-1],
+                                     'q_pred': param_hist[1][-1],
+                                     'r_pred': param_hist[2][-1],
+                                     'e_pred': param_hist[3][-1], },
+
+                          'large_neg_fivo':     {'bpf_true': true_neg_bpf_fivo_bound,
+                                                 'pred': large_pred_smc_neg_fivo_bound},
+                          'large_neg_lml':      {'em_true': em_neg_lml,
+                                                 'bpf_true': large_true_bpf_neg_lml,
+                                                 'pred': large_pred_smc_neg_lml},
 
                           'small_neg_fivo_bound': small_neg_fivo_metrics,
                           'small_neg_lml': small_neg_lml_metrics,
 
-                          'auxiliary_metrics': {'kl': kl_metrics,
-                                                'upc': upc_metrics, },
+                          'auxiliary_metrics':  {'kl': kl_metrics,
+                                                 'upc': upc_metrics, },
                           }
+
+                print('e')
 
                 # If we are not on the local system, push less frequently (or WandB starts to cry).
                 if env.config.use_wandb:
@@ -408,6 +413,8 @@ def main():
                     else:
                         utils.log_to_wandb()
 
+                print('f')
+
                 # Do some plotting if we are plotting.
                 if env.config.PLOT:
 
@@ -418,12 +425,16 @@ def main():
                     param_figures = do_plot(param_hist, nlml_hist, em_neg_lml, large_true_bpf_neg_lml,
                                             get_model_free_params(true_model), param_figures)
 
+                print('g')
+
                 # Do some printing.
                 if VI_USE_VI_GRAD:
                     print("VI: Step {:>5d}:  Final VI NEG-ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
                           format(_step, final_vi_elbo, vi_gradient_steps, VI_FREQUENCY))
 
                 do_print(_step, true_model, opt, large_true_bpf_neg_lml, true_neg_bpf_fivo_bound, large_pred_smc_neg_lml, large_pred_smc_neg_fivo_bound, em_neg_lml, smoothed_training_loss)
+
+                print('h')
 
                 # # Compare the effective sample size.
                 # key, subkey = jr.split(key)

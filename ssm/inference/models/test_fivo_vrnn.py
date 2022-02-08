@@ -78,9 +78,9 @@ def get_config():
                         help="Layer widths of MLPs. CSV of widths, i.e. '10,10'. (None -> [latent_dim]). ")
 
     # Learning rates.
-    parser.add_argument('--lr-p', default=3.0e-5, type=float, help="Learning rate of model parameters.")
-    parser.add_argument('--lr-q', default=3.0e-5, type=float, help="Learning rate of proposal parameters.")
-    parser.add_argument('--lr-r', default=3.0e-5, type=float, help="Learning rate of tilt parameters.")
+    parser.add_argument('--lr-p', default=1.0e-3, type=float, help="Learning rate of model parameters.")
+    parser.add_argument('--lr-q', default=1.0e-3, type=float, help="Learning rate of proposal parameters.")
+    parser.add_argument('--lr-r', default=1.0e-3, type=float, help="Learning rate of tilt parameters.")
     parser.add_argument('--lr-e', default=1.0e-5, type=float, help="Learning rate of data encoder parameters.")
 
     # Misc settings.
