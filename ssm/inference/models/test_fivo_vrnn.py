@@ -151,6 +151,11 @@ def get_config():
         config['latent_dim'] = int(config['latent_dim'] / 2)
         print('[WARNING]: Halving latent dimension for JSB.')
 
+    if 'SMOOTHING' in config['proposal_structure']:
+        assert config['encoder_structure'] is not None, "To use smoothing proposal, there must be an encoder."
+    if 'ENCODED' in config['tilt_type']:
+        assert config['encoder_structure'] is not None, "To use encoded tilt representations, there must be an encoder."
+
     return config, do_print, define_test, do_plot, get_true_target_marginal
 
 
