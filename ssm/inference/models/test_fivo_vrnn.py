@@ -148,7 +148,7 @@ def get_config():
         assert config['encoder_structure'] != 'NONE', "Cannot use encoded tilt without a data encoder."
 
     if config['dataset'] == 'jsb':
-        config['latent_dim'] /= 2
+        config['latent_dim'] = int(config['latent_dim'] / 2)
         print('[WARNING]: Halving latent dimension for JSB.')
 
     return config, do_print, define_test, do_plot, get_true_target_marginal
