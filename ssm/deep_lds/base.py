@@ -122,6 +122,7 @@ class DeepLDS(LDS):
             recognition_model_class=None, 
             learning_rate=1e-3,
             recognition_only=False,
+            init_emissions_params=None,
             ):
         """
         Notably, returns the rec net as well as the model
@@ -148,6 +149,8 @@ class DeepLDS(LDS):
                 key, self, data, rec_net, posterior, 
                 covariates=covariates, metadata=metadata,
                 num_iters=num_iters, learning_rate=learning_rate,
-                tol=tol, verbosity=verbosity, recognition_only=recognition_only)
+                tol=tol, verbosity=verbosity, 
+                recognition_only=recognition_only,
+                init_emissions_params=init_emissions_params)
 
         return bounds, model, posterior

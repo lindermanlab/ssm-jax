@@ -20,6 +20,7 @@ def deep_variational_inference(key,
              verbosity=Verbosity.DEBUG,
              # Only learn the recognition network
              recognition_only=False,
+             init_emissions_params=None,
     ):
 
     assert(len(data.shape) == 3)
@@ -65,7 +66,7 @@ def deep_variational_inference(key,
     rec_opt = opt.Adam(learning_rate=learning_rate).create(rec_params)
 
     dec_net = model.emissions_network
-    dec_params = dec_net.init(rng2, z_single)
+    dec_params = init_emissions_params or dec_net.init(rng2, z_single)
     dec_opt = opt.Adam(learning_rate=learning_rate).create(dec_params)
 
     dec_net.update_params(dec_params)
