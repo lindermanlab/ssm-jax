@@ -50,7 +50,7 @@ def get_config():
     parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
 
     # Encoder pre-training hyperparameters.
-    parser.add_argument('--encoder-pretrain', default=1, type=int, help="{0, 1}")
+    parser.add_argument('--encoder-pretrain', default=0, type=int, help="{0, 1}")
     parser.add_argument('--encoder-pretrain-opt-steps', default=200, type=int, help="")
     parser.add_argument('--encoder-pretrain-lr', default=0.01, type=float, help="")
     parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
@@ -65,7 +65,7 @@ def get_config():
     parser.add_argument('--tilt-structure', default='DIRECT', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
     parser.add_argument('--tilt-window-length', default=2, type=int, help="{int, None}.  Length of any window.")
-    parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'AFFINE', 'MLP'}. ")
+    parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'MLP'}. ")
 
     # VRNN architecture args.
     parser.add_argument('--latent-dim', default=64, type=int, help="Dimension of z latent variable.")
@@ -89,7 +89,7 @@ def get_config():
     parser.add_argument('--load-path', default=None, type=str, help="File path to load model from.")  # './params_vrnn_tmp.p'
     parser.add_argument('--save-path', default=None, type=str, help="File path to save model to.")  # './params_vrnn_tmp.p'
     parser.add_argument('--model', default='VRNN', type=str, help="Don't change here.")
-    parser.add_argument('--seed', default=10, type=int, help="Seed for initialization.")
+    parser.add_argument('--seed', default=0, type=int, help="Seed for initialization.")
     parser.add_argument('--log-group', default='debug-vrnn', type=str, help="WandB group to log to.  Overwrite from outside.")
     parser.add_argument('--plot-interval', default=1, type=int, help="Multiples of --validation-interval to plot at.")
     parser.add_argument('--log-to-wandb-interval', default=1, type=int, help="Multiples of --validation-interval to push to WandB remote at.")
@@ -243,6 +243,7 @@ def define_data_encoder(key, true_model, env, train_datasets, train_dataset_mask
         encoder_params = pretrain_encoder(env, subkey2, data_encoder,
                                           train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
     else:
+        print('[WARNING]: Not pretraining encoder.')
         subkey1, subkey2 = jr.split(key)
         init_carry = data_encoder.initialize_carry(subkey1)
         encoder_params = data_encoder.init(subkey2, (init_carry, np.zeros(train_datasets.shape[-1])))
@@ -266,6 +267,9 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
 
     if (env.config.tilt_structure is None) or (env.config.tilt_structure == 'NONE'):
         return None, None, lambda *args: None
+
+    # This encodes Gaussian or Bernoulli output variables.
+    TILT_DISTRIBUTION_CLASS = model.output_type
 
     # configure the tilt.
     if env.config.tilt_type == 'SINGLE_WINDOW':
@@ -297,18 +301,25 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
 
     # Define any custom link functions.
     if env.config.tilt_fn_family == 'AFFINE':
-        trunk_fn = None
-        head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
-        head_log_var_fn = nn_util.Static(dummy_tilt_output.shape[0])
-        print('[WARNING]:  This is a bad idea.')
+        raise NotImplementedError()
 
     elif env.config.tilt_fn_family == 'MLP':
-        layer_dims = env.config.fcnet_hidden_sizes + env.config.fcnet_hidden_sizes
-        print('Using MLP tilt with layer widths: ', layer_dims)
 
-        trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
-        head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
-        head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0])
+        if TILT_DISTRIBUTION_CLASS == 'GAUSSIAN':
+            layer_dims = env.config.fcnet_hidden_sizes + env.config.fcnet_hidden_sizes
+            print('Using Gaussian MLP tilt with: ' + \
+                  'trunk layer widths: {}, '.format(layer_dims) + \
+                  'mean head widths: {}, '.format(dummy_tilt_output.shape[0]) + \
+                  'variance head widths: {}.'.format(dummy_tilt_output.shape[0]))
+            trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
+            head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
+            head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0])
+        else:
+            layer_dims = env.config.fcnet_hidden_sizes + [dummy_tilt_output.shape[0]]
+            print('Using Gaussian MLP tilt with trunk layer widths: {}'.format(layer_dims))
+            head_mean_fn = None
+            head_log_var_fn = None
+            trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
 
     else:
         raise NotImplementedError()
@@ -319,7 +330,8 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
                    tilt_input=stock_tilt_input,
                    trunk_fn=trunk_fn,
                    head_mean_fn=head_mean_fn,
-                   head_log_var_fn=head_log_var_fn, )
+                   head_log_var_fn=head_log_var_fn,
+                   distribution_class=TILT_DISTRIBUTION_CLASS)
 
     # Initialize the network.
     tilt_params = tilt.init(subkey)
@@ -382,7 +394,6 @@ def define_proposal(subkey, model, train_dataset, env, data_encoder=None):
         n_props = 1  # NOTE - we always use the bootstrap so we just use a single proposal.
         proposal_window_length = None  # This will use just the current state of and RNN.
         dummy_q_state = None
-
         dummy_q_inputs = data_encoder.dummy_exposed_state
 
     else:
@@ -429,14 +440,15 @@ def define_true_model_and_data(key, env):
         T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
         # To be overwritten later.  just shut the linter up.
-        dataset, train_dataset, train_dataset_masks, valid_dataset, valid_dataset_masks = None, None, None, None, None
+        dataset, trn_dataset, trn_dataset_masks, valid_dataset, valid_dataset_masks = None, None, None, None, None
 
     else:
 
         if env.config.dataset in ['piano-midi', 'nottingham', 'musedata', 'jsb']:
-            train_dataset, train_dataset_masks, train_true_states, train_dataset_means = fivo_util.load_piano_data(env.config.dataset, phase='train')
+            trn_dataset, trn_dataset_masks, trn_true_states, trn_dataset_means = fivo_util.load_piano_data(env.config.dataset, phase='train')
             valid_dataset, valid_dataset_masks, valid_true_states, _ = fivo_util.load_piano_data(env.config.dataset, phase='valid')
-            emissions_dim = train_dataset.shape[-1]
+            tst_dataset, tst_dataset_masks, tst_true_states, _ = fivo_util.load_piano_data(env.config.dataset, phase='test')
+            emissions_dim = trn_dataset.shape[-1]
             output_type = 'BERNOULLI'
         else:
             raise NotImplementedError()
@@ -466,8 +478,8 @@ def define_true_model_and_data(key, env):
 
     if output_type == 'BERNOULLI':
 
-        clipped_train_dataset_means = np.clip(train_dataset_means, 0.0001, 0.9999)
-        clipped_log_odds = np.log(clipped_train_dataset_means) - np.log(1 - clipped_train_dataset_means)
+        clipped_trn_dataset_means = np.clip(trn_dataset_means, 0.0001, 0.9999)
+        clipped_log_odds = np.log(clipped_trn_dataset_means) - np.log(1 - clipped_trn_dataset_means)
         output_bias_init = lambda *_args: clipped_log_odds
 
         full_decoder = nn_util.MLP(fcnet_hidden_sizes + [emissions_dim], kernel_init=kernel_init, bias_init=output_bias_init)
@@ -535,14 +547,14 @@ def define_true_model_and_data(key, env):
         valid_dataset = dataset[:env.config.num_val_datasets]
         valid_dataset_masks = dataset_masks[:env.config.num_val_datasets]
 
-        train_true_states = true_states[env.config.num_val_datasets]
-        train_dataset = dataset[env.config.num_val_datasets:]
-        train_dataset_masks = dataset_masks[env.config.num_val_datasets:]
+        trn_true_states = true_states[env.config.num_val_datasets]
+        trn_dataset = dataset[env.config.num_val_datasets:]
+        trn_dataset_masks = dataset_masks[env.config.num_val_datasets:]
 
     else:
-        train_true_states = None
+        trn_true_states = None
 
-    return true_model, train_true_states, train_dataset, train_dataset_masks, valid_dataset, valid_dataset_masks
+    return true_model, trn_true_states, trn_dataset, trn_dataset_masks, valid_dataset, valid_dataset_masks
 
 
 def define_test_model(key, true_model, env):

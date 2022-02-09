@@ -450,7 +450,7 @@ class VrnnRawWindowTilt(tilts.IGWindowTilt):
     Tilt for use with VRNN.
     """
 
-    def _tilt_input_generator(self, dataset, model, particles, t, *inputs):
+    def _tilt_input_generator(self, dataset, model, particles, t, *_):
         """
 
         """

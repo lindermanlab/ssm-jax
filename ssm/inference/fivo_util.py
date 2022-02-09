@@ -795,7 +795,7 @@ def load_piano_data(dataset_pickle_name, phase='train'):
     # dataset = dataset[:, :20]
     # dataset_masks = dataset_masks[:, :20]
 
-    print('{}: Loaded {} datasets.'.format(dataset_pickle_name, len(dataset)))
+    print('{}: Loaded {} {} datasets.'.format(dataset_pickle_name, len(dataset), phase))
 
     return dataset, dataset_masks, true_states, dataset_means
 

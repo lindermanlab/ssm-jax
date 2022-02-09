@@ -7,7 +7,7 @@ from jax import random as jr
 from tensorflow_probability.substrates.jax import distributions as tfd
 
 # Import some ssm stuff.
-from ssm.inference.conditional_generators import IndependentGaussianGenerator
+from ssm.inference.conditional_generators import IndependentGaussianGenerator, IndependentBernoulliGenerator
 import ssm.nn_util as nn_util
 
 
@@ -18,7 +18,7 @@ class IndependentGaussianTilt:
     """
 
     def __init__(self, n_tilts, tilt_input,
-                 trunk_fn=None, head_mean_fn=None, head_log_var_fn=None):
+                 trunk_fn=None, head_mean_fn=None, head_log_var_fn=None, distribution_class='GAUSSIAN'):
 
         # Work out the number of tilts.
         assert (n_tilts == 1) or (n_tilts == len(tilt_input[0]) - 1), \
@@ -35,11 +35,20 @@ class IndependentGaussianTilt:
         dummy_output = self._tilt_output_generator(*tilt_input)
 
         # Build out the function approximator.
-        self.tilt = IndependentGaussianGenerator.from_params(self._dummy_processed_input,
-                                                             dummy_output,
-                                                             trunk_fn=trunk_fn,
-                                                             head_mean_fn=head_mean_fn,
-                                                             head_log_var_fn=head_log_var_fn, )
+        if distribution_class == 'GAUSSIAN':
+            self.tilt = IndependentGaussianGenerator.from_params(self._dummy_processed_input,
+                                                                 dummy_output,
+                                                                 trunk_fn=trunk_fn,
+                                                                 head_mean_fn=head_mean_fn,
+                                                                 head_log_var_fn=head_log_var_fn, )
+        elif distribution_class == 'BERNOULLI':
+            assert head_mean_fn is None, "Cannot specify head functions here.  Use trunk instead."
+            assert head_log_var_fn is None, "Cannot specify head functions here.  Use trunk instead."
+            self.tilt = IndependentBernoulliGenerator.from_params(self._dummy_processed_input,
+                                                                  dummy_output,
+                                                                  trunk_fn=trunk_fn, )
+        else:
+            raise NotImplementedError()
 
     def init(self, key):
         """
@@ -90,6 +99,12 @@ class IndependentGaussianTilt:
         # Now score under that distribution.
         tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, self.tilt_window_length, *inputs)
         log_r_val = r_dist.log_prob(tilt_outputs)
+
+
+        # # TODO - removed tilt.
+        # log_r_val = log_r_val * 0.0
+        # # TODO - removed tilt.
+
 
         return log_r_val
 
@@ -201,7 +216,7 @@ class IGWindowTilt(IndependentGaussianTilt):
 
     # We need to define the method for generating the inputs.
     @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, _tilt_window_length, *inputs):
+    def _tilt_output_generator(dataset, model, particles, t, _tilt_window_length, *_):
         """
 
         """
@@ -249,6 +264,8 @@ class IGWindowTilt(IndependentGaussianTilt):
         # Now score under that distribution.
         tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, self.tilt_window_length, *inputs)
 
+        # TODO - need to work out if there is a continouous / discrete tilt in here.
+
         # We need to re-capitulate the distribution for each of the timesteps (its independent) and accumulate
         # just those within the time window.
         means = r_dist.mean()
@@ -265,6 +282,12 @@ class IGWindowTilt(IndependentGaussianTilt):
         else:
             r_vals = _eval(means, variances, mask, tilt_outputs)
         log_r_val = np.sum(r_vals, axis=0)
+
+
+        # # TODO - removed tilt.
+        # log_r_val = log_r_val * 0.0
+        # # TODO - removed tilt.
+
 
         return log_r_val
 

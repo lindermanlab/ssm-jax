@@ -236,10 +236,10 @@ def _do_single_fivo_sweep(_param_vals,
     _encoder = _rebuild_data_encoder(_param_vals[3])
 
     # If we are using an encoder (is not `None`), we need to encode the data.
+    _key, _subkey = jr.split(_key)
     if _encoder is None:
         _encoded_data = None
     else:
-        _key, _subkey = jr.split(_key)
         _encoded_data = _encoder(_subkey, _single_dataset)
 
     # Reconstruct the proposal.
