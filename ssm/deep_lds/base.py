@@ -55,7 +55,7 @@ class DeepLDS(LDS):
         transitions = StationaryDynamics(weights=dynamics_weights,
                                          bias=dynamics_bias,
                                          scale_tril=dynamics_scale_tril)
-
+        
         super(DeepLDS, self).__init__(initial_condition, transitions, emissions)
 
     @property
@@ -120,7 +120,8 @@ class DeepLDS(LDS):
             tol: float=1e-4,
             verbosity: Verbosity=Verbosity.DEBUG,
             recognition_model_class=None, 
-            learning_rate=1e-3
+            learning_rate=1e-3,
+            recognition_only=False,
             ):
         """
         Notably, returns the rec net as well as the model
@@ -134,7 +135,7 @@ class DeepLDS(LDS):
             default_recognition_model_class = GaussianNetwork
         elif method == "dkf":
             posterior_class = DKFPosterior
-            default_recognition_model_class = Bidirectional_RNN.from_params
+            default_recognition_model_class = Bidirectional_RNN
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
@@ -147,6 +148,6 @@ class DeepLDS(LDS):
                 key, self, data, rec_net, posterior, 
                 covariates=covariates, metadata=metadata,
                 num_iters=num_iters, learning_rate=learning_rate,
-                tol=tol, verbosity=verbosity)
+                tol=tol, verbosity=verbosity, recognition_only=recognition_only)
 
         return bounds, model, posterior

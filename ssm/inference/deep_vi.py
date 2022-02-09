@@ -18,6 +18,8 @@ def deep_variational_inference(key,
              num_iters=100,
              tol=1e-4,
              verbosity=Verbosity.DEBUG,
+             # Only learn the recognition network
+             recognition_only=False,
     ):
 
     assert(len(data.shape) == 3)
@@ -34,8 +36,11 @@ def deep_variational_inference(key,
             potentials = rec_net.apply(rec_params, data)
             # These two methods have auto-batching
             posterior = posterior.update(model, data, potentials, covariates=covariates, metadata=metadata)
-            # We have to pass in the params like this
-            model.emissions_network.update_params(dec_params)
+            
+            if not recognition_only:
+                # We have to pass in the params like this
+                model.emissions_network.update_params(dec_params)
+
             elbo_key = jr.split(key, data.shape[0])
             bound = model.elbo(elbo_key, data, posterior, covariates=covariates, metadata=metadata)
             return -np.sum(bound, axis=0), (model, posterior)
@@ -44,8 +49,9 @@ def deep_variational_inference(key,
             jax.value_and_grad(lambda params: loss(params, posterior), has_aux=True)((rec_opt.target, dec_opt.target))
         (neg_bound, (model, posterior)), (rec_grad, dec_grad) = results
 
-        # Update the model!
-        model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        if not recognition_only:
+            # Update the model!
+            model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
         new_rec_opt = rec_opt.apply_gradient(rec_grad)
         new_dec_opt = dec_opt.apply_gradient(dec_grad)
         
