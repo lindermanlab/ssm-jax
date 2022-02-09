@@ -495,7 +495,7 @@ def _smc_forward_pass(key,
         # TODO - i have changed this to return the log weights of the particles after any resampling.
         #  this means that the particles at time t are distributed according to the weights in the
         #  final distribution object.  This needs to be updated on the main SMC branch, although i
-        #  don't think that this makes a difference.
+        #  don't think that this makes a huge difference to the code that is currently there.
         return ((_key, resampled_particles, resampled_log_weights, q_state),
                 (resampled_particles, accumulated_log_weights, resampled_log_weights, should_resample, ancestors, q_state))
 

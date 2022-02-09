@@ -32,7 +32,6 @@ default_verbosity = Verbosity.DEBUG
 
 # Disable jit for inspection.
 DISABLE_JIT = True
-
 # If we are on the remote, then hard disable this.
 if not LOCAL_SYSTEM:
     DISABLE_JIT = False
@@ -77,7 +76,7 @@ def main():
             raise NotImplementedError()
 
         # Define some holders that will be overwritten later.
-        large_true_bpf_neg_lml, em_neg_lml, pred_em_nlml, true_bpf_nlml = 0.0, 0.0, 0.0, 0.0
+        large_true_bpf_neg_lml, em_neg_lml, pred_em_nlml, true_bpf_nlml, true_neg_bpf_fivo_bound = 0.0, 0.0, 0.0, 0.0, 0.0
         filt_fig, sweep_fig_filter, sweep_fig_smooth, true_bpf_kls, true_bpf_upc, true_bpf_ess = None, None, None, None, None, None,
         kl_metrics, upc_metrics = None, None
         param_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
@@ -94,7 +93,7 @@ def main():
         ret_vals = define_test(subkey, env)
 
         # Unpack that big mess of stuff.
-        true_model, true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks = ret_vals[0]  # Unpack true model
+        true_model, true_states, trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks, tst_dataset, tst_dataset_masks = ret_vals[0]  # Unpack true model
         model, get_model_free_params, rebuild_model_fn = ret_vals[1]    # Unpack test model.
         proposal, proposal_params, rebuild_prop_fn = ret_vals[2]        # Unpack proposal.
         tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                # Unpack tilt.
@@ -171,8 +170,8 @@ def main():
         def _single_bpf_true_eval_small(_subkey):
             _sweep_posteriors = smc_jit(_subkey,
                                         true_model,
-                                        validation_datasets,
-                                        validation_dataset_masks,
+                                        val_datasets,
+                                        val_dataset_masks,
                                         num_particles=env.config.sweep_test_particles,
                                         **gen_smc_kwargs())
             return _sweep_posteriors
@@ -182,8 +181,8 @@ def main():
         def _single_fivo_eval_small(_subkey, _params):
             _, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
                                                         _params,
-                                                        _datasets=validation_datasets,
-                                                        _masks=validation_dataset_masks,
+                                                        _datasets=val_datasets,
+                                                        _masks=val_dataset_masks,
                                                         _num_particles=env.config.sweep_test_particles,)
             return _sweep_posteriors
 
@@ -222,8 +221,8 @@ def main():
         #     fivo_util.initial_validation(env,
         #                                  key,
         #                                  true_model,
-        #                                  validation_datasets,
-        #                                  validation_dataset_masks,
+        #                                  val_datasets,
+        #                                  val_dataset_masks,
         #                                  true_states,
         #                                  opt,
         #                                  do_fivo_sweep_jitted,
@@ -242,9 +241,9 @@ def main():
 
             # Batch the data.
             key, subkey = jr.split(key)
-            idx = jr.randint(key=subkey, shape=(env.config.datasets_per_batch, ), minval=0, maxval=len(train_datasets))
-            batched_dataset = train_datasets.at[idx].get()
-            batched_dataset_masks = train_dataset_masks.at[idx].get()
+            idx = jr.randint(key=subkey, shape=(env.config.datasets_per_batch, ), minval=0, maxval=len(trn_datasets))
+            batched_dataset = trn_datasets.at[idx].get()
+            batched_dataset_masks = trn_dataset_masks.at[idx].get()
             temperature = tilt_temperatures[_step]
 
             # Do the sweep and compute the gradient.
@@ -317,8 +316,8 @@ def main():
                 large_pred_smc_neg_fivo_bound, large_pred_sweep = do_fivo_sweep_jitted(subkey,
                                                                                        fivo.get_params_from_opt(opt),
                                                                                        _num_particles=env.config.validation_particles,
-                                                                                       _datasets=validation_datasets,
-                                                                                       _masks=validation_dataset_masks)
+                                                                                       _datasets=val_datasets,
+                                                                                       _masks=val_dataset_masks)
                 large_pred_smc_neg_lml = - utils.lexp(large_pred_sweep.log_normalizer)
                 nlml_hist.append(dc(large_pred_smc_neg_lml))
 
@@ -337,8 +336,8 @@ def main():
                     kl_metrics, true_bpf_kls = fivo_util.compare_kls(get_marginals,
                                                                      env,
                                                                      opt,
-                                                                     validation_datasets,
-                                                                     validation_dataset_masks,
+                                                                     val_datasets,
+                                                                     val_dataset_masks,
                                                                      true_model,
                                                                      subkey,
                                                                      do_fivo_sweep_jitted,
@@ -351,8 +350,8 @@ def main():
                     key, subkey = jr.split(key)
                     upc_metrics, true_bpf_upc = fivo_util.compare_unqiue_particle_counts(env,
                                                                                          opt,
-                                                                                         validation_datasets,
-                                                                                         validation_dataset_masks,
+                                                                                         val_datasets,
+                                                                                         val_dataset_masks,
                                                                                          true_model,
                                                                                          subkey,
                                                                                          do_fivo_sweep_jitted,
@@ -407,7 +406,7 @@ def main():
                 if env.config.PLOT:
 
                     key, subkey = jr.split(key)
-                    fivo_util.compare_sweeps(env, opt, validation_datasets, validation_dataset_masks, true_model, subkey, do_fivo_sweep_jitted,
+                    fivo_util.compare_sweeps(env, opt, val_datasets, val_dataset_masks, true_model, subkey, do_fivo_sweep_jitted,
                                              smc_jit, gen_smc_kwargs(), tag=_step, nrep=2, true_states=true_states)
 
                     param_figures = do_plot(param_hist, nlml_hist, em_neg_lml, large_true_bpf_neg_lml,
@@ -425,7 +424,7 @@ def main():
                 # ess_metrics, pred_smc_ess = fivo.compare_ess(get_marginals,
                 #                                               env,
                 #                                               opt,
-                #                                               validation_datasets,
+                #                                               val_datasets,
                 #                                               true_model,
                 #                                               subkey,
                 #                                               do_fivo_sweep_jitted,

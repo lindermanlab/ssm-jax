@@ -264,31 +264,47 @@ class IGWindowTilt(IndependentGaussianTilt):
         # Now score under that distribution.
         tilt_outputs = self._tilt_output_generator(dataset, model, particles, t, self.tilt_window_length, *inputs)
 
-        # TODO - need to work out if there is a continouous / discrete tilt in here.
-
         # We need to re-capitulate the distribution for each of the timesteps (its independent) and accumulate
-        # just those within the time window.
-        means = r_dist.mean()
-        variances = r_dist.variance()
+        # just those within the time window.  This is because we target a flat object, in which the time dimensions may
+        # be mashed up, so we have to do it manually, unfortunately.
         dataset_length = len(dataset)
         mask = (np.repeat(np.expand_dims(np.arange(self.tilt_window_length) + t + 1, 1), dataset.shape[-1], axis=1) < dataset_length).flatten()
 
-        def _eval(_mu, _var, _mask, _obs):
-            return tfd.Normal(_mu, np.sqrt(_var)).log_prob(_obs) * _mask
+        if 'Bernoulli' in repr(r_dist):  # TODO - this is also gross.
 
-        is_batched = (means.shape != mask.shape)
-        if is_batched:
-            r_vals = jax.vmap(_eval, in_axes=(1, 1, 0, 0))(means, variances, mask, tilt_outputs)
+            # This assumes that the bernoulli has been compiled in an `independent` distribution.
+            log_odds = r_dist.distribution.logits
+
+            def _eval(_log_odds, _mask, _obs):
+                return tfd.Bernoulli(_log_odds).log_prob(_obs) * _mask
+
+            is_batched = (log_odds.shape != mask.shape)
+            if is_batched:
+                raw_low_r_vals = jax.vmap(_eval, in_axes=(1, 0, 0))(log_odds, mask, tilt_outputs)
+            else:
+                raw_low_r_vals = _eval(log_odds, mask, tilt_outputs)
+
+        elif 'Gaussian' in repr(r_dist) or 'Normal' in repr(r_dist):
+            means = r_dist.mean()
+            variances = r_dist.variance()
+
+            def _eval(_mu, _var, _mask, _obs):
+                return tfd.Normal(_mu, np.sqrt(_var)).log_prob(_obs) * _mask
+
+            is_batched = (means.shape != mask.shape)
+            if is_batched:
+                raw_low_r_vals = jax.vmap(_eval, in_axes=(1, 1, 0, 0))(means, variances, mask, tilt_outputs)
+            else:
+                raw_low_r_vals = _eval(means, variances, mask, tilt_outputs)
+
         else:
-            r_vals = _eval(means, variances, mask, tilt_outputs)
-        log_r_val = np.sum(r_vals, axis=0)
-
+            raise NotImplementedError()
 
         # # TODO - removed tilt.
-        # log_r_val = log_r_val * 0.0
+        # raw_low_r_vals = raw_low_r_vals * 0.0
         # # TODO - removed tilt.
 
-
+        log_r_val = np.sum(raw_low_r_vals, axis=0)
         return log_r_val
 
 

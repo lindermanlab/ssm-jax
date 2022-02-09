@@ -244,7 +244,7 @@ class IndependentBernoulliGenerator(nn.Module):
 
         """
         log_odds = self._generate_distribution_parameters(inputs)
-        dist = jax.tree_map(lambda _log_odds: tfd.Bernoulli(_log_odds), log_odds)
+        dist = jax.tree_map(lambda _log_odds: tfd.Independent(tfd.Bernoulli(_log_odds), reinterpreted_batch_ndims=1), log_odds)
         return dist
 
     def _generate_distribution_parameters(self, inputs):

@@ -39,6 +39,8 @@ def vectorize_pytree(*args):
 class MLP(nn.Module):
     """
     Define a simple fully connected MLP (default ReLU activations).
+
+    NOTE - the weight and bias initializers only apply on the output layer.
     """
     features: Sequence[int]
     kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.glorot_normal
@@ -50,7 +52,7 @@ class MLP(nn.Module):
     def __call__(self, x):
         for feat in self.features[:-1]:
             x = self.activation(nn.Dense(feat)(x))
-        x = nn.Dense(self.features[-1])(x)
+        x = nn.Dense(self.features[-1], kernel_init=self.kernel_init, bias_init=self.bias_init)(x)
 
         if self.output_layer_activation:
             x = self.activation(x)

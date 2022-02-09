@@ -114,10 +114,10 @@ def define_test(key, env):
         datasets = np.expand_dims(datasets, 0)
         masks = np.expand_dims(masks, 0)
 
-    validation_datasets = np.asarray(dc(datasets[:env.config.num_val_datasets]))
-    validation_dataset_masks = np.asarray(dc(masks[:env.config.num_val_datasets]))
-    train_datasets = np.asarray(dc(datasets[env.config.num_val_datasets:]))
-    train_dataset_masks = np.asarray(dc(masks[env.config.num_val_datasets:]))
+    val_datasets = np.asarray(dc(datasets[:env.config.num_val_datasets]))
+    val_dataset_masks = np.asarray(dc(masks[:env.config.num_val_datasets]))
+    trn_datasets = np.asarray(dc(datasets[env.config.num_val_datasets:]))
+    trn_dataset_masks = np.asarray(dc(masks[env.config.num_val_datasets:]))
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
@@ -126,8 +126,8 @@ def define_test(key, env):
     # Define an encoder for the data.
     key, subkey = jax.random.split(key)
     encoder, encoder_params, rebuild_encoder_fn = define_data_encoder(subkey, true_model, env,
-                                                                      train_datasets, train_dataset_masks,
-                                                                      validation_datasets, validation_dataset_masks)
+                                                                      trn_datasets, trn_dataset_masks,
+                                                                      val_datasets, val_dataset_masks)
 
     # Define the proposal.
     key, subkey = jr.split(key)
@@ -138,7 +138,7 @@ def define_test(key, env):
     tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, datasets, env)
 
     # Return this big pile of stuff.
-    ret_model = (true_model, true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
+    ret_model = (true_model, true_states, trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks)
     ret_test = (model, get_model_params, rebuild_model_fn)
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
@@ -146,15 +146,15 @@ def define_test(key, env):
     return ret_model, ret_test, ret_prop, ret_tilt, ret_enc
 
 
-def define_data_encoder(key, true_model, env, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks):
+def define_data_encoder(key, true_model, env, trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks):
     """
 
     Args:
         subkey:
         true_model:
         env:
-        train_datasets:
-        train_dataset_masks:
+        trn_datasets:
+        trn_dataset_masks:
 
     Returns:
 

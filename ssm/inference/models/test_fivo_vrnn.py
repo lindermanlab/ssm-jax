@@ -182,7 +182,7 @@ def define_test(key, env):
 
     # Define the true model.
     key, subkey = jr.split(key)
-    true_model, train_true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks = \
+    true_model, trn_true_states, trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks, tst_dataset, tst_dataset_masks = \
         define_true_model_and_data(subkey, env)
 
     # Now define a model to test.
@@ -192,35 +192,35 @@ def define_test(key, env):
     # Define an encoder for the data.
     key, subkey = jax.random.split(key)
     encoder, encoder_params, rebuild_encoder_fn = define_data_encoder(subkey, true_model, env,
-                                                                      train_datasets, train_dataset_masks,
-                                                                      validation_datasets, validation_dataset_masks)
+                                                                      trn_datasets, trn_dataset_masks,
+                                                                      val_datasets, val_dataset_masks)
 
     # Define the proposal.
     key, subkey = jr.split(key)
-    proposal, proposal_params, rebuild_prop_fn = define_proposal(subkey, model, train_datasets, env, data_encoder=encoder)
+    prop, prop_params, rebuild_prop_fn = define_proposal(subkey, model, trn_datasets, env, data_encoder=encoder)
 
     # Define the tilt.
     key, subkey = jr.split(key)
-    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, train_datasets, env, data_encoder=encoder)
+    tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, trn_datasets, env, data_encoder=encoder)
 
     # Return this big pile of stuff.
-    ret_model = (true_model, train_true_states, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
+    ret_model = (true_model, trn_true_states, trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks, tst_dataset, tst_dataset_masks)
     ret_test = (model, get_model_params, rebuild_model_fn)
-    ret_prop = (proposal, proposal_params, rebuild_prop_fn)
+    ret_prop = (prop, prop_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
     ret_enc = (encoder, encoder_params, rebuild_encoder_fn)
     return ret_model, ret_test, ret_prop, ret_tilt, ret_enc
 
 
-def define_data_encoder(key, true_model, env, train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks):
+def define_data_encoder(key, true_model, env, trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks):
     """
 
     Args:
         subkey:
         true_model:
         env:
-        train_datasets:
-        train_dataset_masks:
+        trn_datasets:
+        trn_dataset_masks:
 
     Returns:
 
@@ -234,19 +234,19 @@ def define_data_encoder(key, true_model, env, train_datasets, train_dataset_mask
 
     # # Define the reccurent bit.
     # rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else env.config.latent_dim
-    # rnn_obj = nn_util.RnnWithReadoutLayer(train_datasets.shape[-1], rnn_state_dim)
+    # rnn_obj = nn_util.RnnWithReadoutLayer(trn_datasets.shape[-1], rnn_state_dim)
     rnn_obj = nn.LSTMCell()
 
-    data_encoder = encoders.IndependentBiRnnEncoder(env, subkey1, rnn_obj, train_datasets[0])
+    data_encoder = encoders.IndependentBiRnnEncoder(env, subkey1, rnn_obj, trn_datasets[0])
 
     if env.config.encoder_pretrain:
         encoder_params = pretrain_encoder(env, subkey2, data_encoder,
-                                          train_datasets, train_dataset_masks, validation_datasets, validation_dataset_masks)
+                                          trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks)
     else:
         print('[WARNING]: Not pretraining encoder.')
         subkey1, subkey2 = jr.split(key)
         init_carry = data_encoder.initialize_carry(subkey1)
-        encoder_params = data_encoder.init(subkey2, (init_carry, np.zeros(train_datasets.shape[-1])))
+        encoder_params = data_encoder.init(subkey2, (init_carry, np.zeros(trn_datasets.shape[-1])))
 
     rebuild_encoder_fn = encoders.rebuild_encoder(data_encoder, env)
 
@@ -319,7 +319,16 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
             print('Using Gaussian MLP tilt with trunk layer widths: {}'.format(layer_dims))
             head_mean_fn = None
             head_log_var_fn = None
-            trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
+
+            # Compute the dataset means to initialize the tilt.
+            trn_dataset_means = np.mean(np.mean(dataset, axis=0), axis=0)
+            clipped_trn_dataset_means = np.clip(trn_dataset_means, 0.0001, 0.9999)
+            clipped_log_odds = np.log(clipped_trn_dataset_means) - np.log(1 - clipped_trn_dataset_means)
+            # output_bias_init = lambda *_args: clipped_log_odds
+            def output_bias_init(*args):
+                return clipped_log_odds
+
+            trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True, bias_init=output_bias_init)
 
     else:
         raise NotImplementedError()
@@ -341,7 +350,7 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def define_proposal(subkey, model, train_dataset, env, data_encoder=None):
+def define_proposal(subkey, model, trn_dataset, env, data_encoder=None):
     """
 
     Args:
@@ -362,17 +371,17 @@ def define_proposal(subkey, model, train_dataset, env, data_encoder=None):
     # Stock proposal input form is (dataset, model, particles, t, p_dist, ).
     n_dummy_particles = 4
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(n_dummy_particles, ), )
-    dummy_obs = np.repeat(np.expand_dims(train_dataset[0, 0], 0), n_dummy_particles, axis=0)
+    dummy_obs = np.repeat(np.expand_dims(trn_dataset[0, 0], 0), n_dummy_particles, axis=0)
     dummy_p_dist = model.dynamics_distribution(dummy_particles, covariates=(dummy_obs, ))
-    dummy_proposal_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
+    dummy_prop_output = nn_util.vectorize_pytree(np.ones((model.latent_dim,)), )
 
     # Fork on the specified definition of the proposal.
     if env.config.proposal_fn_family == 'MLP':
 
         fcnet_hidden_sizes = env.config.fcnet_hidden_sizes
         trunk_fn = nn_util.MLP(fcnet_hidden_sizes, output_layer_activation=True)
-        head_mean_fn = nn.Dense(dummy_proposal_output.shape[0])
-        head_log_var_fn = nn.Dense(dummy_proposal_output.shape[0])
+        head_mean_fn = nn.Dense(dummy_prop_output.shape[0])
+        head_log_var_fn = nn.Dense(dummy_prop_output.shape[0])
 
     else:
         raise NotImplementedError()
@@ -381,18 +390,18 @@ def define_proposal(subkey, model, train_dataset, env, data_encoder=None):
     if env.config.proposal_type == 'VRNN_FILTERING':
         assert env.config.use_bootstrap_initial_distribution, "Error: must use bootstrap/model initialization in VRNN."
 
-        proposal_cls = VrnnFilteringProposal
+        prop_cls = VrnnFilteringProposal
         n_props = 1  # NOTE - we always use the bootstrap so we just use a single proposal.
-        proposal_window_length = 1
+        prop_window_length = 1
         dummy_q_state = None
         dummy_q_inputs = ()
 
     elif env.config.proposal_type == 'VRNN_SMOOTHING':
         assert env.config.use_bootstrap_initial_distribution, "Error: must use bootstrap/model initialization in VRNN."
 
-        proposal_cls = VrnnSmoothingProposal
+        prop_cls = VrnnSmoothingProposal
         n_props = 1  # NOTE - we always use the bootstrap so we just use a single proposal.
-        proposal_window_length = None  # This will use just the current state of and RNN.
+        prop_window_length = None  # This will use just the current state of and RNN.
         dummy_q_state = None
         dummy_q_inputs = data_encoder.dummy_exposed_state
 
@@ -400,24 +409,24 @@ def define_proposal(subkey, model, train_dataset, env, data_encoder=None):
         raise NotImplementedError()
 
     # Not define the input given the structure of the proposal.
-    stock_proposal_input = (train_dataset[0], model, dummy_particles, 0, dummy_p_dist, dummy_q_state, dummy_q_inputs)
+    stock_prop_input = (trn_dataset[0], model, dummy_particles, 0, dummy_p_dist, dummy_q_state, dummy_q_inputs)
 
     # Define the proposal itself.
     print('Defining {} proposals.'.format(n_props))
-    proposal = proposal_cls(n_proposals=n_props,
-                            stock_proposal_input=stock_proposal_input,
-                            dummy_output=dummy_proposal_output,
-                            trunk_fn=trunk_fn,
-                            head_mean_fn=head_mean_fn,
-                            head_log_var_fn=head_log_var_fn,
-                            proposal_window_length=proposal_window_length)
+    prop = prop_cls(n_proposals=n_props,
+                    stock_proposal_input=stock_prop_input,
+                    dummy_output=dummy_prop_output,
+                    trunk_fn=trunk_fn,
+                    head_mean_fn=head_mean_fn,
+                    head_log_var_fn=head_log_var_fn,
+                    proposal_window_length=prop_window_length)
 
     # Initialize the proposal network.
-    proposal_params = proposal.init(subkey1)
+    prop_params = prop.init(subkey1)
 
     # Return a function that we can call with just the parameters as an argument to return a new closed proposal.
-    rebuild_prop_fn = proposals.rebuild_proposal(proposal, env)
-    return proposal, proposal_params, rebuild_prop_fn
+    rebuild_prop_fn = proposals.rebuild_proposal(prop, env)
+    return prop, prop_params, rebuild_prop_fn
 
 
 def define_true_model_and_data(key, env):
@@ -430,31 +439,32 @@ def define_true_model_and_data(key, env):
 
     """
 
+    # Build up the VRNN.
+    RNN_CELL_TYPE = nn.LSTMCell
+
     # If using real data, this will be ignored.
     num_trials = env.config.num_trials
 
     if env.config.synthetic_data:
         emissions_dim = env.config.emissions_dim
-        train_dataset_means = 0.5 * np.ones((emissions_dim,))
+        trn_dataset_means = 0.5 * np.ones((emissions_dim, ))
         output_type = 'GAUSSIAN'
         T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
 
         # To be overwritten later.  just shut the linter up.
-        dataset, trn_dataset, trn_dataset_masks, valid_dataset, valid_dataset_masks = None, None, None, None, None
+        dataset, trn_dataset, trn_dataset_masks, val_dataset, val_dataset_masks = None, None, None, None, None
 
     else:
 
         if env.config.dataset in ['piano-midi', 'nottingham', 'musedata', 'jsb']:
-            trn_dataset, trn_dataset_masks, trn_true_states, trn_dataset_means = fivo_util.load_piano_data(env.config.dataset, phase='train')
-            valid_dataset, valid_dataset_masks, valid_true_states, _ = fivo_util.load_piano_data(env.config.dataset, phase='valid')
-            tst_dataset, tst_dataset_masks, tst_true_states, _ = fivo_util.load_piano_data(env.config.dataset, phase='test')
+            trn_dataset, trn_dataset_masks, trn_dataset_means = fivo_util.load_piano_data(env.config.dataset, phase='train')
+            val_dataset, val_dataset_masks, _ = fivo_util.load_piano_data(env.config.dataset, phase='valid')
+            tst_dataset, tst_dataset_masks, _ = fivo_util.load_piano_data(env.config.dataset, phase='test')
             emissions_dim = trn_dataset.shape[-1]
             output_type = 'BERNOULLI'
+            trn_true_states, val_true_states, tst_true_states = None, None, None
         else:
             raise NotImplementedError()
-
-    # Build up the VRNN.
-    RNN_CELL_TYPE = nn.LSTMCell
 
     latent_dim = env.config.latent_dim
     emissions_encoded_dim = env.config.obs_enc_dim if env.config.obs_enc_dim is not None else latent_dim
@@ -543,9 +553,9 @@ def define_true_model_and_data(key, env):
         true_states, dataset = true_model.unconditional_sample(key=subkey, num_steps=T + 1, num_samples=num_trials)
         dataset_masks = np.ones(dataset.shape[0])
 
-        valid_true_states = true_states[:env.config.num_val_datasets]
-        valid_dataset = dataset[:env.config.num_val_datasets]
-        valid_dataset_masks = dataset_masks[:env.config.num_val_datasets]
+        val_true_states = true_states[:env.config.num_val_datasets]
+        val_dataset = dataset[:env.config.num_val_datasets]
+        val_dataset_masks = dataset_masks[:env.config.num_val_datasets]
 
         trn_true_states = true_states[env.config.num_val_datasets]
         trn_dataset = dataset[env.config.num_val_datasets:]
@@ -554,7 +564,7 @@ def define_true_model_and_data(key, env):
     else:
         trn_true_states = None
 
-    return true_model, trn_true_states, trn_dataset, trn_dataset_masks, valid_dataset, valid_dataset_masks
+    return true_model, trn_true_states, trn_dataset, trn_dataset_masks, val_dataset, val_dataset_masks, tst_dataset, tst_dataset_masks
 
 
 def define_test_model(key, true_model, env):

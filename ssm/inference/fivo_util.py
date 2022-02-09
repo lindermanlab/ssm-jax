@@ -651,20 +651,6 @@ def pretrain_encoder(env, key, encoder, train_datasets, train_dataset_masks, val
 
     """
     print('Pretraining data encoder. ')
-    rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else env.config.latent_dim
-
-    # wrapped_encoder = nn_util.RnnWithReadoutLayer(train_datasets.shape[-1], rnn_state_dim, encoder)
-    #
-    # key, subkey = jr.split(key)
-    # init_carry = wrapped_encoder.initialize_carry(subkey)
-    #
-    # key, subkey = jr.split(key)
-    # encoder_params = wrapped_encoder.init(subkey, *(init_carry, np.zeros(train_datasets.shape[-1])))
-    #
-    # # We can pre-train the encoder to fit the data.  Do that here.
-    # # Note that when training we sweep over the parameters backward train in reverse.
-    # enc_opt_def = optim.Adam(learning_rate=env.config.encoder_pretrain_lr)
-    # enc_opt = enc_opt_def.create(encoder_params)
 
     train_mean = np.mean(train_datasets, axis=(0, 1))
     clipped_train_dataset_means = np.clip(train_mean, 0.001, 0.999)
@@ -797,7 +783,7 @@ def load_piano_data(dataset_pickle_name, phase='train'):
 
     print('{}: Loaded {} {} datasets.'.format(dataset_pickle_name, len(dataset), phase))
 
-    return dataset, dataset_masks, true_states, dataset_means
+    return dataset, dataset_masks, dataset_means
 
 
 # def final_validation(get_marginals,
