@@ -353,7 +353,7 @@ def define_proposal(key, model, trn_dataset, env, data_encoder=None):
         return None, None, lambda *args: None
 
     # Define the proposal that we will use.
-    # Stock proposal input form is (dataset, model, particles, t, p_dist, ).
+    # Stock proposal input form is (dataset, model, particles, t, p_dist, q_state, q_inputs).
     n_dummy_particles = 4
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(n_dummy_particles, ), )
     dummy_obs = np.repeat(np.expand_dims(trn_dataset[0, 0], 0), n_dummy_particles, axis=0)
