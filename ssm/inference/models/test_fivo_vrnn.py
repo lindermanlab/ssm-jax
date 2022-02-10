@@ -268,76 +268,66 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
     if (env.config.tilt_structure is None) or (env.config.tilt_structure == 'NONE'):
         return None, None, lambda *args: None
 
-    # This encodes Gaussian or Bernoulli output variables.
-    TILT_DISTRIBUTION_CLASS = model.output_type
+    # Define any custom link functions.
+    assert env.config.tilt_fn_family == 'MLP', "Must use MLP tilt fns."
 
     # configure the tilt.
     if env.config.tilt_type == 'SINGLE_WINDOW':
+
+        TILT_DISTRIBUTION_CLASS = model.output_type
         tilt_fn = VrnnRawWindowTilt
         tilt_window_length = env.config.tilt_window_length
         tilt_inputs = ()
 
+        if TILT_DISTRIBUTION_CLASS == 'BERNOULLI':
+            # Compute the dataset means to initialize the tilt.
+            trn_dataset_means = np.mean(np.mean(dataset, axis=0), axis=0)
+            clipped_trn_dataset_means = np.clip(trn_dataset_means, 0.0001, 0.9999)
+            clipped_log_odds = np.log(clipped_trn_dataset_means) - np.log(1 - clipped_trn_dataset_means)
+
+            def output_bias_init(*args):
+                # NOTE - need to transpose in here to make sure that the flattened dimensions are correct.
+                return np.repeat(np.expand_dims(clipped_log_odds, axis=0), axis=0, repeats=env.config.tilt_window_length).flatten()
+
+        else:
+            raise NotImplementedError()
+
     elif env.config.tilt_type == 'ENCODED':
+        assert data_encoder is not None, "Must supply an encoder to use encoded representations."
+
+        TILT_DISTRIBUTION_CLASS = 'GAUSSIAN'
         tilt_fn = VrnnEncodedTilt
         tilt_window_length = None
-
-        assert data_encoder is not None, "Must supply an encoder to use encoded representations."
-        dummy_encoded_dataset = jax.tree_map(lambda _d: np.repeat(np.expand_dims(_d, 0), dataset.shape[1], axis=0), data_encoder.dummy_exposed_state)
-        tilt_inputs = (dummy_encoded_dataset, )
+        _dummy_encoded_dataset = jax.tree_map(lambda _d: np.repeat(np.expand_dims(_d, 0), dataset.shape[1], axis=0), data_encoder.dummy_exposed_state)
+        tilt_inputs = (_dummy_encoded_dataset, )
+        output_bias_init = nn.initializers.zeros
 
     else:
         raise NotImplementedError()
 
-    n_tilts = 1
-
     # Tilt functions take in (dataset, model, particles, t-1).
+    n_tilts = 1
     dummy_particles = model.initial_distribution().sample(seed=jr.PRNGKey(0), sample_shape=(2,), )
-
-    # Generate the inputs.
     stock_tilt_input = (dataset[0], model, jax.tree_map(lambda _x: _x[0], dummy_particles), 0, tilt_window_length, *tilt_inputs)
-
-    # Generate the outputs.
     dummy_tilt_output = tilt_fn._tilt_output_generator(*stock_tilt_input)
 
-    # Define any custom link functions.
-    if env.config.tilt_fn_family == 'AFFINE':
-        raise NotImplementedError()
+    # Build up the MLPs that will approximate the functions.
+    if TILT_DISTRIBUTION_CLASS == 'GAUSSIAN':
+        layer_dims = env.config.fcnet_hidden_sizes + env.config.fcnet_hidden_sizes
+        print('Using Gaussian MLP tilt with: ' +
+              'trunk layer widths: {}, '.format(layer_dims) +
+              'mean head widths: {}, '.format(dummy_tilt_output.shape[0]) +
+              'variance head widths: {}.'.format(dummy_tilt_output.shape[0]))
+        trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
+        head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
+        head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0])
 
-    elif env.config.tilt_fn_family == 'MLP':
-
-        if TILT_DISTRIBUTION_CLASS == 'GAUSSIAN':
-            layer_dims = env.config.fcnet_hidden_sizes + env.config.fcnet_hidden_sizes
-            print('Using Gaussian MLP tilt with: ' + \
-                  'trunk layer widths: {}, '.format(layer_dims) + \
-                  'mean head widths: {}, '.format(dummy_tilt_output.shape[0]) + \
-                  'variance head widths: {}.'.format(dummy_tilt_output.shape[0]))
-            trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
-            head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
-            head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0])
-
-        else:
-            layer_dims = env.config.fcnet_hidden_sizes + [dummy_tilt_output.shape[0]]
-            print('Using Gaussian MLP tilt with trunk layer widths: {}'.format(layer_dims))
-            head_mean_fn = None
-            head_log_var_fn = None
-
-            if env.config.tilt_type == 'SINGLE_WINDOW':
-                # Compute the dataset means to initialize the tilt.
-                trn_dataset_means = np.mean(np.mean(dataset, axis=0), axis=0)
-                clipped_trn_dataset_means = np.clip(trn_dataset_means, 0.0001, 0.9999)
-                clipped_log_odds = np.log(clipped_trn_dataset_means) - np.log(1 - clipped_trn_dataset_means)
-                # output_bias_init = lambda *_args: clipped_log_odds
-
-                def output_bias_init(*args):
-                    # NOTE - need to transpose in here to make sure that the flattened dimensions are correct.
-                    return np.repeat(np.expand_dims(clipped_log_odds, axis=0), axis=0, repeats=env.config.tilt_window_length).flatten()
-
-                # (np.repeat(np.expand_dims(np.arange(self.tilt_window_length) + t + 1, 1), dataset.shape[-1], axis=1) < dataset_length).flatten()
-
-                trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True, bias_init=output_bias_init)
-
-            else:
-                trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
+    elif TILT_DISTRIBUTION_CLASS == 'BERNOULLI':
+        layer_dims = env.config.fcnet_hidden_sizes + [dummy_tilt_output.shape[0]]
+        print('Using Bernoulli MLP tilt with trunk layer widths: {}'.format(layer_dims))
+        head_mean_fn = None
+        head_log_var_fn = None
+        trunk_fn = nn_util.MLP(layer_dims, bias_init=output_bias_init)
 
     else:
         raise NotImplementedError()
@@ -450,18 +440,10 @@ def define_true_model_and_data(key, env):
 
     # Build up the VRNN.
     RNN_CELL_TYPE = nn.LSTMCell
-
-    # If using real data, this will be ignored.
-    num_trials = env.config.num_trials
+    kernel_init = nn.initializers.xavier_normal()
 
     if env.config.synthetic_data:
-        emissions_dim = env.config.emissions_dim
-        trn_dataset_means = 0.5 * np.ones((emissions_dim, ))
-        output_type = 'GAUSSIAN'
-        T = env.config.T  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
-
-        # To be overwritten later.  just shut the linter up.
-        dataset, trn_dataset, trn_dataset_masks, val_dataset, val_dataset_masks = None, None, None, None, None
+        raise NotImplementedError()
 
     else:
 
@@ -481,10 +463,6 @@ def define_true_model_and_data(key, env):
     rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else latent_dim
     fcnet_hidden_sizes = env.config.fcnet_hidden_sizes
 
-    # We have to do something a bit funny to the full decoder to make sure that it is approximately correct.
-    # kernel_init = lambda *args: nn.initializers.xavier_normal()(*args)  # * 0.001
-    kernel_init = nn.initializers.xavier_normal()
-
     # Define some dummy place holders.
     val_obs = np.zeros(emissions_dim)
     val_latent = np.zeros(latent_dim)
@@ -496,12 +474,11 @@ def define_true_model_and_data(key, env):
     latent_decoder = nn_util.MLP(fcnet_hidden_sizes + [latent_encoded_dim], kernel_init=kernel_init)
     data_encoder = nn_util.MLP(fcnet_hidden_sizes + [emissions_encoded_dim], kernel_init=kernel_init)
 
+    # We have to do something a bit funny to the full decoder to make sure that it is approximately correct.
     if output_type == 'BERNOULLI':
-
         clipped_trn_dataset_means = np.clip(trn_dataset_means, 0.0001, 0.9999)
         clipped_log_odds = np.log(clipped_trn_dataset_means) - np.log(1 - clipped_trn_dataset_means)
         output_bias_init = lambda *_args: clipped_log_odds
-
         full_decoder = nn_util.MLP(fcnet_hidden_sizes + [emissions_dim], kernel_init=kernel_init, bias_init=output_bias_init)
 
     elif output_type == 'GAUSSIAN':
@@ -556,23 +533,7 @@ def define_true_model_and_data(key, env):
                       params_decoder_full=params_full_decoder,
                       params_encoder_data=params_data_encoder, )
 
-    # Load up the data first to pull out the dimensions.
-    if env.config.synthetic_data:
-        # Sample some data.  NOTE - we use the unconditional sample subroutine here to generate data and obs.
-        key, subkey = jr.split(key)
-        true_states, dataset = true_model.unconditional_sample(key=subkey, num_steps=T + 1, num_samples=num_trials)
-        dataset_masks = np.ones(dataset.shape[0])
-
-        val_true_states = true_states[:env.config.num_val_datasets]
-        val_dataset = dataset[:env.config.num_val_datasets]
-        val_dataset_masks = dataset_masks[:env.config.num_val_datasets]
-
-        trn_true_states = true_states[env.config.num_val_datasets]
-        trn_dataset = dataset[env.config.num_val_datasets:]
-        trn_dataset_masks = dataset_masks[env.config.num_val_datasets:]
-
-    else:
-        trn_true_states = None
+    trn_true_states = None
 
     return true_model, trn_true_states, trn_dataset, trn_dataset_masks, val_dataset, val_dataset_masks, tst_dataset, tst_dataset_masks
 
