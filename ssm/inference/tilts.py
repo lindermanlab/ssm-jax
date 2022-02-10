@@ -305,6 +305,11 @@ class IGWindowTilt(IndependentGaussianTilt):
         # # TODO - removed tilt.
 
         log_r_val = np.sum(raw_low_r_vals, axis=0)
+
+        # If there is no shape to the tilt, we need to make it a single particle.
+        if len(log_r_val.shape) == 0:
+            log_r_val = np.expand_dims(log_r_val, 0)
+
         return log_r_val
 
 
