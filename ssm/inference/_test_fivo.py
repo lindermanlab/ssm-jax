@@ -67,12 +67,21 @@ def main():
         else:
             raise NotImplementedError()
 
-        if env.config.resampling_criterion == 'always_resample':
-            resampling_criterion = always_resample_criterion
-        elif env.config.resampling_criterion == 'never_resample':
-            resampling_criterion = never_resample_criterion
-        elif env.config.resampling_criterion == 'ess_criterion':
-            resampling_criterion = ess_criterion
+        if env.config.train_resampling_criterion == 'always_resample':
+            train_resampling_criterion = always_resample_criterion
+        elif env.config.train_resampling_criterion == 'never_resample':
+            train_resampling_criterion = never_resample_criterion
+        elif env.config.train_resampling_criterion == 'ess_criterion':
+            train_resampling_criterion = ess_criterion
+        else:
+            raise NotImplementedError()
+
+        if env.config.eval_resampling_criterion == 'always_resample':
+            eval_resampling_criterion = always_resample_criterion
+        elif env.config.eval_resampling_criterion == 'never_resample':
+            eval_resampling_criterion = never_resample_criterion
+        elif env.config.eval_resampling_criterion == 'ess_criterion':
+            eval_resampling_criterion = ess_criterion
         else:
             raise NotImplementedError()
 
@@ -137,17 +146,17 @@ def main():
                                     lr_e=env.config.lr_e,
                                     )
 
-        def gen_smc_kwargs(_temperature=1.0):
+        def gen_smc_kwargs(_temperature=1.0, _resampling_criteria=train_resampling_criterion):
             return {'use_stop_gradient_resampling': env.config.use_sgr,
                     'tilt_temperature': _temperature,
-                    'resampling_criterion': resampling_criterion,
+                    'resampling_criterion': _resampling_criteria,
                     'resampling_function': resampling_function}
 
         # Jit the smc subroutine for completeness.
         smc_jit = jax.jit(smc, static_argnums=(7, 8, 9, 11, 12))
 
         # Close over constant parameters.
-        do_fivo_sweep_closed = lambda _subkey, _params, _num_particles, _datasets, _masks, _temperature=1.0: \
+        do_fivo_sweep_closed = lambda _subkey, _params, _num_particles, _datasets, _masks, _temperature=1.0, _resampling_criterion=train_resampling_criterion: \
             fivo.do_fivo_sweep(_params,
                                _subkey,
                                rebuild_model_fn,
@@ -158,10 +167,10 @@ def main():
                                _masks,
                                _num_particles,
                                env.config.use_bootstrap_initial_distribution,
-                               **gen_smc_kwargs(_temperature=_temperature))
+                               **gen_smc_kwargs(_temperature=_temperature, _resampling_criteria=_resampling_criterion))
 
         # Jit this badboy.
-        do_fivo_sweep_jitted = jax.jit(do_fivo_sweep_closed, static_argnums=(2, ))
+        do_fivo_sweep_jitted = jax.jit(do_fivo_sweep_closed, static_argnums=(2, 6))
 
         # Close over a regularized version.
         def do_regularized_fivo_sweep_closed(_subkey, _params, _num_particles, _datasets, _masks, _temperature=1.0):
@@ -178,9 +187,6 @@ def main():
             _neg_fivo_bound_reg = _neg_fivo_bound_unreg + (env.config.l2_reg * _l2_score)
             return _neg_fivo_bound_reg, _sweep_posteriors
 
-        # Convert into value and grad.
-        do_fivo_sweep_val_and_grad = jax.value_and_grad(do_regularized_fivo_sweep_closed, argnums=1, has_aux=True)
-
         # Wrap another call to SMC for validation.
         @jax.jit
         def _single_bpf_true_val_small(_subkey):
@@ -189,7 +195,7 @@ def main():
                                         val_datasets,
                                         val_dataset_masks,
                                         num_particles=env.config.sweep_test_particles,
-                                        **gen_smc_kwargs())
+                                        **gen_smc_kwargs(_resampling_criteria=eval_resampling_criterion))
             return _sweep_posteriors
 
         # Wrap another call to fivo for validation.
@@ -199,7 +205,8 @@ def main():
                                                         _params,
                                                         _datasets=val_datasets,
                                                         _masks=val_dataset_masks,
-                                                        _num_particles=env.config.sweep_test_particles,)
+                                                        _num_particles=env.config.sweep_test_particles,
+                                                        _resampling_criterion=eval_resampling_criterion)
             return _sweep_posteriors
 
         # Wrap another call to SMC for validation.
@@ -210,7 +217,7 @@ def main():
                                         tst_datasets,
                                         tst_dataset_masks,
                                         num_particles=env.config.sweep_test_particles,
-                                        **gen_smc_kwargs())
+                                        **gen_smc_kwargs(_resampling_criteria=eval_resampling_criterion))
             return _sweep_posteriors
 
         # Wrap another call to fivo for validation.
@@ -220,8 +227,12 @@ def main():
                                                         _params,
                                                         _datasets=tst_datasets,
                                                         _masks=tst_dataset_masks,
-                                                        _num_particles=env.config.sweep_test_particles,)
+                                                        _num_particles=env.config.sweep_test_particles,
+                                                        _resampling_criterion=eval_resampling_criterion)
             return _sweep_posteriors
+
+        # Convert into value and grad.
+        do_fivo_sweep_val_and_grad = jax.value_and_grad(do_regularized_fivo_sweep_closed, argnums=1, has_aux=True)
 
         single_bpf_true_val_small_vmap = jax.vmap(_single_bpf_true_val_small)
         single_fivo_val_small_vmap = jax.vmap(_single_fivo_val_small, in_axes=(0, None))
@@ -510,7 +521,8 @@ def main():
                                                                                        best_params,
                                                                                        _num_particles=env.config.validation_particles,
                                                                                        _datasets=val_datasets,
-                                                                                       _masks=val_dataset_masks)
+                                                                                       _masks=val_dataset_masks,
+                                                                                       _resampling_criterion=eval_resampling_criterion)
         large_best_smc_neg_lml_val = - utils.lexp(large_best_sweep_val.log_normalizer)
 
         key, subkey = jr.split(key)
@@ -518,7 +530,8 @@ def main():
                                                                                        best_params,
                                                                                        _num_particles=env.config.validation_particles,
                                                                                        _datasets=tst_datasets,
-                                                                                       _masks=tst_dataset_masks)
+                                                                                       _masks=tst_dataset_masks,
+                                                                                       _resampling_criterion=eval_resampling_criterion)
         large_best_smc_neg_lml_tst = - utils.lexp(large_best_sweep_tst.log_normalizer)
 
         # Test the variance of the estimators with a small number of particles.

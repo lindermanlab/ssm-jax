@@ -510,7 +510,7 @@ class VrnnEncodedTilt(tilts.IndependentGaussianTilt):
         # assert t < len(dataset), "Cannot tilt at the last timestep."
 
         encoded_future_obs = inputs[0][1]
-        encoded_future_obs_at_tp1 = jax.lax.dynamic_index_in_dim(encoded_future_obs, t, axis=0, keepdims=False)
+        encoded_future_obs_at_tp1 = jax.lax.dynamic_index_in_dim(encoded_future_obs, t+1, axis=0, keepdims=False)
 
         tilt_outputs = (encoded_future_obs_at_tp1, )
 
