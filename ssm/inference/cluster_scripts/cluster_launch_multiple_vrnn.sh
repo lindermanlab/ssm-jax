@@ -7,8 +7,8 @@ export latent_dim=32
 export n_part_global=4
 
 # These are reasonably constant for VRNN experiments
-export glob_tag="VRNN-${dataset}-${n_part}-v1-0-5"
-export model ='VRNN'
+export glob_tag="VRNN-${dataset}-${n_part_global}-v1-0-5"
+export model='VRNN'
 export emissions_dim=1
 
 # launch_cmd () { sbatch -p gpu -G 1 -C GPU_MEM:16GB -t 4:00:00 -J ${glob_tag} --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},PROPOSAL_TYPE=${proposal_type},TILT_STRUCTURE=${tilt_structure},TILT_TYPE=${tilt_type},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim},USE_VI=${use_vi},N_PART=${n_part},ENCODER_STRUCT=${enc_struct},RESAMP_CRIT=${resamp_crit},DATASET={dataset} cluster_scripts/_cluster_launch_multiple.sh ; }
@@ -27,7 +27,7 @@ export tilt_structure='NONE'
 export enc_struct='NONE'
 export temper=0.0
 export use_vi=0
-export n_part=n_part_global
+export n_part=$n_part_global
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
 launch_cmd
@@ -57,7 +57,7 @@ export tilt_structure='NONE'
 export enc_struct='NONE'
 export temper=0.0
 export use_vi=0
-export n_part=n_part_global
+export n_part=$n_part_global
 export train_resamp_crit='never_resample'	# No resampling in IWAE
 export eval_resamp_crit='never_resample'	# No resampling in IWAE
 launch_cmd
@@ -73,7 +73,7 @@ export tilt_structure='NONE'
 export enc_struct='NONE'
 export temper=0.0
 export use_vi=0
-export n_part=n_part_global
+export n_part=$n_part_global
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
 launch_cmd
@@ -88,7 +88,7 @@ export tilt_structure='NONE'
 export enc_struct='BIRNN'
 export temper=0.0
 export use_vi=0
-export n_part=n_part_global
+export n_part=$n_part_global
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
 launch_cmd
@@ -104,7 +104,7 @@ export tilt_structure='DIRECT'
 export enc_struct='NONE'
 export temper=0.0
 export use_vi=0
-export n_part=n_part_global
+export n_part=$n_part_global
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
 launch_cmd
@@ -119,7 +119,7 @@ export tilt_structure='DIRECT'
 export enc_struct='BIRNN'
 export temper=0.0
 export use_vi=0
-export n_part=n_part_global
+export n_part=$n_part_global
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
 launch_cmd
@@ -135,7 +135,7 @@ export tilt_structure='DIRECT'
 export enc_struct='NONE'
 export temper=1.0
 export use_vi=0
-export n_part=n_part_global
+export n_part=$n_part_global
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
 launch_cmd
@@ -150,7 +150,7 @@ export tilt_structure='DIRECT'
 export enc_struct='BIRNN'
 export temper=1.0
 export use_vi=0
-export n_part=n_part_global
+export n_part=$n_part_global
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
 launch_cmd
