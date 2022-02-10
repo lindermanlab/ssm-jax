@@ -220,9 +220,7 @@ def define_data_encoder(key, true_model, env, trn_datasets, trn_dataset_masks, v
 
     key, subkey1, subkey2 = jr.split(key, num=3)
 
-    # # Define the reccurent bit.
-    # rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else env.config.latent_dim
-    # rnn_obj = nn_util.RnnWithReadoutLayer(trn_datasets.shape[-1], rnn_state_dim)
+    # # Define the recurrent bit.
     rnn_obj = nn.LSTMCell()
 
     data_encoder = encoders.IndependentBiRnnEncoder(env, subkey1, rnn_obj, trn_datasets[0])
@@ -248,6 +246,7 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
         subkey:
         model:
         dataset:
+        data_encoder:
 
     Returns:
 

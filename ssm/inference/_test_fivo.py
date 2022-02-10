@@ -171,11 +171,11 @@ def main():
                 if x is None:
                     return 0.0
                 else:
-                    return env.config.l2_reg * (x ** 2).mean()
+                    return (x ** 2).mean()
 
-            _l2_score = sum(_l2_loss(w) for w in jax.tree_leaves(_params["params"]))
+            _l2_score = sum([sum([_l2_loss(_w) for _w in jax.tree_leaves(w)]) for w in _params])
 
-            _neg_fivo_bound_reg = _neg_fivo_bound_unreg + _l2_score
+            _neg_fivo_bound_reg = _neg_fivo_bound_unreg + (env.config.l2_reg * _l2_score)
             return _neg_fivo_bound_reg, _sweep_posteriors
 
         # Convert into value and grad.
