@@ -81,7 +81,7 @@ def get_config():
     parser.add_argument('--lr-p', default=1.0e-3, type=float, help="Learning rate of model parameters.")
     parser.add_argument('--lr-q', default=1.0e-3, type=float, help="Learning rate of proposal parameters.")
     parser.add_argument('--lr-r', default=1.0e-3, type=float, help="Learning rate of tilt parameters.")
-    parser.add_argument('--lr-e', default=1.0e-5, type=float, help="Learning rate of data encoder parameters.")
+    parser.add_argument('--lr-e', default=1.0e-4, type=float, help="Learning rate of data encoder parameters.")
 
     # Misc settings.
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
