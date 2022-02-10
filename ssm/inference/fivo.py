@@ -165,32 +165,22 @@ def do_fivo_sweep(_param_vals,
 
     tmp_model = _rebuild_model(_param_vals[0])
 
+    _single_fivo_sweep_closed = lambda _single_dataset, _single_mask, _k: _do_single_fivo_sweep(_param_vals,
+                                                                                                _k,
+                                                                                                _rebuild_model,
+                                                                                                _rebuild_proposal,
+                                                                                                _rebuild_tilt,
+                                                                                                _rebuild_data_encoder,
+                                                                                                _single_dataset,
+                                                                                                _single_mask,
+                                                                                                _num_particles,
+                                                                                                _use_bootstrap_initial_distribution,
+                                                                                                **_smc_kw_args)
+
     # NOTE - this is a bit sloppy, need to work out if the data is batched in a more reliable way.
     if _datasets.shape[1:] == tmp_model.emissions_shape:
-        _smc_posteriors = _do_single_fivo_sweep(_param_vals,
-                                                _key,
-                                                _rebuild_model,
-                                                _rebuild_proposal,
-                                                _rebuild_tilt,
-                                                _rebuild_data_encoder,
-                                                _datasets,
-                                                _masks,
-                                                _num_particles,
-                                                _use_bootstrap_initial_distribution,
-                                                **_smc_kw_args)
+        _smc_posteriors = _single_fivo_sweep_closed(_datasets, _masks, jr.split(_key, len(_datasets)))
     else:
-        _single_fivo_sweep_closed = lambda _single_dataset, _single_mask, _k: _do_single_fivo_sweep(_param_vals,
-                                                                                                    _k,
-                                                                                                    _rebuild_model,
-                                                                                                    _rebuild_proposal,
-                                                                                                    _rebuild_tilt,
-                                                                                                    _rebuild_data_encoder,
-                                                                                                    _single_dataset,
-                                                                                                    _single_mask,
-                                                                                                    _num_particles,
-                                                                                                    _use_bootstrap_initial_distribution,
-                                                                                                    **_smc_kw_args)
-
         _smc_posteriors = jax.vmap(_single_fivo_sweep_closed)(_datasets, _masks, jr.split(_key, len(_datasets)))
 
     # Compute the mean of the log marginal (this is negative of the FIVO bound).

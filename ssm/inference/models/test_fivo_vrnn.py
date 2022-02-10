@@ -50,7 +50,7 @@ def get_config():
     parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
 
     # Encoder pre-training hyperparameters.
-    parser.add_argument('--encoder-pretrain', default=0, type=int, help="{0, 1}")
+    parser.add_argument('--encoder-pretrain', default=1, type=int, help="{0, 1}")
     parser.add_argument('--encoder-pretrain-opt-steps', default=200, type=int, help="")
     parser.add_argument('--encoder-pretrain-lr', default=0.01, type=float, help="")
     parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
@@ -63,7 +63,7 @@ def get_config():
 
     # Tilt args.
     parser.add_argument('--tilt-structure', default='DIRECT', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
-    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
+    parser.add_argument('--tilt-type', default='ENCODED', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
     parser.add_argument('--tilt-window-length', default=2, type=int, help="{int, None}.  Length of any window.")
     parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'MLP'}. ")
 
