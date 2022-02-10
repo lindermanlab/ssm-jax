@@ -68,7 +68,7 @@ def get_config():
     parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'MLP'}. ")
 
     # VRNN architecture args.
-    parser.add_argument('--latent-dim', default=64, type=int, help="Dimension of z latent variable.")
+    parser.add_argument('--latent-dim', default=32, type=int, help="Dimension of z latent variable.")
     parser.add_argument('--latent-enc-dim', default=None, type=int, help="Dimension of encoded latent z variable. (None -> latent_dim)")
     parser.add_argument('--obs-enc-dim', default=None, type=int, help="Dimension of encoded observations. (None -> latent_dim)")
     parser.add_argument('--rnn-state-dim', default=None, type=int, help="Dimension of the deterministic RNN. (None -> latent_dim)")
@@ -116,20 +116,6 @@ def get_config():
 
     # Make sure this one is formatted correctly.
     config['model'] = 'VRNN'
-
-    # JSB uses half the number of latent states.
-    if config['dataset'] == 'jsb':
-        config['latent_dim'] = int(config['latent_dim'] / 2)
-        print('[WARNING]: Halving latent dimension for JSB.')
-
-        if config['rnn_state_dim'] is not None:
-            config['rnn_state_dim'] = int(config['rnn_state_dim'] / 2)
-
-        if config['obs_enc_dim'] is not None:
-            config['obs_enc_dim'] = int(config['obs_enc_dim'] / 2)
-
-        if config['latent_enc_dim'] is not None:
-            config['latent_enc_dim'] = int(config['latent_enc_dim'] / 2)
 
     assert not config['vi_use_tilt_gradient'], "NO IDEA IF THIS WILL WORK YET..."
     assert len(config['free_parameters'].split(',')) == 5, "NOT OPTIMIZING ALL VRNN PARAMETERS..."
