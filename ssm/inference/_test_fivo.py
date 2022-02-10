@@ -9,6 +9,7 @@ from jax import random as jr
 from copy import deepcopy as dc
 import pickle as p
 import platform
+from timeit import default_timer as dt
 
 # Import some ssm stuff.
 from ssm.utils import Verbosity, possibly_disable_jit
@@ -308,6 +309,9 @@ def main():
             # Do some validation and give some output.
             if (_step % env.config.validation_interval == 0) or (_step == 1):
 
+                # Clock the time.
+                en = dt()
+
                 # Capture the parameters.
                 param_hist = fivo_util.log_params(param_hist, cur_params)
 
@@ -413,10 +417,11 @@ def main():
                                             get_model_free_params(true_model), param_figures)
 
                 # Do some printing.
+                print('Time per gradient step: {:> 6.3f}s'.format((en - st) / env.config.validation_interval))
+                st = dt()
                 if VI_USE_VI_GRAD:
                     print("VI: Step {:>5d}:  Final VI NEG-ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
                           format(_step, final_vi_elbo, vi_gradient_steps, VI_FREQUENCY))
-
                 do_print(_step, true_model, opt, large_true_bpf_neg_lml, true_neg_bpf_fivo_bound, large_pred_smc_neg_lml, large_pred_smc_neg_fivo_bound, em_neg_lml, smoothed_training_loss)
 
                 # # Compare the effective sample size.
