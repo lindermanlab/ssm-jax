@@ -314,21 +314,30 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
             trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
             head_mean_fn = nn.Dense(dummy_tilt_output.shape[0])
             head_log_var_fn = nn.Dense(dummy_tilt_output.shape[0])
+
         else:
             layer_dims = env.config.fcnet_hidden_sizes + [dummy_tilt_output.shape[0]]
             print('Using Gaussian MLP tilt with trunk layer widths: {}'.format(layer_dims))
             head_mean_fn = None
             head_log_var_fn = None
 
-            # Compute the dataset means to initialize the tilt.
-            trn_dataset_means = np.mean(np.mean(dataset, axis=0), axis=0)
-            clipped_trn_dataset_means = np.clip(trn_dataset_means, 0.0001, 0.9999)
-            clipped_log_odds = np.log(clipped_trn_dataset_means) - np.log(1 - clipped_trn_dataset_means)
-            # output_bias_init = lambda *_args: clipped_log_odds
-            def output_bias_init(*args):
-                return clipped_log_odds
+            if env.config.tilt_type == 'SINGLE_WINDOW':
+                # Compute the dataset means to initialize the tilt.
+                trn_dataset_means = np.mean(np.mean(dataset, axis=0), axis=0)
+                clipped_trn_dataset_means = np.clip(trn_dataset_means, 0.0001, 0.9999)
+                clipped_log_odds = np.log(clipped_trn_dataset_means) - np.log(1 - clipped_trn_dataset_means)
+                # output_bias_init = lambda *_args: clipped_log_odds
 
-            trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True, bias_init=output_bias_init)
+                def output_bias_init(*args):
+                    # NOTE - need to transpose in here to make sure that the flattened dimensions are correct.
+                    return np.repeat(np.expand_dims(clipped_log_odds, axis=0), axis=0, repeats=env.config.tilt_window_length).flatten()
+
+                # (np.repeat(np.expand_dims(np.arange(self.tilt_window_length) + t + 1, 1), dataset.shape[-1], axis=1) < dataset_length).flatten()
+
+                trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True, bias_init=output_bias_init)
+
+            else:
+                trunk_fn = nn_util.MLP(layer_dims, output_layer_activation=True)
 
     else:
         raise NotImplementedError()
@@ -350,7 +359,7 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
     return tilt, tilt_params, rebuild_tilt_fn
 
 
-def define_proposal(subkey, model, trn_dataset, env, data_encoder=None):
+def define_proposal(key, model, trn_dataset, env, data_encoder=None):
     """
 
     Args:
@@ -362,7 +371,7 @@ def define_proposal(subkey, model, trn_dataset, env, data_encoder=None):
     Returns:
 
     """
-    subkey, subkey1, subkey2, subkey3 = jr.split(subkey, num=4)
+    key, subkey1, subkey2, subkey3 = jr.split(key, num=4)
 
     if env.config.proposal_structure in [None, 'NONE', 'BOOTSTRAP']:
         return None, None, lambda *args: None
@@ -473,7 +482,8 @@ def define_true_model_and_data(key, env):
     fcnet_hidden_sizes = env.config.fcnet_hidden_sizes
 
     # We have to do something a bit funny to the full decoder to make sure that it is approximately correct.
-    kernel_init = lambda *args: nn.initializers.xavier_normal()(*args)  # * 0.001
+    # kernel_init = lambda *args: nn.initializers.xavier_normal()(*args)  # * 0.001
+    kernel_init = nn.initializers.xavier_normal()
 
     # Define some dummy place holders.
     val_obs = np.zeros(emissions_dim)

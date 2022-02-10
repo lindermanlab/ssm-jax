@@ -43,7 +43,7 @@ class MLP(nn.Module):
     NOTE - the weight and bias initializers only apply on the output layer.
     """
     features: Sequence[int]
-    kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.glorot_normal
+    kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.glorot_normal()
     bias_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.zeros
     output_layer_activation: bool = False
     activation: Callable = nn.relu
