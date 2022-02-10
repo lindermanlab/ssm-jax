@@ -1,11 +1,10 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-glob_tag='VRNN-JSB-v0-0-1'
+glob_tag='VRNN-JSB-v0-0-2'
 model='VRNN'
 latent_dim=32
 emissions_dim=1
-use_sgr=0
 temper=0.0
 use_vi=0
 n_part=4
