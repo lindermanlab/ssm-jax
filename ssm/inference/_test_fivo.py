@@ -94,7 +94,7 @@ def main():
         ret_vals = define_test(subkey, env)
 
         # Unpack that big mess of stuff.
-        true_model, true_states, trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks, tst_dataset, tst_dataset_masks = ret_vals[0]  # Unpack true model
+        true_model, true_states, trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks, tst_datasets, tst_dataset_masks = ret_vals[0]  # Unpack true model
         model, get_model_free_params, rebuild_model_fn = ret_vals[1]    # Unpack test model.
         proposal, proposal_params, rebuild_prop_fn = ret_vals[2]        # Unpack proposal.
         tilt, tilt_params, rebuild_tilt_fn = ret_vals[3]                # Unpack tilt.
@@ -168,7 +168,7 @@ def main():
 
         # Wrap another call to SMC for validation.
         @jax.jit
-        def _single_bpf_true_eval_small(_subkey):
+        def _single_bpf_true_val_small(_subkey):
             _sweep_posteriors = smc_jit(_subkey,
                                         true_model,
                                         val_datasets,
@@ -179,7 +179,7 @@ def main():
 
         # Wrap another call to fivo for validation.
         @jax.jit
-        def _single_fivo_eval_small(_subkey, _params):
+        def _single_fivo_val_small(_subkey, _params):
             _, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
                                                         _params,
                                                         _datasets=val_datasets,
@@ -187,8 +187,31 @@ def main():
                                                         _num_particles=env.config.sweep_test_particles,)
             return _sweep_posteriors
 
-        single_bpf_true_eval_small_vmap = jax.vmap(_single_bpf_true_eval_small)
-        single_fivo_eval_small_vmap = jax.vmap(_single_fivo_eval_small, in_axes=(0, None))
+        # Wrap another call to SMC for validation.
+        @jax.jit
+        def _single_bpf_true_tst_small(_subkey):
+            _sweep_posteriors = smc_jit(_subkey,
+                                        true_model,
+                                        tst_datasets,
+                                        tst_dataset_masks,
+                                        num_particles=env.config.sweep_test_particles,
+                                        **gen_smc_kwargs())
+            return _sweep_posteriors
+
+        # Wrap another call to fivo for validation.
+        @jax.jit
+        def _single_fivo_tst_small(_subkey, _params):
+            _, _sweep_posteriors = do_fivo_sweep_jitted(_subkey,
+                                                        _params,
+                                                        _datasets=tst_datasets,
+                                                        _masks=tst_dataset_masks,
+                                                        _num_particles=env.config.sweep_test_particles,)
+            return _sweep_posteriors
+
+        single_bpf_true_val_small_vmap = jax.vmap(_single_bpf_true_val_small)
+        single_fivo_val_small_vmap = jax.vmap(_single_fivo_val_small, in_axes=(0, None))
+        single_bpf_true_tst_small_vmap = jax.vmap(_single_bpf_true_tst_small)
+        single_fivo_tst_small_vmap = jax.vmap(_single_fivo_tst_small, in_axes=(0, None))
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -234,6 +257,10 @@ def main():
                                          init_model=model,
                                          do_print=do_print,
                                          do_plot=False)  # Re-enable plotting with: env.config.PLOT .
+
+        # We will log the best parameters here.
+        best_params = dc(fivo_util.get_params_from_opt(opt))
+        best_val_neg_fivo_bound = dc(initial_smc_neg_fivo_bound)
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -306,7 +333,7 @@ def main():
 
             # Quickly calculate a smoothed training loss for quick and dirty plotting.
             smoothed_training_loss = ((0.1 * neg_fivo_bound + 0.9 * smoothed_training_loss) if np.logical_not(np.isnan(smoothed_training_loss)) else neg_fivo_bound)
-
+        
             # Do some validation and give some output.
             if (_step % env.config.validation_interval == 0) or (_step == 1):
 
@@ -325,13 +352,18 @@ def main():
                                                                                        _masks=val_dataset_masks)
                 large_pred_smc_neg_lml = - utils.lexp(large_pred_sweep.log_normalizer)
                 nlml_hist.append(dc(large_pred_smc_neg_lml))
+                
+                # If we have improved, store these parameters.
+                if large_pred_smc_neg_lml < best_val_neg_fivo_bound:
+                    best_params = fivo_util.get_params_from_opt(opt)
+                    best_val_neg_fivo_bound = large_pred_smc_neg_fivo_bound
 
                 # Test the variance of the estimators with a small number of particles.
                 key, subkey = jr.split(key)
                 small_neg_lml_metrics, small_neg_fivo_metrics = fivo_util.test_small_sweeps(subkey,
                                                                                             fivo.get_params_from_opt(opt),
-                                                                                            single_fivo_eval_small_vmap,
-                                                                                            single_bpf_true_eval_small_vmap,
+                                                                                            single_fivo_val_small_vmap,
+                                                                                            single_bpf_true_val_small_vmap,
                                                                                             em_neg_lml,
                                                                                             model=env.config.model)
 
@@ -383,6 +415,9 @@ def main():
                                      'q_pred': param_hist[1][-1],
                                      'r_pred': param_hist[2][-1],
                                      'e_pred': param_hist[3][-1], },
+
+                          'best_params': best_params,
+                          'best_val_neg_fivo_bound': best_val_neg_fivo_bound,
 
                           'large_neg_fivo':     {'bpf_true': true_neg_bpf_fivo_bound,
                                                  'pred': large_pred_smc_neg_fivo_bound},
@@ -450,7 +485,57 @@ def main():
                 #     tag='{} Smoothing.'.format(_step),
                 #     fig=sweep_fig_smooth,
                 #     obs=datasets[env.config.dset_to_plot])
+                
+        # Done in the main training loop.
+        print("\nDone in the main training loop.")
+        print("Applying trained models to the test set.")
 
+        key, subkey = jr.split(key)
+        large_best_smc_neg_fivo_bound_val, large_best_sweep_val = do_fivo_sweep_jitted(subkey,
+                                                                                       best_params,
+                                                                                       _num_particles=env.config.validation_particles,
+                                                                                       _datasets=val_datasets,
+                                                                                       _masks=val_dataset_masks)
+        large_best_smc_neg_lml_val = - utils.lexp(large_best_sweep_val.log_normalizer)
+
+        key, subkey = jr.split(key)
+        large_best_smc_neg_fivo_bound_tst, large_best_sweep_tst = do_fivo_sweep_jitted(subkey,
+                                                                                       best_params,
+                                                                                       _num_particles=env.config.validation_particles,
+                                                                                       _datasets=tst_datasets,
+                                                                                       _masks=tst_dataset_masks)
+        large_best_smc_neg_lml_tst = - utils.lexp(large_best_sweep_tst.log_normalizer)
+
+        # Test the variance of the estimators with a small number of particles.
+        key, subkey = jr.split(key)
+        small_best_neg_lml_metrics_val, small_best_neg_fivo_metrics_val = fivo_util.test_small_sweeps(subkey,
+                                                                                                      best_params,
+                                                                                                      single_fivo_val_small_vmap,
+                                                                                                      single_bpf_true_val_small_vmap,
+                                                                                                      em_neg_lml,
+                                                                                                      model=env.config.model)
+
+        # Test the variance of the estimators with a small number of particles.
+        key, subkey = jr.split(key)
+        small_best_neg_lml_metrics_tst, small_best_neg_fivo_metrics_tst = fivo_util.test_small_sweeps(subkey,
+                                                                                                      best_params,
+                                                                                                      single_fivo_tst_small_vmap,
+                                                                                                      single_bpf_true_tst_small_vmap,
+                                                                                                      em_neg_lml,
+                                                                                                      model=env.config.model)
+
+        # Compile these into a dictionary for the final log.
+        final_metrics = {'large_best_smc_neg_fivo_bound_val': large_best_smc_neg_fivo_bound_val,
+                         'large_best_smc_neg_lml_val': large_best_smc_neg_lml_val,
+                         'large_best_smc_neg_fivo_bound_tst': large_best_smc_neg_fivo_bound_tst,
+                         'large_best_smc_neg_lml_tst': large_best_smc_neg_lml_tst,
+                         'small_best_neg_lml_metrics_val': small_best_neg_lml_metrics_val,
+                         'small_best_neg_fivo_metrics_val': small_best_neg_fivo_metrics_val,
+                         'small_best_neg_lml_metrics_tst': small_best_neg_lml_metrics_tst,
+                         'small_best_neg_fivo_metrics_tst': small_best_neg_fivo_metrics_tst, }
+        utils.log_to_wandb(final_metrics, _epoch=_step+1)
+        
+        
 
 if __name__ == '__main__':
     main()

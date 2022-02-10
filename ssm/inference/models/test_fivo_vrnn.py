@@ -271,6 +271,8 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
             clipped_trn_dataset_means = np.clip(trn_dataset_means, 0.0001, 0.9999)
             clipped_log_odds = np.log(clipped_trn_dataset_means) - np.log(1 - clipped_trn_dataset_means)
 
+            # TODO - check this initialization AGAIN.
+
             def output_bias_init(*args):
                 # NOTE - need to transpose in here to make sure that the flattened dimensions are correct.
                 return np.repeat(np.expand_dims(clipped_log_odds, axis=0), axis=0, repeats=env.config.tilt_window_length).flatten()
