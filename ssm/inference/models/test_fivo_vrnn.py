@@ -42,12 +42,14 @@ def get_config():
     parser.add_argument('--num-particles', default=4, type=int, help="Number of particles per sweep during learning.")
     parser.add_argument('--datasets-per-batch', default=4, type=int, help="Number of datasets averaged across per FIVO step.")
 
+    parser.add_argument('--l2-reg', default=0.001, type=float, help="L2 regulation hyperparameter.")
+
     # Model free parameters.
     # CSV: {'params_rnn', 'params_prior', 'params_decoder_latent', 'params_decoder_full', 'params_encoder_data'}.
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data',type=str)
 
     # Data encoder args.
-    parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
+    parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
 
     # Encoder pre-training hyperparameters.
     parser.add_argument('--encoder-pretrain', default=1, type=int, help="{0, 1}")
@@ -56,14 +58,14 @@ def get_config():
     parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
 
     # Proposal args.
-    parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
-    parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
+    parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
+    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {None, }.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
     # Tilt args.
     parser.add_argument('--tilt-structure', default='DIRECT', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
-    parser.add_argument('--tilt-type', default='ENCODED', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
+    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
     parser.add_argument('--tilt-window-length', default=2, type=int, help="{int, None}.  Length of any window.")
     parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'MLP'}. ")
 
@@ -79,7 +81,7 @@ def get_config():
     parser.add_argument('--lr-p', default=1.0e-3, type=float, help="Learning rate of model parameters.")
     parser.add_argument('--lr-q', default=1.0e-3, type=float, help="Learning rate of proposal parameters.")
     parser.add_argument('--lr-r', default=1.0e-3, type=float, help="Learning rate of tilt parameters.")
-    parser.add_argument('--lr-e', default=1.0e-5, type=float, help="Learning rate of data encoder parameters.")
+    parser.add_argument('--lr-e', default=1.0e-4, type=float, help="Learning rate of data encoder parameters.")
 
     # Misc settings.
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
@@ -218,9 +220,7 @@ def define_data_encoder(key, true_model, env, trn_datasets, trn_dataset_masks, v
 
     key, subkey1, subkey2 = jr.split(key, num=3)
 
-    # # Define the reccurent bit.
-    # rnn_state_dim = env.config.rnn_state_dim if env.config.rnn_state_dim is not None else env.config.latent_dim
-    # rnn_obj = nn_util.RnnWithReadoutLayer(trn_datasets.shape[-1], rnn_state_dim)
+    # # Define the recurrent bit.
     rnn_obj = nn.LSTMCell()
 
     data_encoder = encoders.IndependentBiRnnEncoder(env, subkey1, rnn_obj, trn_datasets[0])
@@ -246,6 +246,7 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
         subkey:
         model:
         dataset:
+        data_encoder:
 
     Returns:
 
@@ -270,6 +271,8 @@ def define_tilt(subkey, model, dataset, env, data_encoder=None):
             trn_dataset_means = np.mean(np.mean(dataset, axis=0), axis=0)
             clipped_trn_dataset_means = np.clip(trn_dataset_means, 0.0001, 0.9999)
             clipped_log_odds = np.log(clipped_trn_dataset_means) - np.log(1 - clipped_trn_dataset_means)
+
+            # TODO - check this initialization AGAIN.
 
             def output_bias_init(*args):
                 # NOTE - need to transpose in here to make sure that the flattened dimensions are correct.
