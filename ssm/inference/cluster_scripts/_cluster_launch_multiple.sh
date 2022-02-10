@@ -5,7 +5,7 @@
 #SBATCH --time=05:59:59
 #SBATCH --output=./Reports/fivo_%A_%a.out
 #SBATCH --error=./Reports/fivo_%A_%a.err
-#SBATCH --array=0-0%5
+#SBATCH --array=0-9%5
 
 module load python/3.9.0
 module load texlive
