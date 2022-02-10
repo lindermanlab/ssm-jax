@@ -2,7 +2,7 @@
 #SBATCH --job-name=default
 #SBATCH --nodes=1 --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --time=07:59:59
+#SBATCH --time=05:59:59
 #SBATCH --output=./Reports/fivo_%A_%a.out
 #SBATCH --error=./Reports/fivo_%A_%a.err
 #SBATCH --array=0-9%5
