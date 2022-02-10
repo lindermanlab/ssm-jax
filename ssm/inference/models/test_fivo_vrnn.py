@@ -42,12 +42,14 @@ def get_config():
     parser.add_argument('--num-particles', default=4, type=int, help="Number of particles per sweep during learning.")
     parser.add_argument('--datasets-per-batch', default=4, type=int, help="Number of datasets averaged across per FIVO step.")
 
+    parser.add_argument('--l2-reg', default=0.001, type=float, help="L2 regulation hyperparameter.")
+
     # Model free parameters.
     # CSV: {'params_rnn', 'params_prior', 'params_decoder_latent', 'params_decoder_full', 'params_encoder_data'}.
     parser.add_argument('--free-parameters', default='params_rnn,params_prior,params_decoder_latent,params_decoder_full,params_encoder_data',type=str)
 
     # Data encoder args.
-    parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
+    parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
 
     # Encoder pre-training hyperparameters.
     parser.add_argument('--encoder-pretrain', default=1, type=int, help="{0, 1}")
@@ -56,14 +58,14 @@ def get_config():
     parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
 
     # Proposal args.
-    parser.add_argument('--proposal-structure', default='VRNN_SMOOTHING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
-    parser.add_argument('--proposal-type', default='VRNN_SMOOTHING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
+    parser.add_argument('--proposal-structure', default='VRNN_FILTERING_RESQ', type=str)  # {None/'NONE'/'BOOTSTRAP', 'VRNN_FILTERING_RESQ', 'VRNN_SMOOTHING_RESQ' }
+    parser.add_argument('--proposal-type', default='VRNN_FILTERING', type=str)  # {'VRNN_FILTERING', 'VRNN_SMOOTHING'}
     parser.add_argument('--proposal-window-length', default=1, type=int)  # {None, }.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)  # {'MLP', }.
 
     # Tilt args.
     parser.add_argument('--tilt-structure', default='DIRECT', type=str, help="{None/'NONE', 'DIRECT'}.  Direct scoring of some future obs.")
-    parser.add_argument('--tilt-type', default='ENCODED', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
+    parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str, help="{'SINGLE_WINDOW', 'ENCODED'}.  How the obs are processed.")
     parser.add_argument('--tilt-window-length', default=2, type=int, help="{int, None}.  Length of any window.")
     parser.add_argument('--tilt-fn-family', default='MLP', type=str, help="{'MLP'}. ")
 

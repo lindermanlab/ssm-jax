@@ -163,8 +163,23 @@ def main():
         # Jit this badboy.
         do_fivo_sweep_jitted = jax.jit(do_fivo_sweep_closed, static_argnums=(2, ))
 
+        # Close over a regularized version.
+        def do_regularized_fivo_sweep_closed(_subkey, _params, _num_particles, _datasets, _masks, _temperature=1.0):
+            _neg_fivo_bound_unreg, _sweep_posteriors = do_fivo_sweep_jitted(_subkey, _params, _num_particles, _datasets, _masks, _temperature)
+
+            def _l2_loss(x):
+                if x is None:
+                    return 0.0
+                else:
+                    return env.config.l2_reg * (x ** 2).mean()
+
+            _l2_score = sum(_l2_loss(w) for w in jax.tree_leaves(_params["params"]))
+
+            _neg_fivo_bound_reg = _neg_fivo_bound_unreg + _l2_score
+            return _neg_fivo_bound_reg, _sweep_posteriors
+
         # Convert into value and grad.
-        do_fivo_sweep_val_and_grad = jax.value_and_grad(do_fivo_sweep_jitted, argnums=1, has_aux=True)
+        do_fivo_sweep_val_and_grad = jax.value_and_grad(do_regularized_fivo_sweep_closed, argnums=1, has_aux=True)
 
         # Wrap another call to SMC for validation.
         @jax.jit
@@ -534,7 +549,6 @@ def main():
                          'small_best_neg_lml_metrics_tst': small_best_neg_lml_metrics_tst,
                          'small_best_neg_fivo_metrics_tst': small_best_neg_fivo_metrics_tst, }
         utils.log_to_wandb(final_metrics, _epoch=_step+1)
-        
         
 
 if __name__ == '__main__':
