@@ -8,8 +8,8 @@ proposal_type='PERSTEP'
 tilt_type='DIRECT'
 latent_dim=1
 emissions_dim=1
-num_particles=4
-encoder_struct='NONE'
+n_part=4
+enc_struct='NONE'
 train_resamp_crit='always_resample'
 eval_resamp_crit='always_resample'
 
