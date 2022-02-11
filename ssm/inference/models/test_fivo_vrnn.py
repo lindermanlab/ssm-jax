@@ -43,7 +43,7 @@ def get_config():
     parser.add_argument('--num-particles', default=4, type=int, help="Number of particles per sweep during learning.")
     parser.add_argument('--datasets-per-batch', default=4, type=int, help="Number of datasets averaged across per FIVO step.")
 
-    parser.add_argument('--l2-reg', default=0.001, type=float, help="L2 regulation hyperparameter.")
+    parser.add_argument('--l2-reg', default=0.01, type=float, help="L2 regulation hyperparameter.")
 
     # Model free parameters.
     # CSV: {'params_rnn', 'params_prior', 'params_decoder_latent', 'params_decoder_full', 'params_encoder_data'}.
@@ -79,10 +79,10 @@ def get_config():
                         help="Layer widths of MLPs. CSV of widths, i.e. '10,10'. (None -> [latent_dim]). ")
 
     # Learning rates.
-    parser.add_argument('--lr-p', default=1.0e-3, type=float, help="Learning rate of model parameters.")
-    parser.add_argument('--lr-q', default=1.0e-3, type=float, help="Learning rate of proposal parameters.")
-    parser.add_argument('--lr-r', default=1.0e-3, type=float, help="Learning rate of tilt parameters.")
-    parser.add_argument('--lr-e', default=1.0e-4, type=float, help="Learning rate of data encoder parameters.")
+    parser.add_argument('--lr-p', default=3.0e-4, type=float, help="Learning rate of model parameters.")
+    parser.add_argument('--lr-q', default=3.0e-4, type=float, help="Learning rate of proposal parameters.")
+    parser.add_argument('--lr-r', default=3.0e-4, type=float, help="Learning rate of tilt parameters.")
+    parser.add_argument('--lr-e', default=1.0e-5, type=float, help="Learning rate of data encoder parameters.")
 
     # Misc settings.
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
