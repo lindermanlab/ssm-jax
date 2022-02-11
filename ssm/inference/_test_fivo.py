@@ -387,7 +387,7 @@ def main():
                 if large_pred_smc_neg_lml < best_val_neg_fivo_bound:
                     best_params_raw = dc(fivo_util.get_params_from_opt(opt))
                     best_params_processed = fivo_util.log_params([[], [], [], []], best_params_raw)
-                    best_val_neg_fivo_bound = dc(initial_smc_neg_fivo_bound)
+                    best_val_neg_fivo_bound = dc(large_pred_smc_neg_lml)
 
                 # Test the variance of the estimators with a small number of particles.
                 key, subkey = jr.split(key)
@@ -567,7 +567,7 @@ def main():
                           'small_best_neg_lml_metrics_tst': small_best_neg_lml_metrics_tst,
                           'small_best_neg_fivo_metrics_tst': small_best_neg_fivo_metrics_tst,
                           'best_params': best_params_processed}
-        final_metrics = {'final_metrics': _final_metrics}
+        final_metrics = {'z_final_metrics': _final_metrics}
         utils.log_to_wandb(final_metrics, _epoch=_step+1)
         
 
