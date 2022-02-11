@@ -447,6 +447,10 @@ def _smc_forward_pass(key,
         # Sample the new particles.
         new_particles = q_dist.sample(seed=_subkey1)
 
+        # If we have just a single particle, there is sometimes no batch dimension.
+        if len(new_particles.shape) == 1:
+            new_particles = np.expand_dims(new_particles, axis=0)
+
         # TODO - this is a bit grotty.  Assumes that if there is a joint distribution, all the deterministic stuff is in the first
         #  element, and that everything thereafter is a "stochastic distribution".
         if type(p_dist) is tfd.JointDistributionSequential:
@@ -519,9 +523,16 @@ def _smc_forward_pass(key,
     # Average over particle dimension.
     p_hats = spsp.logsumexp(masked_log_weights_pre_resamp, axis=1) - np.log(num_particles)
 
+    # We need to find the final index from the mask.
+    final_idx = np.int32(np.sum(mask) - 1)
+
+    # Generate a mask of which idxes should be scored.
+    to_score = resampled
+    to_score = jax.lax.dynamic_update_index_in_dim(to_score, True, final_idx, axis=0)
+
     # Compute the log marginal likelihood.
-    # Note that this needs to force the last accumulated incremental weight to be used.
-    l_tilde = np.sum(p_hats[:-1] * resampled[:-1]) + p_hats[-1]
+    # Note that we force the last accumulated incremental weight to be used in the line above now.
+    l_tilde = np.sum(p_hats * to_score)
 
     # Normalize by the length of the trace.
     l_tilde /= np.sum(mask)
