@@ -27,51 +27,56 @@ def get_config():
 
     # Set up the experiment.
     parser = argparse.ArgumentParser()
-    parser.add_argument('--validation-interval', default=500, type=int)
-
     parser.add_argument('--dataset', default='default', type=str)
     parser.add_argument('--synthetic-data', default=1, type=int)
 
-    parser.add_argument('--resampling-criterion', default='ess_criterion', type=str)  # CSV.  # {'always_resample', 'never_resample', 'ess_criterion'}.
+    # General sweep settings.
+    parser.add_argument('--validation-interval', default=500, type=int)
+    parser.add_argument('--train-resampling-criterion', default='ess_criterion', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
+    parser.add_argument('--eval-resampling-criterion', default='ess_criterion', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
     parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # CSV.  # {'multinomial_resampling', 'systematic_resampling'}.
     parser.add_argument('--use-sgr', default=0, type=int)  # {0, 1}
     parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--num-particles', default=16, type=int)
+    parser.add_argument('--datasets-per-batch', default=8, type=int)
 
-    parser.add_argument('--use-bootstrap-initial-distribution', default=0, type=int, help="Force sweeps to use the model for initialization.")
+    parser.add_argument('--l2-reg', default=0.001, type=float, help="L2 regulation hyperparameter.")
 
     parser.add_argument('--free-parameters', default='log_Q,invsig_phi,mu', type=str)  # CSV.  # {'log_Q', 'mu', 'log_beta'}.
 
+    # Proposal args.
     parser.add_argument('--proposal-structure', default='NONE', type=str)           # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)       # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--proposal-window-length', default=2, type=int)            # {int, None}.
     parser.add_argument('--proposal-fn-family', default='AFFINE', type=str)         # {'AFFINE', 'MLP'}.
 
+    # Tilt args.
     parser.add_argument('--tilt-structure', default='NONE', type=str)             # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)           # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--tilt-window-length', default=2, type=int)                # {int, None}.
     parser.add_argument('--tilt-fn-family', default='AFFINE', type=str)             # {'AFFINE', 'MLP'}.
 
+    # Variational / M.L. learning of tilt function.
     parser.add_argument('--vi-use-tilt-gradient', default=0, type=int)
     parser.add_argument('--vi-buffer-length', default=10, type=int)
     parser.add_argument('--vi-minibatch-size', default=16, type=int)
     parser.add_argument('--vi-epochs', default=1, type=int)
-
-    parser.add_argument('--num-particles', default=16, type=int)
-    parser.add_argument('--datasets-per-batch', default=8, type=int)
     parser.add_argument('--opt-steps', default=100000, type=int)
 
+    # Learning rates.
     parser.add_argument('--lr-p', default=0.0001, type=float)
     parser.add_argument('--lr-q', default=0.0001, type=float)
     parser.add_argument('--lr-r', default=0.0001, type=float)
     parser.add_argument('--lr-e', default=3.0e-5, type=float, help="Learning rate of data encoder parameters.")
 
+    # Architecture/data args.
     parser.add_argument('--T', default=49, type=int)  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=1, type=int)
     parser.add_argument('--emissions-dim', default=1, type=int)
-
     parser.add_argument('--num-trials', default=10000, type=int)  # NOTE - try with a single trial.
     parser.add_argument('--num-val-datasets', default=100, type=int)
 
+    # Misc settings.
     parser.add_argument('--dset-to-plot', default=0, type=int)
     parser.add_argument('--validation-particles', default=128, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
@@ -84,6 +89,16 @@ def get_config():
     parser.add_argument('--log-to-wandb-interval', default=1, type=int)
     parser.add_argument('--PLOT', default=1, type=int)
     parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
+    parser.add_argument('--use-bootstrap-initial-distribution', default=0, type=int, help="Force sweeps to use the model for initialization.")
+
+    # Data encoder args.
+    parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
+
+    # Encoder pre-training hyperparameters.
+    parser.add_argument('--encoder-pretrain', default=1, type=int, help="{0, 1}")
+    parser.add_argument('--encoder-pretrain-opt-steps', default=200, type=int, help="")
+    parser.add_argument('--encoder-pretrain-lr', default=0.01, type=float, help="")
+    parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
 
     config = parser.parse_args().__dict__
 
