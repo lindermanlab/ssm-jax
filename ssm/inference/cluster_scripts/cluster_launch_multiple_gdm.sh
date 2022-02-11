@@ -1,73 +1,73 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-glob_tag='GDM-v4-0-0'
-model='GDM'
-temper=0.0
-proposal_type='PERSTEP'
-tilt_type='DIRECT'
-latent_dim=1
-emissions_dim=1
-n_part=4
-enc_struct='NONE'
-train_resamp_crit='always_resample'
-eval_resamp_crit='always_resample'
+export glob_tag='GDM-v4-0-0'
+export model='GDM'
+export temper=0.0
+export proposal_type='PERSTEP'
+export tilt_type='DIRECT'
+export latent_dim=1
+export emissions_dim=1
+export n_part=4
+export enc_struct='NONE'
+export train_resamp_crit='always_resample'
+export eval_resamp_crit='always_resample'
 
 launch_cmd () { sbatch -J ${glob_tag} --export=ALL cluster_scripts/_cluster_launch_multiple.sh ; }
 
 # # BPF-SGR
-exp_tag='bpf-sgr'
-use_sgr=1
-use_vi=0
-proposal_structure='BOOTSTRAP'
-tilt_structure='NONE'
+export exp_tag='bpf-sgr'
+export use_sgr=1
+export use_vi=0
+export proposal_structure='BOOTSTRAP'
+export tilt_structure='NONE'
 launch_cmd
 
 # FIVO
-exp_tag='fivo'
-use_sgr=0
-use_vi=0
-proposal_structure='DIRECT'
-tilt_structure='NONE'
+export exp_tag='fivo'
+export use_sgr=0
+export use_vi=0
+export proposal_structure='DIRECT'
+export tilt_structure='NONE'
 launch_cmd
 
 # FIVO-SGR
-exp_tag='fivo-sgr'
-use_sgr=1
-use_vi=0
-proposal_structure='DIRECT'
-tilt_structure='NONE'
+export exp_tag='fivo-sgr'
+export use_sgr=1
+export use_vi=0
+export proposal_structure='DIRECT'
+export tilt_structure='NONE'
 launch_cmd
 
 # FIVO-AUX
-exp_tag='fivo-aux'
-use_sgr=0
-use_vi=0
-proposal_structure='DIRECT'
-tilt_structure='DIRECT'
+export exp_tag='fivo-aux'
+export use_sgr=0
+export use_vi=0
+export proposal_structure='DIRECT'
+export tilt_structure='DIRECT'
 launch_cmd
 
 # FIVO-AUX-SGR
-exp_tag='fivo-aux-sgr'
-use_sgr=1
-use_vi=0
-proposal_structure='DIRECT'
-tilt_structure='DIRECT'
+export exp_tag='fivo-aux-sgr'
+export use_sgr=1
+export use_vi=0
+export proposal_structure='DIRECT'
+export tilt_structure='DIRECT'
 launch_cmd
 
 # FIVO-AUX-VI
-exp_tag='fivo-aux-vi'
-use_sgr=0
-use_vi=1
-proposal_structure='DIRECT'
-tilt_structure='DIRECT'
+export exp_tag='fivo-aux-vi'
+export use_sgr=0
+export use_vi=1
+export proposal_structure='DIRECT'
+export tilt_structure='DIRECT'
 launch_cmd
 
 # FIVO-AUX-VI-SGR
-exp_tag='fivo-aux-vi-sgr'
-use_sgr=1
-use_vi=1
-proposal_structure='DIRECT'
-tilt_structure='DIRECT'
+export exp_tag='fivo-aux-vi-sgr'
+export use_sgr=1
+export use_vi=1
+export proposal_structure='DIRECT'
+export tilt_structure='DIRECT'
 launch_cmd
 
