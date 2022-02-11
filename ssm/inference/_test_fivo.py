@@ -128,7 +128,16 @@ def main():
         # This is done by dividing the log tilt value by a temperature.
         if env.config.temper > 0.0:
             temper_param = env.config.temper
-            tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1)))) + 1.0
+            opt_steps = env.config.opt_steps
+
+            # tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=int(env.config.opt_steps / 2.0) + 1)))) + 1.0
+            # tilt_temperatures = np.clip(tilt_temperatures, a_min=1.0)
+
+            # Inverse tempering that is terminated half way through optimization.
+            _temps = temper_param * (1.0 / np.linspace(0.05, 1.0, num=opt_steps + 1))
+            _temps += 1.0 - _temps[int(opt_steps / 2.0)]
+            tilt_temperatures = np.clip(_temps, a_min=1.0, a_max=np.inf)
+
             print('\n\n[WARNING]: USING TILT TEMPERING. \n\n')
         else:
             tilt_temperatures = np.ones(env.config.opt_steps + 1,) * 1.0
