@@ -1,18 +1,19 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-glob_tag='GDM-v3-0-0'
+glob_tag='GDM-v4-0-0'
 model='GDM'
 temper=0.0
 proposal_type='PERSTEP'
 tilt_type='DIRECT'
 latent_dim=1
 emissions_dim=1
-num_particles=4
-encoder_struct='NONE'
-resamp_crit='always_resample'
+n_part=4
+enc_struct='NONE'
+train_resamp_crit='always_resample'
+eval_resamp_crit='always_resample'
 
-launch_cmd () { sbatch -J ${glob_tag} --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},PROPOSAL_TYPE=${proposal_type},TILT_STRUCTURE=${tilt_structure},TILT_TYPE=${tilt_type},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim},USE_VI=${use_vi},N_PART=${num_particles},ENCODER_STRUCT=${encoder_struct},RESAMP_CRIT=${resamp_crit} cluster_scripts/_cluster_launch_multiple.sh ; }
+launch_cmd () { sbatch -J ${glob_tag} --export=ALL cluster_scripts/_cluster_launch_multiple.sh ; }
 
 # # BPF-SGR
 exp_tag='bpf-sgr'
