@@ -32,7 +32,7 @@ default_verbosity = Verbosity.DEBUG
 # config.update("jax_debug_nans", True)
 
 # Disable jit for inspection.
-DISABLE_JIT = False
+DISABLE_JIT = True
 # If we are on the remote, then hard disable this.
 if not LOCAL_SYSTEM:
     DISABLE_JIT = False
@@ -86,7 +86,7 @@ def main():
             raise NotImplementedError()
 
         # Define some holders that will be overwritten later.
-        large_true_bpf_neg_lml, em_neg_lml, pred_em_nlml, true_bpf_nlml, true_neg_bpf_fivo_bound = 0.0, 0.0, 0.0, 0.0, 0.0
+        large_true_bpf_neg_lml, em_neg_lml, pred_em_nlml, true_bpf_nlml, true_neg_bpf_fivo_bound, initial_smc_neg_fivo_bound = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         filt_fig, sweep_fig_filter, sweep_fig_smooth, true_bpf_kls, true_bpf_upc, true_bpf_ess = None, None, None, None, None, None,
         kl_metrics, upc_metrics = None, None
         param_hist = [[], [], [], []]  # Model, proposal, tilt, encoder.
@@ -128,7 +128,16 @@ def main():
         # This is done by dividing the log tilt value by a temperature.
         if env.config.temper > 0.0:
             temper_param = env.config.temper
-            tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=env.config.opt_steps + 1)))) + 1.0
+            opt_steps = env.config.opt_steps
+
+            # tilt_temperatures = - (1.0 - np.square((temper_param / np.linspace(0.1, temper_param, num=int(env.config.opt_steps / 2.0) + 1)))) + 1.0
+            # tilt_temperatures = np.clip(tilt_temperatures, a_min=1.0)
+
+            # Inverse tempering that is terminated half way through optimization.
+            _temps = temper_param * (1.0 / np.linspace(0.05, 1.0, num=opt_steps + 1))
+            _temps += 1.0 - _temps[int(opt_steps / 2.0)]
+            tilt_temperatures = np.clip(_temps, a_min=1.0, a_max=np.inf)
+
             print('\n\n[WARNING]: USING TILT TEMPERING. \n\n')
         else:
             tilt_temperatures = np.ones(env.config.opt_steps + 1,) * 1.0
@@ -268,24 +277,24 @@ def main():
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
-        # Test the initial models.
-        key, subkey = jr.split(key)
-        large_true_bpf_neg_lml, true_neg_bpf_fivo_bound, em_neg_lml, sweep_fig, filt_fig, initial_smc_neg_lml, initial_smc_neg_fivo_bound = \
-            fivo_util.initial_validation(env,
-                                         key,
-                                         true_model,
-                                         val_datasets,
-                                         val_dataset_masks,
-                                         true_states,
-                                         opt,
-                                         do_fivo_sweep_jitted,
-                                         smc_jit,
-                                         smc_kwargs=gen_smc_kwargs(_temperature=1.0),
-                                         num_particles=env.config.validation_particles,
-                                         dset_to_plot=env.config.dset_to_plot,
-                                         init_model=model,
-                                         do_print=do_print,
-                                         do_plot=False)  # Re-enable plotting with: env.config.PLOT .
+        # # Test the initial models.
+        # key, subkey = jr.split(key)
+        # large_true_bpf_neg_lml, true_neg_bpf_fivo_bound, em_neg_lml, sweep_fig, filt_fig, initial_smc_neg_lml, initial_smc_neg_fivo_bound = \
+        #     fivo_util.initial_validation(env,
+        #                                  key,
+        #                                  true_model,
+        #                                  val_datasets,
+        #                                  val_dataset_masks,
+        #                                  true_states,
+        #                                  opt,
+        #                                  do_fivo_sweep_jitted,
+        #                                  smc_jit,
+        #                                  smc_kwargs=gen_smc_kwargs(_temperature=1.0),
+        #                                  num_particles=env.config.validation_particles,
+        #                                  dset_to_plot=env.config.dset_to_plot,
+        #                                  init_model=model,
+        #                                  do_print=do_print,
+        #                                  do_plot=False)  # Re-enable plotting with: env.config.PLOT .
 
         # We will log the best parameters here.
         best_params_raw = dc(fivo_util.get_params_from_opt(opt))
@@ -387,7 +396,7 @@ def main():
                 if large_pred_smc_neg_lml < best_val_neg_fivo_bound:
                     best_params_raw = dc(fivo_util.get_params_from_opt(opt))
                     best_params_processed = fivo_util.log_params([[], [], [], []], best_params_raw)
-                    best_val_neg_fivo_bound = dc(initial_smc_neg_fivo_bound)
+                    best_val_neg_fivo_bound = dc(large_pred_smc_neg_lml)
 
                 # Test the variance of the estimators with a small number of particles.
                 key, subkey = jr.split(key)
@@ -567,7 +576,7 @@ def main():
                           'small_best_neg_lml_metrics_tst': small_best_neg_lml_metrics_tst,
                           'small_best_neg_fivo_metrics_tst': small_best_neg_fivo_metrics_tst,
                           'best_params': best_params_processed}
-        final_metrics = {'final_metrics': _final_metrics}
+        final_metrics = {'z_final_metrics': _final_metrics}
         utils.log_to_wandb(final_metrics, _epoch=_step+1)
         
 
