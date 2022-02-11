@@ -13,7 +13,7 @@ export emissions_dim=1
 
 # launch_cmd () { sbatch -p gpu -G 1 -C GPU_MEM:16GB -t 4:00:00 -J ${glob_tag} --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},PROPOSAL_TYPE=${proposal_type},TILT_STRUCTURE=${tilt_structure},TILT_TYPE=${tilt_type},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim},USE_VI=${use_vi},N_PART=${n_part},ENCODER_STRUCT=${enc_struct},RESAMP_CRIT=${resamp_crit},DATASET={dataset} cluster_scripts/_cluster_launch_multiple.sh ; }
 
-launch_cmd () { sbatch --cpus-per-task=4 --mem=20GB -t 9:59:00 -J ${glob_tag}-${exp_tag} --export=ALL cluster_scripts/_cluster_launch_multiple.sh ; }
+launch_cmd () { sbatch --cpus-per-task=2 --mem=20GB -t 9:59:00 -J ${glob_tag}-${exp_tag} --export=ALL cluster_scripts/_cluster_launch_multiple.sh ; }
 
 # launch_cmd () { sbatch --cpus-per-task=1 -t 0:59:00 -J ${glob_tag}-${exp_tag} --export=ALL cluster_scripts/_cluster_launch_multiple.sh ; }
 
@@ -35,8 +35,8 @@ launch_cmd
 # ELBO
 export exp_tag='b---elbo'
 export use_sgr=0
-export proposal_type='NONE'
-export proposal_structure='NONE'
+export proposal_type='VRNN_FILTERING'
+export proposal_structure='VRNN_FILTERING_RESQ'
 export tilt_type='NONE'
 export tilt_structure='NONE'
 export enc_struct='NONE'
@@ -50,8 +50,8 @@ launch_cmd
 # IWAE
 export exp_tag='c---iwae'
 export use_sgr=0
-export proposal_type='NONE'
-export proposal_structure='NONE'
+export proposal_type='VRNN_FILTERING'
+export proposal_structure='VRNN_FILTERING_RESQ'
 export tilt_type='NONE'
 export tilt_structure='NONE'
 export enc_struct='NONE'
