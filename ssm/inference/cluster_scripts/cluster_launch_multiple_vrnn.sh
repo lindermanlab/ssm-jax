@@ -7,7 +7,7 @@ export latent_dim=32
 export n_part_global=4
 
 # These are reasonably constant for VRNN experiments
-export glob_tag="VRNN-${dataset}-${n_part_global}-v1-0-0"
+export glob_tag="VRNN-${dataset}-${n_part_global}-v1-0-1"
 export model='VRNN'
 export emissions_dim=1
 
@@ -18,7 +18,7 @@ launch_cmd () { sbatch --cpus-per-task=4 --mem=20GB -t 9:59:00 -J ${glob_tag}-${
 # launch_cmd () { sbatch --cpus-per-task=1 -t 0:59:00 -J ${glob_tag}-${exp_tag} --export=ALL cluster_scripts/_cluster_launch_multiple.sh ; }
 
 # BPF-SGR
-export exp_tag='a-bpf-sgr'
+export exp_tag='a---bpf-sgr'
 export use_sgr=0
 export proposal_type='NONE'
 export proposal_structure='NONE'
@@ -33,7 +33,7 @@ export eval_resamp_crit='ess_criterion'
 launch_cmd
 
 # ELBO
-export exp_tag='b-elbo'
+export exp_tag='b---elbo'
 export use_sgr=0
 export proposal_type='NONE'
 export proposal_structure='NONE'
@@ -48,7 +48,7 @@ export eval_resamp_crit='never_resample'	# No resampling in ELBO
 launch_cmd
 
 # IWAE
-export exp_tag='c-iwae'
+export exp_tag='c---iwae'
 export use_sgr=0
 export proposal_type='NONE'
 export proposal_structure='NONE'
@@ -64,7 +64,7 @@ launch_cmd
 
 
 # FIVO-FILTER
-export exp_tag='d-fivo'
+export exp_tag='d---fivo'
 export use_sgr=0
 export proposal_type='VRNN_FILTERING'
 export proposal_structure='VRNN_FILTERING_RESQ'
@@ -79,7 +79,7 @@ export eval_resamp_crit='ess_criterion'
 launch_cmd
 
 # FIVO-SMOOTH
-export exp_tag='e-fivo+smooth'
+export exp_tag='e---fivo+smooth'
 export use_sgr=0
 export proposal_type='VRNN_SMOOTHING'
 export proposal_structure='VRNN_SMOOTHING_RESQ'
@@ -95,7 +95,7 @@ launch_cmd
 
 
 # FIVO-AUX-SGR-WINDOW
-export exp_tag='f-fivo-aux-sgr-window'
+export exp_tag='f---fivo-aux-sgr-window'
 export use_sgr=1
 export proposal_type='VRNN_FILTERING'
 export proposal_structure='VRNN_FILTERING_RESQ'
@@ -110,7 +110,7 @@ export eval_resamp_crit='ess_criterion'
 launch_cmd
 
 # FIVO-AUX-SGR-ENCODED
-export exp_tag='g-fivo-aux-sgr-encoded'
+export exp_tag='g---fivo-aux-sgr-encoded'
 export use_sgr=1
 export proposal_type='VRNN_SMOOTHING'
 export proposal_structure='VRNN_SMOOTHING_RESQ'
@@ -126,7 +126,7 @@ launch_cmd
 
 
 # FIVO-AUX-SGR-WINDOW-TEMPER
-export exp_tag='h-fivo-aux-sgr-window-temper'
+export exp_tag='h---fivo-aux-sgr-window-temper'
 export use_sgr=1
 export proposal_type='VRNN_FILTERING'
 export proposal_structure='VRNN_FILTERING_RESQ'
@@ -141,7 +141,7 @@ export eval_resamp_crit='ess_criterion'
 launch_cmd
 
 # FIVO-AUX-SGR-ENCODED-TEMPER
-export exp_tag='i-fivo-aux-sgr-encoded-temper'
+export exp_tag='i---fivo-aux-sgr-encoded-temper'
 export use_sgr=1
 export proposal_type='VRNN_SMOOTHING'
 export proposal_structure='VRNN_SMOOTHING_RESQ'
