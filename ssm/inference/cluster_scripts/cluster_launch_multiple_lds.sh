@@ -33,7 +33,7 @@ export temper=0.0
 export use_vi=0
 export n_part=1
 export train_resamp_crit='never_resample'
-export eval_resamp_crit='ess_criterion'
+export eval_resamp_crit='never_resample'
 launch_cmd
 
 # IWAE
@@ -45,7 +45,7 @@ export temper=0.0
 export use_vi=0
 export n_part=$GLOBAL_num_part
 export train_resamp_crit='never_resample'
-export eval_resamp_crit='ess_criterion'
+export eval_resamp_crit='never_resample'
 launch_cmd
 
 
