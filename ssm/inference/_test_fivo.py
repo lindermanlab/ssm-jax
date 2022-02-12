@@ -393,7 +393,7 @@ def main():
                 nlml_hist.append(dc(large_pred_smc_neg_lml))
                 
                 # If we have improved, store these parameters.
-                if large_pred_smc_neg_lml < best_val_neg_fivo_bound:
+                if large_pred_smc_neg_fivo_bound < best_val_neg_fivo_bound:
                     best_params_raw = dc(fivo_util.get_params_from_opt(opt))
                     best_params_processed = fivo_util.log_params([[], [], [], []], best_params_raw)
                     best_val_neg_fivo_bound = dc(large_pred_smc_neg_lml)
