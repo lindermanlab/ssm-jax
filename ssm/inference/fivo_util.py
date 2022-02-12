@@ -153,7 +153,7 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
     Returns:
 
     """
-    true_lml, em_log_marginal_likelihood, true_lml, initial_fivo_bound, initial_lml = 0.0, 0.0, 0.0, 0.0, 0.0
+    true_neg_lml, em_log_marginal_likelihood, true_neg_lml, initial_fivo_bound, initial_lml = 0.0, 0.0, 0.0, 0.0, 0.0
     init_bpf_posterior, em_posterior, true_bpf_posterior, init_smc_posterior, em_posterior, sweep_fig, filt_fig = None, None, None, None, None, None, None
     em_log_marginal_likelihood = np.nan
 
@@ -238,7 +238,7 @@ def initial_validation(env, key, true_model, dataset, masks, true_states, opt, d
     # Do some print.
     if do_print is not None:
         _smoothed_training_loss = initial_lml
-        do_print(0, true_model, opt, true_lml, true_neg_fivo_bound, initial_lml, initial_fivo_bound, em_log_marginal_likelihood, _smoothed_training_loss)
+        do_print(0, true_model, opt, true_neg_lml, true_neg_fivo_bound, initial_lml, initial_fivo_bound, em_log_marginal_likelihood, _smoothed_training_loss)
 
     return true_neg_lml, true_neg_fivo_bound, em_log_marginal_likelihood, sweep_fig, filt_fig, initial_lml, initial_fivo_bound
 
