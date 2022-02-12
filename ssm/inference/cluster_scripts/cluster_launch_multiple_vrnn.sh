@@ -7,7 +7,7 @@ export latent_dim=32
 export n_part_global=4
 
 # These are reasonably constant for VRNN experiments
-export glob_tag="VRNN-${dataset}-${n_part_global}-v1-0-1"
+export glob_tag="VRNN-${dataset}-${n_part_global}-v2-0-1"
 export model='VRNN'
 export emissions_dim=1
 
