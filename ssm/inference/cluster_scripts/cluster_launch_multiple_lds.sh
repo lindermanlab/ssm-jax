@@ -8,7 +8,7 @@ export tilt_type='SINGLE_WINDOW'
 export latent_dim=1
 export emissions_dim=1
 export GLOBAL_num_part=8
-export encoder_struct='NONE'
+export enc_struct='NONE'
 
 launch_cmd () { sbatch -J ${glob_tag} --export=ALL ./cluster_scripts/_cluster_launch_multiple.sh ; }
 
