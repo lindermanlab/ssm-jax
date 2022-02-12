@@ -32,7 +32,7 @@ default_verbosity = Verbosity.DEBUG
 # config.update("jax_debug_nans", True)
 
 # Disable jit for inspection.
-DISABLE_JIT = True
+DISABLE_JIT = False
 # If we are on the remote, then hard disable this.
 if not LOCAL_SYSTEM:
     DISABLE_JIT = False
@@ -277,24 +277,24 @@ def main():
 
         # --------------------------------------------------------------------------------------------------------------------------------------------
 
-        # # Test the initial models.
-        # key, subkey = jr.split(key)
-        # large_true_bpf_neg_lml, true_neg_bpf_fivo_bound, em_neg_lml, sweep_fig, filt_fig, initial_smc_neg_lml, initial_smc_neg_fivo_bound = \
-        #     fivo_util.initial_validation(env,
-        #                                  key,
-        #                                  true_model,
-        #                                  val_datasets,
-        #                                  val_dataset_masks,
-        #                                  true_states,
-        #                                  opt,
-        #                                  do_fivo_sweep_jitted,
-        #                                  smc_jit,
-        #                                  smc_kwargs=gen_smc_kwargs(_temperature=1.0),
-        #                                  num_particles=env.config.validation_particles,
-        #                                  dset_to_plot=env.config.dset_to_plot,
-        #                                  init_model=model,
-        #                                  do_print=do_print,
-        #                                  do_plot=False)  # Re-enable plotting with: env.config.PLOT .
+        # Test the initial models.
+        key, subkey = jr.split(key)
+        large_true_bpf_neg_lml, true_neg_bpf_fivo_bound, em_neg_lml, sweep_fig, filt_fig, initial_smc_neg_lml, initial_smc_neg_fivo_bound = \
+            fivo_util.initial_validation(env,
+                                         key,
+                                         true_model,
+                                         val_datasets,
+                                         val_dataset_masks,
+                                         true_states,
+                                         opt,
+                                         do_fivo_sweep_jitted,
+                                         smc_jit,
+                                         smc_kwargs=gen_smc_kwargs(_temperature=1.0),
+                                         num_particles=env.config.validation_particles,
+                                         dset_to_plot=env.config.dset_to_plot,
+                                         init_model=model,
+                                         do_print=do_print,
+                                         do_plot=False)  # Re-enable plotting with: env.config.PLOT .
 
         # We will log the best parameters here.
         best_params_raw = dc(fivo_util.get_params_from_opt(opt))

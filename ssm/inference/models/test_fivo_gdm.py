@@ -28,12 +28,12 @@ def get_config():
 
     # General sweep settings.
     parser.add_argument('--validation-interval', default=500, type=int)
-    parser.add_argument('--train-resampling-criterion', default='never_resample', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
-    parser.add_argument('--eval-resampling-criterion', default='never_resample', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
+    parser.add_argument('--train-resampling-criterion', default='always_resample', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
+    parser.add_argument('--eval-resampling-criterion', default='always_resample', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
     parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # CSV.  # {'multinomial_resampling', 'systematic_resampling'}.
-    parser.add_argument('--use-sgr', default=0, type=int)                       # {0, 1}
+    parser.add_argument('--use-sgr', default=1, type=int)                       # {0, 1}
     parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
-    parser.add_argument('--num-particles', default=1, type=int)
+    parser.add_argument('--num-particles', default=4, type=int)
     parser.add_argument('--datasets-per-batch', default=8, type=int)
 
     # Model free parameters.
@@ -62,7 +62,7 @@ def get_config():
     parser.add_argument('--latent-dim', default=1, type=int)
     parser.add_argument('--emissions-dim', default=1, type=int)
     parser.add_argument('--num-trials', default=100000, type=int)
-    parser.add_argument('--num-val-datasets', default=100, type=int)
+    parser.add_argument('--num-val-datasets', default=1000, type=int)
 
     # Learning rates.
     parser.add_argument('--lr-p', default=0.001, type=float)
@@ -71,7 +71,7 @@ def get_config():
 
     parser.add_argument('--opt-steps', default=100000, type=int)
     parser.add_argument('--dset-to-plot', default=2, type=int)
-    parser.add_argument('--validation-particles', default=250, type=int)
+    parser.add_argument('--validation-particles', default=128, type=int)
     parser.add_argument('--sweep-test-particles', default=10, type=int)
     parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
@@ -597,12 +597,12 @@ def do_print(_step, true_model, opt, true_lml, true_fivo, pred_lml, pred_fivo_bo
 
     """
     _str = 'Step: {:> 5d},  '.format(_step) + \
-           'Smoothed training loss: {:> 8.3f},   '.format(smoothed_training_loss) + \
-           'Val EM Neg-LML: {:> 8.3f},  '.format(em_log_marginal_likelihood) + \
-           'Val True Neg-LML: {:> 8.3f},  '.format(true_lml) + \
-           'Val Pred Neg-LML: {:> 8.3f},  '.format(pred_lml) + \
-           'Val True neg FIVO bound: {:> 8.3f},  '.format(true_fivo) + \
-           'Val Pred neg FIVO bound: {:> 8.3f},'.format(pred_fivo_bound)
+           'Smoothed training loss: {:> 8.6f},   '.format(smoothed_training_loss) + \
+           'Val EM Neg-LML: {:> 8.6f},  '.format(em_log_marginal_likelihood) + \
+           'Val True Neg-LML: {:> 8.6f},  '.format(true_lml) + \
+           'Val Pred Neg-LML: {:> 8.6f},  '.format(pred_lml) + \
+           'Val True neg FIVO bound: {:> 8.6f},  '.format(true_fivo) + \
+           'Val Pred neg FIVO bound: {:> 8.6f},'.format(pred_fivo_bound)
     print(_str)
 
     if opt[0] is not None:
