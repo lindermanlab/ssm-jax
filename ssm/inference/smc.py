@@ -448,7 +448,7 @@ def _smc_forward_pass(key,
         new_particles = q_dist.sample(seed=_subkey1)
 
         # If we have just a single particle, there is sometimes no batch dimension.
-        if len(new_particles.shape) == 1:
+        if num_particles == 1:
             new_particles = np.expand_dims(new_particles, axis=0)
 
         # TODO - this is a bit grotty.  Assumes that if there is a joint distribution, all the deterministic stuff is in the first
