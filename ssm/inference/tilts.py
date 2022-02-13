@@ -300,9 +300,8 @@ class IGWindowTilt(IndependentGaussianTilt):
         else:
             raise NotImplementedError()
 
-        # # TODO - removed tilt.
+        # # Uncomment this to remove tilt action but retain code path.
         # raw_low_r_vals = raw_low_r_vals * 0.0
-        # # TODO - removed tilt.
 
         log_r_val = np.sum(raw_low_r_vals, axis=0)
 

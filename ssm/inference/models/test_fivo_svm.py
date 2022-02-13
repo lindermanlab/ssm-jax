@@ -40,7 +40,7 @@ def get_config():
     parser.add_argument('--num-particles', default=16, type=int)
     parser.add_argument('--datasets-per-batch', default=8, type=int)
 
-    parser.add_argument('--l2-reg', default=0.001, type=float, help="L2 regulation hyperparameter.")
+    parser.add_argument('--l2-reg', default=0.000, type=float, help="L2 regulation hyperparameter.")
 
     parser.add_argument('--free-parameters', default='log_Q,invsig_phi,mu', type=str)  # CSV.  # {'log_Q', 'mu', 'log_beta'}.
 

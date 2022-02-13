@@ -89,7 +89,7 @@ def get_config():
     parser.add_argument('--dataset', default='default', type=str)
     parser.add_argument('--synthetic-data', default=1, type=int)
     parser.add_argument('--use-bootstrap-initial-distribution', default=0, type=int, help="Force sweeps to use the model for initialization.")
-    parser.add_argument('--l2-reg', default=0.001, type=float, help="L2 regulation hyperparameter.")
+    parser.add_argument('--l2-reg', default=0.000, type=float, help="L2 regulation hyperparameter.")
 
     config = parser.parse_args().__dict__
 

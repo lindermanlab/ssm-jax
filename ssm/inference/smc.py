@@ -449,7 +449,7 @@ def _smc_forward_pass(key,
 
         # If we have just a single particle, there is sometimes no batch dimension.
         if num_particles == 1:
-            new_particles = np.expand_dims(new_particles, axis=0)
+            new_particles = jax.tree_map(lambda _a: np.expand_dims(_a, axis=0), new_particles)
 
         # TODO - this is a bit grotty.  Assumes that if there is a joint distribution, all the deterministic stuff is in the first
         #  element, and that everything thereafter is a "stochastic distribution".

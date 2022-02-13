@@ -53,7 +53,7 @@ def get_config():
     parser.add_argument('--encoder-structure', default='BIRNN', type=str)  # {None/'NONE', 'BIRNN' }
 
     # Encoder pre-training hyperparameters.
-    parser.add_argument('--encoder-pretrain', default=0, type=int, help="{0, 1}")
+    parser.add_argument('--encoder-pretrain', default=1, type=int, help="{0, 1}")
     parser.add_argument('--encoder-pretrain-opt-steps', default=200, type=int, help="")
     parser.add_argument('--encoder-pretrain-lr', default=0.01, type=float, help="")
     parser.add_argument('--encoder-pretrain-batch-size', default=4, type=float, help="")
