@@ -73,7 +73,7 @@ def get_config():
     parser.add_argument('--T', default=49, type=int)  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=1, type=int)
     parser.add_argument('--emissions-dim', default=1, type=int)
-    parser.add_argument('--num-trials', default=100000, type=int)  # NOTE - try with a single trial.
+    parser.add_argument('--num-trials', default=10000, type=int)  # NOTE - try with a single trial.
     parser.add_argument('--num-val-datasets', default=100, type=int)
 
     # Misc settings.
@@ -127,8 +127,10 @@ def define_test(key, env):
 
     val_datasets = np.asarray(dc(datasets[:env.config.num_val_datasets]))
     val_dataset_masks = np.asarray(dc(masks[:env.config.num_val_datasets]))
-    trn_datasets = np.asarray(dc(datasets[env.config.num_val_datasets:]))
-    trn_dataset_masks = np.asarray(dc(masks[env.config.num_val_datasets:]))
+    tst_datasets = np.asarray(dc(datasets[env.config.num_val_datasets::(2 * env.config.num_val_datasets)]))
+    tst_dataset_masks = np.asarray(dc(masks[env.config.num_val_datasets:(2 * env.config.num_val_datasets)]))
+    trn_datasets = np.asarray(dc(datasets[(2 * env.config.num_val_datasets):]))
+    trn_dataset_masks = np.asarray(dc(masks[(2 * env.config.num_val_datasets):]))
 
     # Now define a model to test.
     key, subkey = jax.random.split(key)
