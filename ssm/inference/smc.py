@@ -469,6 +469,7 @@ def _smc_forward_pass(key,
                                  lambda *_args: tilt(new_particles, t),
                                  None) / tilt_temperature
 
+        # TODO - ELBO in the LDS fails here.
         # Test if the observations are NaNs.  If they are NaNs, assign a log-likelihood of zero.
         y_log_probability = jax.lax.cond(np.any(np.isnan(dataset[t])),
                                          lambda _: np.zeros((num_particles, )),

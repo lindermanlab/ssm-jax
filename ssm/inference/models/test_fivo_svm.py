@@ -91,9 +91,6 @@ def get_config():
     parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
     parser.add_argument('--use-bootstrap-initial-distribution', default=0, type=int, help="Force sweeps to use the model for initialization.")
 
-    # Data encoder args.
-    parser.add_argument('--encoder-structure', default='NONE', type=str)  # {None/'NONE', 'BIRNN' }
-
     # Encoder pre-training hyperparameters.
     parser.add_argument('--encoder-pretrain', default=1, type=int, help="{0, 1}")
     parser.add_argument('--encoder-pretrain-opt-steps', default=200, type=int, help="")
