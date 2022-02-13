@@ -1,13 +1,13 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-export glob_tag='LDS-v8-0-0-shortwindow'
+export glob_tag='LDS-v9-0-0-perstep'
 export model='LDS'
-export proposal_type='SINGLE_WINDOW'
-export tilt_type='SINGLE_WINDOW'
+export proposal_type='PERSTEP_ALLOBS'
+export tilt_type='PERSTEP_ALLOBS'
 export latent_dim=1
 export emissions_dim=1
-export GLOBAL_num_part=8
+export GLOBAL_num_part=4
 export enc_struct='NONE'
 export dataset='default'
 
@@ -26,7 +26,7 @@ export eval_resamp_crit='ess_criterion'
 launch_cmd
 
 # ELBO
-export exp_tag='b---bpf-sgr'
+export exp_tag='b---elbo'
 export use_sgr=1
 export proposal_structure='BOOTSTRAP'
 export tilt_structure='NONE'
