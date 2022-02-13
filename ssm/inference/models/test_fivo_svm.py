@@ -40,7 +40,7 @@ def get_config():
     parser.add_argument('--num-particles', default=16, type=int)
     parser.add_argument('--datasets-per-batch', default=8, type=int)
 
-    parser.add_argument('--l2-reg', default=0.001, type=float, help="L2 regulation hyperparameter.")
+    parser.add_argument('--l2-reg', default=0.000, type=float, help="L2 regulation hyperparameter.")
 
     parser.add_argument('--free-parameters', default='log_Q,invsig_phi,mu', type=str)  # CSV.  # {'log_Q', 'mu', 'log_beta'}.
 
@@ -73,7 +73,7 @@ def get_config():
     parser.add_argument('--T', default=49, type=int)  # NOTE - This is the number of transitions in the model (index-0).  There are T+1 variables.
     parser.add_argument('--latent-dim', default=1, type=int)
     parser.add_argument('--emissions-dim', default=1, type=int)
-    parser.add_argument('--num-trials', default=10000, type=int)  # NOTE - try with a single trial.
+    parser.add_argument('--num-trials', default=100000, type=int)  # NOTE - try with a single trial.
     parser.add_argument('--num-val-datasets', default=100, type=int)
 
     # Misc settings.
