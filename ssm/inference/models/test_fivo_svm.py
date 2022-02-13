@@ -151,7 +151,7 @@ def define_test(key, env):
     tilt, tilt_params, rebuild_tilt_fn = define_tilt(subkey, model, datasets, env)
 
     # Return this big pile of stuff.
-    ret_model = (true_model, true_states, trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks)
+    ret_model = (true_model, true_states, trn_datasets, trn_dataset_masks, val_datasets, val_dataset_masks, tst_datasets, tst_dataset_masks)
     ret_test = (model, get_model_params, rebuild_model_fn)
     ret_prop = (proposal, proposal_params, rebuild_prop_fn)
     ret_tilt = (tilt, tilt_params, rebuild_tilt_fn)
