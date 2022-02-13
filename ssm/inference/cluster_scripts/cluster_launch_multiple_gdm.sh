@@ -10,7 +10,7 @@ export latent_dim=1
 export emissions_dim=1
 export GLOBAL_n_part=4
 export enc_struct='NONE'
-export eval_resamp_crit='always_resample'
+export GLOBAL_eval_resamp_crit='always_resample'
 export GLOBAL_train_resamp_crit='always_resample'
 export dataset='default'
 
@@ -23,6 +23,7 @@ export use_vi=0
 export proposal_structure='BOOTSTRAP'
 export tilt_structure='NONE'
 export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 export n_part=${GLOBAL_n_part}
 launch_cmd
 
@@ -33,6 +34,7 @@ export use_vi=0
 export proposal_structure='DIRECT'
 export tilt_structure='NONE'
 export train_resamp_crit='never_resample'
+export eval_resamp_crit='never_resample'
 export n_part=1
 launch_cmd
 
@@ -43,6 +45,7 @@ export use_vi=0
 export proposal_structure='DIRECT'
 export tilt_structure='NONE'
 export train_resamp_crit='never_resample'
+export eval_resamp_crit='never_resample'
 export n_part=${GLOBAL_n_part}
 launch_cmd
 
@@ -54,6 +57,7 @@ export use_vi=0
 export proposal_structure='DIRECT'
 export tilt_structure='NONE'
 export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 export n_part=${GLOBAL_n_part}
 launch_cmd
 
@@ -64,6 +68,7 @@ export use_vi=0
 export proposal_structure='DIRECT'
 export tilt_structure='NONE'
 export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 export n_part=${GLOBAL_n_part}
 launch_cmd
 
@@ -75,6 +80,7 @@ export use_vi=0
 export proposal_structure='DIRECT'
 export tilt_structure='DIRECT'
 export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 export n_part=${GLOBAL_n_part}
 launch_cmd
 
@@ -85,6 +91,7 @@ export use_vi=0
 export proposal_structure='DIRECT'
 export tilt_structure='DIRECT'
 export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 export n_part=${GLOBAL_n_part}
 launch_cmd
 
@@ -95,6 +102,7 @@ export use_vi=1
 export proposal_structure='DIRECT'
 export tilt_structure='DIRECT'
 export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 export n_part=${GLOBAL_n_part}
 launch_cmd
 
@@ -105,6 +113,7 @@ export use_vi=1
 export proposal_structure='DIRECT'
 export tilt_structure='DIRECT'
 export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 export n_part=${GLOBAL_n_part}
 launch_cmd
 

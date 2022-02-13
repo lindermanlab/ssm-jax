@@ -1,95 +1,152 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-glob_tag='SVM-v4-0-0'
-model='SVM'
-proposal_type='SINGLE_WINDOW'
-tilt_type='SINGLE_WINDOW'
-latent_dim=1
-emissions_dim=1
+export glob_tag='SVM-v5-0-0'
+export model='SVM'
+export proposal_type='PERSTEP_ALLOBS'
+export tilt_type='PERSTEP_ALLOBS'
+export latent_dim=1
+export emissions_dim=1
+export dataset='default'
+export enc_struct='NONE'
+export GLOBAL_n_part=4
+export GLOBAL_train_resamp_crit='ess_criterion'
+export GLOBAL_eval_resamp_crit='ess_criterion'
 
-launch_cmd () { sbatch -J ${glob_tag} --export=GLOB_TAG=$glob_tag,EXP_TAG=$exp_tag,MODEL=${model},USE_SGR=${use_sgr},PROPOSAL_STRUCTURE=${proposal_structure},PROPOSAL_TYPE=${proposal_type},TILT_STRUCTURE=${tilt_structure},TILT_TYPE=${tilt_type},TEMPER=${temper},LATENT_DIM=${latent_dim},EMISSIONS_DIM=${emissions_dim},USE_VI=${use_vi} cluster_scripts/_cluster_launch_multiple.sh ; }
+launch_cmd () { sbatch -J ${glob_tag} --export=ALL cluster_scripts/_cluster_launch_multiple.sh ; }
 
 
 # BPF-SGR
-exp_tag='bpf-sgr'
-use_sgr=1
-proposal_structure='BOOTSTRAP'
-tilt_structure='NONE'
-temper=0.0
-use_vi=0
+export exp_tag='a---bpf-sgr'
+export use_sgr=1
+export proposal_structure='BOOTSTRAP'
+export tilt_structure='NONE'
+export temper=0.0
+export use_vi=0
+export n_part=${GLOBAL_n_part}
+export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 launch_cmd
 
+# BPF-SGR
+export exp_tag='b---elbo'
+export use_sgr=1
+export proposal_structure='RESQ'
+export tilt_structure='NONE'
+export temper=0.0
+export use_vi=0
+export n_part=1
+export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
+launch_cmd
+
+# BPF-SGR
+export exp_tag='c---iwae'
+export use_sgr=1
+export proposal_structure='RESQ'
+export tilt_structure='NONE'
+export temper=0.0
+export use_vi=0
+export n_part=${GLOBAL_n_part}
+export train_resamp_crit='never_resample'
+export eval_resamp_crit='never_resample'
+launch_cmd
+
+
 # FIVO
-exp_tag='fivo'
-use_sgr=0
-proposal_structure='RESQ'
-tilt_structure='NONE'
-temper=0.0
-use_vi=0
+export exp_tag='d---fivo'
+export use_sgr=0
+export proposal_structure='RESQ'
+export tilt_structure='NONE'
+export temper=0.0
+export use_vi=0
+export n_part=${GLOBAL_n_part}
+export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 launch_cmd
 
 # FIVO-SGR
-exp_tag='fivo-sgr'
-use_sgr=1
-proposal_structure='RESQ'
-tilt_structure='NONE'
-temper=0.0
-use_vi=0
+export exp_tag='e---fivo-sgr'
+export use_sgr=1
+export proposal_structure='RESQ'
+export tilt_structure='NONE'
+export temper=0.0
+export use_vi=0
+export n_part=${GLOBAL_n_part}
+export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 launch_cmd
 
 # FIVO-AUX-SGR
-exp_tag='fivo-aux-sgr'
-use_sgr=1
-proposal_structure='RESQ'
-tilt_structure='DIRECT'
-temper=0.0
-use_vi=0
+export exp_tag='f---fivo-aux-sgr'
+export use_sgr=1
+export proposal_structure='RESQ'
+export tilt_structure='DIRECT'
+export temper=0.0
+export use_vi=0
+export n_part=${GLOBAL_n_part}
+export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 launch_cmd
 
 # FIVO-AUX-SGR-TEMPERED
-exp_tag='fivo-aux-sgr-tempered'
-use_sgr=1
-proposal_structure='RESQ'
-tilt_structure='DIRECT'
-temper=1.0
-use_vi=0
+export exp_tag='g---fivo-aux-sgr-tempered'
+export use_sgr=1
+export proposal_structure='RESQ'
+export tilt_structure='DIRECT'
+export temper=1.0
+export use_vi=0
+export n_part=${GLOBAL_n_part}
+export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 launch_cmd
 
 # FIVO-AUX-VI
-exp_tag='fivo-aux-vi'
-use_sgr=0
-proposal_structure='RESQ'
-tilt_structure='DIRECT'
-temper=0.0
-use_vi=1
+export exp_tag='h---fivo-aux-vi'
+export use_sgr=0
+export proposal_structure='RESQ'
+export tilt_structure='DIRECT'
+export temper=0.0
+export use_vi=1
+export n_part=${GLOBAL_n_part}
+export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 launch_cmd
 
 # FIVO-AUX-VI-SGR
-exp_tag='fivo-aux-vi-sgr'
-use_sgr=1
-proposal_structure='RESQ'
-tilt_structure='DIRECT'
-temper=0.0
-use_vi=1
+export exp_tag='i---fivo-aux-vi-sgr'
+export use_sgr=1
+export proposal_structure='RESQ'
+export tilt_structure='DIRECT'
+export temper=0.0
+export use_vi=1
+export n_part=${GLOBAL_n_part}
+export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 launch_cmd
 
 # FIVO-AUX-VI-TEMPERED
-exp_tag='fivo-aux-vi-tempered'
-use_sgr=0
-proposal_structure='RESQ'
-tilt_structure='DIRECT'
-temper=1.0
-use_vi=1
+export exp_tag='j---fivo-aux-vi-tempered'
+export use_sgr=0
+export proposal_structure='RESQ'
+export tilt_structure='DIRECT'
+export temper=1.0
+export use_vi=1
+export n_part=${GLOBAL_n_part}
+export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 launch_cmd
 
 # FIVO-AUX-VI-SGR-TEMPERED
-exp_tag='fivo-aux-vi-sgr-tempered'
-use_sgr=1
-proposal_structure='RESQ'
-tilt_structure='DIRECT'
-temper=1.0
-use_vi=1
+export exp_tag='k---fivo-aux-vi-sgr-tempered'
+export use_sgr=1
+export proposal_structure='RESQ'
+export tilt_structure='DIRECT'
+export temper=1.0
+export use_vi=1
+export n_part=${GLOBAL_n_part}
+export train_resamp_crit=${GLOBAL_train_resamp_crit}
+export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 launch_cmd
 
 
