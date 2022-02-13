@@ -1,7 +1,7 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-export glob_tag='SVM-v5-0-0'
+export glob_tag='SVM-v7-0-0-perstep-allobs'
 export model='SVM'
 export proposal_type='PERSTEP_ALLOBS'
 export tilt_type='PERSTEP_ALLOBS'
