@@ -448,7 +448,7 @@ def _smc_forward_pass(key,
         new_particles = q_dist.sample(seed=_subkey1)
 
         # If we have just a single particle, there is sometimes no batch dimension.
-        if num_particles == 1:
+        if len(new_particles.shape) == 1:
             new_particles = jax.tree_map(lambda _a: np.expand_dims(_a, axis=0), new_particles)
 
         # TODO - this is a bit grotty.  Assumes that if there is a joint distribution, all the deterministic stuff is in the first
