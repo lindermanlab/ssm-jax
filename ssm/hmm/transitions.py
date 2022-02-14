@@ -10,6 +10,8 @@ tfd = tfp.distributions
 
 import ssm.distributions as ssmd
 
+from ssm.utils import get_unconstrained_parameters, from_unconstrained_parameters
+
 
 
 class Transitions:
@@ -114,11 +116,12 @@ class StationaryTransitions(Transitions):
         
     @property
     def _parameters(self):
-        return freeze(dict(distribution=self._distribution))
+        return freeze(get_unconstrained_parameters(self._distribution))
         
     @_parameters.setter
     def _parameters(self, params):
-        self._distribution = params["distribution"]
+        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
+                                                           params)
         
     @property
     def _hyperparameters(self):
@@ -199,11 +202,12 @@ class SimpleStickyTransitions(Transitions):
         
     @property
     def _parameters(self):
-        return freeze(dict(distribution=self._distribution))
+        return freeze(get_unconstrained_parameters(self._distribution))
         
     @_parameters.setter
     def _parameters(self, params):
-        self._distribution = params["distribution"]
+        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
+                                                           params)
         
     @property
     def _hyperparameters(self):
