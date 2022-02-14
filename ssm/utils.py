@@ -12,8 +12,7 @@ import inspect
 from enum import IntEnum
 from tqdm.auto import trange
 from scipy.optimize import linear_sum_assignment
-from collections.abc import Sequence
-from typing import Optional
+from typing import Sequence, Optional
 from functools import wraps, partial
 import copy
 
