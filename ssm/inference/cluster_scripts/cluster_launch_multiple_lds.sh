@@ -1,10 +1,10 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-export glob_tag='LDS-v9-0-0-perstep'
+export glob_tag='LDS-v2-0-0-shortwindow'
 export model='LDS'
-export proposal_type='PERSTEP_ALLOBS'
-export tilt_type='PERSTEP_ALLOBS'
+export proposal_type='SINGLE_WINDOW'
+export tilt_type='SINGLE_WINDOW'
 export latent_dim=1
 export emissions_dim=1
 export GLOBAL_num_part=4
@@ -35,7 +35,7 @@ export use_vi=0
 export n_part=1
 export train_resamp_crit='never_resample'
 export eval_resamp_crit='never_resample'
-launch_cmd
+# launch_cmd
 
 # IWAE
 export exp_tag='c---iwae'
@@ -47,7 +47,7 @@ export use_vi=0
 export n_part=$GLOBAL_num_part
 export train_resamp_crit='never_resample'
 export eval_resamp_crit='never_resample'
-launch_cmd
+# launch_cmd
 
 
 # FIVO
@@ -72,7 +72,7 @@ export use_vi=0
 export n_part=$GLOBAL_num_part
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
-launch_cmd
+# launch_cmd
 
 # FIVO-AUX
 export exp_tag='f---fivo-aux'
@@ -84,7 +84,7 @@ export use_vi=0
 export n_part=$GLOBAL_num_part
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
-launch_cmd
+# launch_cmd
 
 
 # FIVO-AUX-SGR
@@ -109,7 +109,7 @@ export use_vi=0
 export n_part=$GLOBAL_num_part
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
-launch_cmd
+# launch_cmd
 
 
 # FIVO-AUX-VI
@@ -134,7 +134,7 @@ export use_vi=1
 export n_part=$GLOBAL_num_part
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
-launch_cmd
+# launch_cmd
 
 
 # FIVO-AUX-VI-TEMPERED
@@ -147,7 +147,7 @@ export use_vi=1
 export n_part=$GLOBAL_num_part
 export train_resamp_crit='ess_criterion'
 export eval_resamp_crit='ess_criterion'
-launch_cmd
+# launch_cmd
 
 # FIVO-AUX-VI-SGR-TEMPERED
 export exp_tag='l---fivo-aux-vi-sgr-tempered'
@@ -158,7 +158,7 @@ export temper=1.0
 export use_vi=1
 export n_part=$GLOBAL_num_part
 export train_resamp_crit='ess_criterion'
-launch_cmd
+# launch_cmd
 
 
 
