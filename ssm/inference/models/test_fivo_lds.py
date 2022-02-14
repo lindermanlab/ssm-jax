@@ -80,7 +80,7 @@ def get_config():
     parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--model', default='LDS', type=str)
-    parser.add_argument('--seed', default=10, type=int)
+    parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--log-group', default='debug-lds', type=str)  # {'debug', 'gdm-v1.0'}
     parser.add_argument('--plot-interval', default=1, type=int)
     parser.add_argument('--log-to-wandb-interval', default=1, type=int)

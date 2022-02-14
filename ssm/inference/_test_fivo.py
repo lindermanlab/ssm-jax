@@ -38,7 +38,7 @@ if not LOCAL_SYSTEM:
     DISABLE_JIT = False
 
 # Set the default model for local debugging.
-DEFAULT_MODEL = 'VRNN'
+DEFAULT_MODEL = 'LDS'
 
 # Import and configure WandB.
 try:
@@ -484,6 +484,7 @@ def main():
                         utils.log_to_wandb()
 
                 # Do some plotting if we are plotting.
+                key, subkey = jr.split(key)
                 if env.config.PLOT:
 
                     # key, subkey = jr.split(key)
