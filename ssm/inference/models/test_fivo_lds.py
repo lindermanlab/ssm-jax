@@ -30,12 +30,12 @@ def get_config():
     parser = argparse.ArgumentParser()
 
     # General sweep settings.
-    parser.add_argument('--validation-interval', default=500, type=int)
+    parser.add_argument('--validation-interval', default=2000, type=int)
     parser.add_argument('--train-resampling-criterion', default='ess_criterion', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
     parser.add_argument('--eval-resampling-criterion', default='ess_criterion', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
     parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # CSV.  # {'multinomial_resampling', 'systematic_resampling'}.
-    parser.add_argument('--use-sgr', default=0, type=int)  # {0, 1}
-    parser.add_argument('--temper', default=0.2, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--use-sgr', default=1, type=int)  # {0, 1}
+    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
     parser.add_argument('--num-particles', default=4, type=int)
     parser.add_argument('--datasets-per-batch', default=8, type=int)
 
@@ -121,7 +121,7 @@ def define_test(key, env):
 
     val_datasets = np.asarray(dc(datasets[:env.config.num_val_datasets]))
     val_dataset_masks = np.asarray(dc(masks[:env.config.num_val_datasets]))
-    tst_datasets = np.asarray(dc(datasets[env.config.num_val_datasets::(2 * env.config.num_val_datasets)]))
+    tst_datasets = np.asarray(dc(datasets[env.config.num_val_datasets:(2 * env.config.num_val_datasets)]))
     tst_dataset_masks = np.asarray(dc(masks[env.config.num_val_datasets:(2 * env.config.num_val_datasets)]))
     trn_datasets = np.asarray(dc(datasets[(2 * env.config.num_val_datasets):]))
     trn_dataset_masks = np.asarray(dc(masks[(2 * env.config.num_val_datasets):]))

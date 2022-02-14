@@ -473,36 +473,36 @@ class VrnnRawWindowTilt(tilts.IGWindowTilt):
             return vmapped(*tilt_inputs)
 
 
-class VrnnSharedEncodedWindowTilt(tilts.IGWindowTilt):
-    r"""
-    Tilt for use with VRNN.
-    """
-
-    def _tilt_input_generator(self, dataset, model, particles, t, *_):
-        """
-
-        """
-        assert self.n_tilts == 1, "Can only use a single tilt."
-
-        # TODO - this assumes that the VRNN is using an LSTM.
-        vrnn_carry, vrnn_latent = particles
-        vrnn_exposed_hidden_state = vrnn_carry[1]
-
-        # Build up the tilt inputs.
-        tilt_inputs = (vrnn_latent, vrnn_exposed_hidden_state)
-
-        # Test if the inputs are batched and then apply as required.
-        model_latent_shape = (model.latent_dim, )
-        is_batched = (model_latent_shape != vrnn_exposed_hidden_state.shape)
-        if not is_batched:
-            return nn_util.vectorize_pytree(tilt_inputs)
-        else:
-            vmapped = jax.vmap(nn_util.vectorize_pytree)
-            return vmapped(*tilt_inputs)
-
-    @staticmethod
-    def _tilt_output_generator(dataset, model, particles, t, _tilt_window_length, *_):
-        encoded =
+# class VrnnSharedEncodedWindowTilt(tilts.IGWindowTilt):
+#     r"""
+#     Tilt for use with VRNN.
+#     """
+#
+#     def _tilt_input_generator(self, dataset, model, particles, t, *_):
+#         """
+#
+#         """
+#         assert self.n_tilts == 1, "Can only use a single tilt."
+#
+#         # TODO - this assumes that the VRNN is using an LSTM.
+#         vrnn_carry, vrnn_latent = particles
+#         vrnn_exposed_hidden_state = vrnn_carry[1]
+#
+#         # Build up the tilt inputs.
+#         tilt_inputs = (vrnn_latent, vrnn_exposed_hidden_state)
+#
+#         # Test if the inputs are batched and then apply as required.
+#         model_latent_shape = (model.latent_dim, )
+#         is_batched = (model_latent_shape != vrnn_exposed_hidden_state.shape)
+#         if not is_batched:
+#             return nn_util.vectorize_pytree(tilt_inputs)
+#         else:
+#             vmapped = jax.vmap(nn_util.vectorize_pytree)
+#             return vmapped(*tilt_inputs)
+#
+#     @staticmethod
+#     def _tilt_output_generator(dataset, model, particles, t, _tilt_window_length, *_):
+#         encoded =
 
 
 class VrnnEncodedTilt(tilts.IndependentGaussianTilt):

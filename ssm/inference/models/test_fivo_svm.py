@@ -127,7 +127,7 @@ def define_test(key, env):
 
     val_datasets = np.asarray(dc(datasets[:env.config.num_val_datasets]))
     val_dataset_masks = np.asarray(dc(masks[:env.config.num_val_datasets]))
-    tst_datasets = np.asarray(dc(datasets[env.config.num_val_datasets::(2 * env.config.num_val_datasets)]))
+    tst_datasets = np.asarray(dc(datasets[env.config.num_val_datasets:(2 * env.config.num_val_datasets)]))
     tst_dataset_masks = np.asarray(dc(masks[env.config.num_val_datasets:(2 * env.config.num_val_datasets)]))
     trn_datasets = np.asarray(dc(datasets[(2 * env.config.num_val_datasets):]))
     trn_dataset_masks = np.asarray(dc(masks[(2 * env.config.num_val_datasets):]))

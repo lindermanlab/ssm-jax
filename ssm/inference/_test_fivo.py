@@ -38,14 +38,14 @@ if not LOCAL_SYSTEM:
     DISABLE_JIT = False
 
 # Set the default model for local debugging.
-DEFAULT_MODEL = 'GDM'
+DEFAULT_MODEL = 'VRNN'
 
 # Import and configure WandB.
 try:
     import wandb
     USE_WANDB = True
     USERNAME = 'andrewwarrington'
-    PROJECT = 'fivo-aux-delta'
+    PROJECT = 'fivo-aux-epsilon'
 except:
     USE_WANDB = False
     print('[Soft Warning]:  Couldnt configure WandB.')
@@ -378,6 +378,7 @@ def main():
 
                 # Clock the time.
                 en = dt()
+                sti = dt()
 
                 # Capture the parameters.
                 param_hist = fivo_util.log_params(param_hist, cur_params)
@@ -407,34 +408,34 @@ def main():
                                                                                             em_neg_lml,
                                                                                             model=env.config.model)
 
-                # Test the KLs.
-                if env.config.model != 'VRNN':
-                    key, subkey = jr.split(key)
-                    kl_metrics, true_bpf_kls = fivo_util.compare_kls(get_marginals,
-                                                                     env,
-                                                                     opt,
-                                                                     val_datasets,
-                                                                     val_dataset_masks,
-                                                                     true_model,
-                                                                     subkey,
-                                                                     do_fivo_sweep_jitted,
-                                                                     smc_jit,
-                                                                     gen_smc_kwargs(),
-                                                                     true_bpf_kls=true_bpf_kls)
+                # # Test the KLs.
+                # if env.config.model != 'VRNN':
+                #     key, subkey = jr.split(key)
+                #     kl_metrics, true_bpf_kls = fivo_util.compare_kls(get_marginals,
+                #                                                      env,
+                #                                                      opt,
+                #                                                      val_datasets,
+                #                                                      val_dataset_masks,
+                #                                                      true_model,
+                #                                                      subkey,
+                #                                                      do_fivo_sweep_jitted,
+                #                                                      smc_jit,
+                #                                                      gen_smc_kwargs(),
+                #                                                      true_bpf_kls=true_bpf_kls)
 
-                # Compare the number of unique particles.
-                if env.config.model != 'VRNN':
-                    key, subkey = jr.split(key)
-                    upc_metrics, true_bpf_upc = fivo_util.compare_unqiue_particle_counts(env,
-                                                                                         opt,
-                                                                                         val_datasets,
-                                                                                         val_dataset_masks,
-                                                                                         true_model,
-                                                                                         subkey,
-                                                                                         do_fivo_sweep_jitted,
-                                                                                         smc_jit,
-                                                                                         gen_smc_kwargs(),
-                                                                                         true_bpf_upc=true_bpf_upc)
+                # # Compare the number of unique particles.
+                # if env.config.model != 'VRNN':
+                #     key, subkey = jr.split(key)
+                #     upc_metrics, true_bpf_upc = fivo_util.compare_unqiue_particle_counts(env,
+                #                                                                          opt,
+                #                                                                          val_datasets,
+                #                                                                          val_dataset_masks,
+                #                                                                          true_model,
+                #                                                                          subkey,
+                #                                                                          do_fivo_sweep_jitted,
+                #                                                                          smc_jit,
+                #                                                                          gen_smc_kwargs(),
+                #                                                                          true_bpf_upc=true_bpf_upc)
 
                 # Save out to a temporary location.
                 if (env.config.save_path is not None) and (env.config.load_path is None):
@@ -468,8 +469,8 @@ def main():
                           'small_neg_fivo_bound': small_neg_fivo_metrics,
                           'small_neg_lml': small_neg_lml_metrics,
 
-                          'auxiliary_metrics':  {'kl': kl_metrics,
-                                                 'upc': upc_metrics, },
+                          'zz_auxiliary_metrics':  {'kl': kl_metrics,
+                                                    'upc': upc_metrics, },
                           }
 
                 # If we are not on the local system, push less frequently (or WandB starts to cry).
@@ -485,15 +486,17 @@ def main():
                 # Do some plotting if we are plotting.
                 if env.config.PLOT:
 
-                    key, subkey = jr.split(key)
-                    fivo_util.compare_sweeps(env, opt, val_datasets, val_dataset_masks, true_model, subkey, do_fivo_sweep_jitted,
-                                             smc_jit, gen_smc_kwargs(), tag=_step, nrep=2, true_states=true_states)
+                    # key, subkey = jr.split(key)
+                    # fivo_util.compare_sweeps(env, opt, val_datasets, val_dataset_masks, true_model, subkey, do_fivo_sweep_jitted,
+                    #                          smc_jit, gen_smc_kwargs(), tag=_step, nrep=2, true_states=true_states)
 
                     param_figures = do_plot(param_hist, nlml_hist, em_neg_lml, large_true_bpf_neg_lml,
                                             get_model_free_params(true_model), param_figures)
 
                 # Do some printing.
+                eni = dt()
                 print('Time per gradient step: {:> 6.3f}s'.format((en - st) / env.config.validation_interval))
+                print('Time per validation   : {:> 6.3f}s'.format((eni - sti)))
                 st = dt()
                 if VI_USE_VI_GRAD:
                     print("VI: Step {:>5d}:  Final VI NEG-ELBO {:> 8.3f}. Steps per update: {:>5d}.  Update frequency {:>5d}.".
@@ -567,16 +570,18 @@ def main():
                                                                                                       model=env.config.model)
 
         # Compile these into a dictionary for the final log.
-        _final_metrics = {'large_best_smc_neg_fivo_bound_val': large_best_smc_neg_fivo_bound_val,
-                          'large_best_smc_neg_lml_val': large_best_smc_neg_lml_val,
-                          'large_best_smc_neg_fivo_bound_tst': large_best_smc_neg_fivo_bound_tst,
-                          'large_best_smc_neg_lml_tst': large_best_smc_neg_lml_tst,
-                          'small_best_neg_lml_metrics_val': small_best_neg_lml_metrics_val,
-                          'small_best_neg_fivo_metrics_val': small_best_neg_fivo_metrics_val,
-                          'small_best_neg_lml_metrics_tst': small_best_neg_lml_metrics_tst,
-                          'small_best_neg_fivo_metrics_tst': small_best_neg_fivo_metrics_tst,
-                          'best_params': best_params_processed}
-        final_metrics = {'z_final_metrics': _final_metrics}
+        _final_metrics_tst = {'best_large_smc_neg_fivo_bound_tst': large_best_smc_neg_fivo_bound_tst,
+                              'best_large_smc_neg_lml_tst': large_best_smc_neg_lml_tst,
+                              'best_small_neg_lml_metrics_tst': small_best_neg_lml_metrics_tst,
+                              'best_small_neg_fivo_metrics_tst': small_best_neg_fivo_metrics_tst, }
+        _final_metrics_val = {'best_large_smc_neg_fivo_bound_val': large_best_smc_neg_fivo_bound_val,
+                              'best_large_smc_neg_lml_val': large_best_smc_neg_lml_val,
+                              'best_small_neg_lml_metrics_val': small_best_neg_lml_metrics_val,
+                              'best_small_neg_fivo_metrics_val': small_best_neg_fivo_metrics_val, }
+
+        final_metrics = {'z_final_metrics_tst': _final_metrics_tst,
+                         'z_final_metrics_val': _final_metrics_val,
+                         'z_best_params': best_params_processed}
         utils.log_to_wandb(final_metrics, _epoch=_step+1)
         
 
