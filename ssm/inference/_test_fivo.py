@@ -38,7 +38,7 @@ if not LOCAL_SYSTEM:
     DISABLE_JIT = False
 
 # Set the default model for local debugging.
-DEFAULT_MODEL = 'LDS'
+DEFAULT_MODEL = 'SVM'
 
 # Import and configure WandB.
 try:
@@ -477,11 +477,13 @@ def main():
                 if env.config.use_wandb:
                     utils.log_to_wandb(to_log, _epoch=_step, USE_WANDB=env.config.use_wandb, _commit=False)
 
-                    if not env.config.local_system:
-                        if ((_step % (env.config.validation_interval * env.config.log_to_wandb_interval)) == 0) or (_step == 1):
-                            utils.log_to_wandb()
-                    else:
-                        utils.log_to_wandb()
+                    utils.log_to_wandb()
+
+                    # if not env.config.local_system:
+                    #     if ((_step % (env.config.validation_interval * env.config.log_to_wandb_interval)) == 0) or (_step == 1):
+                    #         utils.log_to_wandb()
+                    # else:
+                    #     utils.log_to_wandb()
 
                 # Do some plotting if we are plotting.
                 key, subkey = jr.split(key)

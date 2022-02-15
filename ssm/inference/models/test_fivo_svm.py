@@ -45,16 +45,16 @@ def get_config():
     parser.add_argument('--free-parameters', default='log_Q,invsig_phi,mu', type=str)  # CSV.  # {'log_Q', 'mu', 'log_beta'}.
 
     # Proposal args.
-    parser.add_argument('--proposal-structure', default='NONE', type=str)           # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)           # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)       # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--proposal-window-length', default=2, type=int)            # {int, None}.
-    parser.add_argument('--proposal-fn-family', default='AFFINE', type=str)         # {'AFFINE', 'MLP'}.
+    parser.add_argument('--proposal-fn-family', default='MLP', type=str)         # {'AFFINE', 'MLP'}.
 
     # Tilt args.
-    parser.add_argument('--tilt-structure', default='NONE', type=str)             # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)             # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)           # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--tilt-window-length', default=2, type=int)                # {int, None}.
-    parser.add_argument('--tilt-fn-family', default='AFFINE', type=str)             # {'AFFINE', 'MLP'}.
+    parser.add_argument('--tilt-fn-family', default='MLP', type=str)             # {'AFFINE', 'MLP'}.
 
     # Variational / M.L. learning of tilt function.
     parser.add_argument('--vi-use-tilt-gradient', default=0, type=int)
@@ -65,8 +65,8 @@ def get_config():
 
     # Learning rates.
     parser.add_argument('--lr-p', default=0.0001, type=float)
-    parser.add_argument('--lr-q', default=0.0001, type=float)
-    parser.add_argument('--lr-r', default=0.0001, type=float)
+    parser.add_argument('--lr-q', default=0.00001, type=float)
+    parser.add_argument('--lr-r', default=0.00001, type=float)
     parser.add_argument('--lr-e', default=3.0e-5, type=float, help="Learning rate of data encoder parameters.")
 
     # Architecture/data args.
