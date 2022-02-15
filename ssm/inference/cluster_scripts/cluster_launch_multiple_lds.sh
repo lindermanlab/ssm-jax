@@ -1,8 +1,8 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-export GLOBAL_num_part=4
-export window_length=5
+export GLOBAL_num_part=8
+export window_length=2
 export glob_tag="LDS-v1-0-0-w${window_length}-n${GLOBAL_num_part}"
 
 export proposal_type='SINGLE_WINDOW'
