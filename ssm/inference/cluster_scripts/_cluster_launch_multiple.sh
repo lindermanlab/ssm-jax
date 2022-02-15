@@ -5,7 +5,7 @@
 #SBATCH --time=05:59:59
 #SBATCH --output=./Reports/fivo_%A_%a.out
 #SBATCH --error=./Reports/fivo_%A_%a.err
-#SBATCH --array=0-0%2
+#SBATCH --array=0-7%2
 
 source ~/envs/jax-nn/bin/activate
 
