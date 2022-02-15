@@ -72,6 +72,7 @@ def do_fivo_config(DEFAULT_MODEL, USE_WANDB, PROJECT, USERNAME, LOCAL_SYSTEM):
     # Force the tilt temperature to zero if we are not using tilts.  this is just bookkeeping, really.
     if config['tilt_structure'] == 'NONE' or config['tilt_structure'] is None:
         config['temper'] = 0.0
+        print('[WARNING]: Resetting any tilt temperature to zero.')
 
     # Get everything.
     if USE_WANDB:
