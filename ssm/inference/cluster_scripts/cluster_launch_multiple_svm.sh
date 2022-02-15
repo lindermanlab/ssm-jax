@@ -1,7 +1,7 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-export window_length=2
+export window_length=5
 export GLOBAL_n_part=4
 export glob_tag="SVM-v1-0-0-w${window_length}-n${GLOBAL_n_part}"
 
