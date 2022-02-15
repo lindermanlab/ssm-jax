@@ -36,7 +36,7 @@ def get_config():
     parser.add_argument('--eval-resampling-criterion', default='ess_criterion', type=str)  # {'always_resample', 'never_resample', 'ess_criterion'}.
     parser.add_argument('--resampling-function', default='multinomial_resampling', type=str)  # CSV.  # {'multinomial_resampling', 'systematic_resampling'}.
     parser.add_argument('--use-sgr', default=0, type=int)  # {0, 1}
-    parser.add_argument('--temper', default=0.0, type=float)  # {0.0 to disable,  >0.1 to temper}.
+    parser.add_argument('--temper', default=0.2, type=float)  # {0.0 to disable,  >0.1 to temper}.
     parser.add_argument('--num-particles', default=4, type=int)
     parser.add_argument('--datasets-per-batch', default=4, type=int)
 
@@ -45,13 +45,13 @@ def get_config():
     parser.add_argument('--free-parameters', default='mu', type=str)  # CSV.  # {'log_Q', 'mu', 'log_beta'}.
 
     # Proposal args.
-    parser.add_argument('--proposal-structure', default='NONE', type=str)           # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
+    parser.add_argument('--proposal-structure', default='RESQ', type=str)           # {None/'BOOTSTRAP', 'DIRECT', 'RESQ', }
     parser.add_argument('--proposal-type', default='SINGLE_WINDOW', type=str)       # {PERSTEP_ALLOBS, 'PERSTEP_SINGLEOBS', 'SINGLE_SINGLEOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--proposal-window-length', default=2, type=int)            # {int, None}.
     parser.add_argument('--proposal-fn-family', default='MLP', type=str)         # {'AFFINE', 'MLP'}.
 
     # Tilt args.
-    parser.add_argument('--tilt-structure', default='NONE', type=str)             # {None/'NONE', 'DIRECT'}
+    parser.add_argument('--tilt-structure', default='DIRECT', type=str)             # {None/'NONE', 'DIRECT'}
     parser.add_argument('--tilt-type', default='SINGLE_WINDOW', type=str)           # {'PERSTEP_ALLOBS', 'PERSTEP_WINDOW', 'SINGLE_WINDOW'}.
     parser.add_argument('--tilt-window-length', default=2, type=int)                # {int, None}.
     parser.add_argument('--tilt-fn-family', default='MLP', type=str)             # {'AFFINE', 'MLP'}.
@@ -406,7 +406,7 @@ def define_true_model_and_data(key, env):
 
     # Create the true model.
     key, subkey = jr.split(key)
-    mu = np.asarray([-1.0])  # Use a slightly less variable model to begin with.
+    mu = np.asarray([-0.5])  # Use a slightly less variable model to begin with.
     true_model = SVM(mu=mu)
 
     # Sample some data.
