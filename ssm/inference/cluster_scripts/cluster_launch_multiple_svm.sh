@@ -3,7 +3,7 @@ shopt -s expand_aliases
 
 export window_length=2
 export GLOBAL_n_part=4
-export glob_tag="test-SVM-v1-0-0-w${window_length}-n${GLOBAL_n_part}"
+export glob_tag="SVM-v1-0-0-w${window_length}-n${GLOBAL_n_part}"
 
 export proposal_type='SINGLE_WINDOW'
 export tilt_type='SINGLE_WINDOW'

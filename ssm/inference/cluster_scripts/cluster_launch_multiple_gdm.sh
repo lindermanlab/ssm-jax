@@ -1,7 +1,7 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-export glob_tag='test-GDM-v1-0-0'
+export glob_tag='GDM-v1-0-0'
 export model='GDM'
 export temper=0.0
 export proposal_type='PERSTEP'
