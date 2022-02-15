@@ -1,17 +1,20 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-export glob_tag='LDS-v1-0-0-shortwindow'
-export model='LDS'
+export GLOBAL_num_part=4
+export window_length=2
+export glob_tag="LDS-v1-0-0-w${window_length}-n$GLOBAL_num_part}"
+
 export proposal_type='SINGLE_WINDOW'
 export tilt_type='SINGLE_WINDOW'
+export proposal_fn_family='MLP'
+export tilt_fn_family='AFFINE'
+
+export model='LDS'
 export latent_dim=1
 export emissions_dim=1
-export GLOBAL_num_part=4
 export enc_struct='NONE'
 export dataset='default'
-
-export window_length=2
 
 launch_cmd () { sbatch -J ${glob_tag} --export=ALL ./cluster_scripts/_cluster_launch_multiple.sh ; }
 

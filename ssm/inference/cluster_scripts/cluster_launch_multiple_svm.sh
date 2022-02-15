@@ -1,17 +1,23 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-export glob_tag='SVM-v8-0-0-perstep-allobs'
+export window_length=2
+export GLOBAL_n_part=4
+export glob_tag="SVM-v8-0-0-w${window_length}-n${GLOBAL_n_part}"
+
+export proposal_type='SINGLE_WINDOW'
+export tilt_type='SINGLE_WINDOW'
+export proposal_fn_family='MLP'
+export tilt_fn_family='MLP'
+
+export GLOBAL_train_resamp_crit='ess_criterion'
+export GLOBAL_eval_resamp_crit='ess_criterion'
+
 export model='SVM'
-export proposal_type='PERSTEP_ALLOBS'
-export tilt_type='PERSTEP_ALLOBS'
 export latent_dim=1
 export emissions_dim=1
 export dataset='default'
 export enc_struct='NONE'
-export GLOBAL_n_part=4
-export GLOBAL_train_resamp_crit='ess_criterion'
-export GLOBAL_eval_resamp_crit='ess_criterion'
 
 launch_cmd () { sbatch -J ${glob_tag} --export=ALL cluster_scripts/_cluster_launch_multiple.sh ; }
 

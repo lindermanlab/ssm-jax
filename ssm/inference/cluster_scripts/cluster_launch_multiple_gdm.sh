@@ -1,7 +1,7 @@
 #!/bin/bash
 shopt -s expand_aliases
 
-export glob_tag='GDM-v5-0-0'
+export glob_tag='GDM-v1-0-0'
 export model='GDM'
 export temper=0.0
 export proposal_type='PERSTEP'
@@ -13,6 +13,9 @@ export enc_struct='NONE'
 export GLOBAL_eval_resamp_crit='always_resample'
 export GLOBAL_train_resamp_crit='always_resample'
 export dataset='default'
+export window_length=0
+export proposal_fn_family='AFFINE'
+export tilt_fn_family='AFFINE'
 
 launch_cmd () { sbatch -J ${glob_tag} --export=ALL cluster_scripts/_cluster_launch_multiple.sh ; }
 
