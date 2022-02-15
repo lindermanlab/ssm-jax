@@ -3,7 +3,7 @@ shopt -s expand_aliases
 
 export window_length=2
 export GLOBAL_n_part=4
-export glob_tag="SVM-v1-0-0-w${window_length}-n${GLOBAL_n_part}"
+export glob_tag="test-SVM-v1-0-0-w${window_length}-n${GLOBAL_n_part}"
 
 export proposal_type='SINGLE_WINDOW'
 export tilt_type='SINGLE_WINDOW'
@@ -34,21 +34,21 @@ export train_resamp_crit=${GLOBAL_train_resamp_crit}
 export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
 launch_cmd
 
-# BPF-SGR
+# ELBO
 export exp_tag='b---elbo'
-export use_sgr=1
+export use_sgr=0
 export proposal_structure='RESQ'
 export tilt_structure='NONE'
 export temper=0.0
 export use_vi=0
 export n_part=1
-export train_resamp_crit=${GLOBAL_train_resamp_crit}
-export eval_resamp_crit=${GLOBAL_eval_resamp_crit}
+export train_resamp_crit='never_resample'
+export eval_resamp_crit='never_resample'
 launch_cmd
 
 # BPF-SGR
 export exp_tag='c---iwae'
-export use_sgr=1
+export use_sgr=0
 export proposal_structure='RESQ'
 export tilt_structure='NONE'
 export temper=0.0

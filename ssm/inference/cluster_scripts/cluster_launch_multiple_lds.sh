@@ -3,7 +3,7 @@ shopt -s expand_aliases
 
 export GLOBAL_num_part=4
 export window_length=2
-export glob_tag="LDS-v1-0-0-w${window_length}-n${GLOBAL_num_part}"
+export glob_tag="test-LDS-v1-0-0-w${window_length}-n${GLOBAL_num_part}"
 
 export proposal_type='SINGLE_WINDOW'
 export tilt_type='SINGLE_WINDOW'
@@ -32,8 +32,8 @@ launch_cmd
 
 # ELBO
 export exp_tag='b---elbo'
-export use_sgr=1
-export proposal_structure='BOOTSTRAP'
+export use_sgr=0
+export proposal_structure='RESQ'
 export tilt_structure='NONE'
 export temper=0.0
 export use_vi=0
@@ -44,8 +44,8 @@ launch_cmd
 
 # IWAE
 export exp_tag='c---iwae'
-export use_sgr=1
-export proposal_structure='BOOTSTRAP'
+export use_sgr=0
+export proposal_structure='RESQ'
 export tilt_structure='NONE'
 export temper=0.0
 export use_vi=0
