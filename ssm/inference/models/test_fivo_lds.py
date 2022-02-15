@@ -76,7 +76,7 @@ def get_config():
     parser.add_argument('--opt-steps', default=100000, type=int)
     parser.add_argument('--dset-to-plot', default=2, type=int)
     parser.add_argument('--validation-particles', default=128, type=int)
-    parser.add_argument('--sweep-test-particles', default=10, type=int)
+    parser.add_argument('--sweep-test-particles', default=4, type=int)
     parser.add_argument('--load-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--save-path', default=None, type=str)  # './params_lds_tmp.p'
     parser.add_argument('--model', default='LDS', type=str)

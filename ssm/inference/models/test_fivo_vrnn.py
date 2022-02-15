@@ -88,7 +88,7 @@ def get_config():
     parser.add_argument('--opt-steps', default=100000, type=int, help="Number of FIVO steps to take.")
     parser.add_argument('--dset-to-plot', default=2, type=int, help="Index of dataset to visualize.")
     parser.add_argument('--validation-particles', default=128, type=int, help="'Large' number of particles for asymptotic evaluation.")
-    parser.add_argument('--sweep-test-particles', default=10, type=int, help="'Small' number of particles for finite-particle evalaution.")
+    parser.add_argument('--sweep-test-particles', default=4, type=int, help="'Small' number of particles for finite-particle evalaution.")
     parser.add_argument('--load-path', default=None, type=str, help="File path to load model from.")  # './params_vrnn_tmp.p'
     parser.add_argument('--save-path', default=None, type=str, help="File path to save model to.")  # './params_vrnn_tmp.p'
     parser.add_argument('--model', default='VRNN', type=str, help="Don't change here.")
