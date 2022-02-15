@@ -137,7 +137,7 @@ def main():
             _temps = temper_param * (1.0 / np.linspace(0.05, 1.0, num=opt_steps + 1))
             _temps += 1.0 - _temps[int(opt_steps / 2.0)]
             tilt_temperatures = np.clip(_temps, a_min=1.0, a_max=np.inf)
-
+            print(str(tilt_temperatures[::100]).replace('\n', ''))
             print('\n\n[WARNING]: USING TILT TEMPERING. \n\n')
         else:
             tilt_temperatures = np.ones(env.config.opt_steps + 1,) * 1.0
