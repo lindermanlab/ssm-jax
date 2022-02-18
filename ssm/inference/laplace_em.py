@@ -43,7 +43,7 @@ def _compute_laplace_mean(model, x0, data, method="L-BFGS", num_iters=50, learni
     scale = x0.size
     dim = x0.shape[-1]
 
-    if method == "BFGS" or "L-BFGS":
+    if method == "BFGS" or method == "L-BFGS":
         # scipy minimize expects x to be shape (n,) so we flatten / unflatten
         def _objective(x_flattened):
             x = x_flattened.reshape(-1, dim)
