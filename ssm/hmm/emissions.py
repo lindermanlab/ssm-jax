@@ -13,7 +13,6 @@ tfd = tfp.distributions
 from ssm.utils import get_unconstrained_parameters, from_unconstrained_parameters
 
 
-
 class Emissions:
     """
     Base class of emission distribution of an HMM

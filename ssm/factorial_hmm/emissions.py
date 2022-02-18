@@ -9,6 +9,8 @@ tfd = tfp.distributions
 import ssm.distributions as ssmd
 from ssm.hmm.emissions import Emissions
 
+from ssm.utils import get_unconstrained_parameters, from_unconstrained_parameters
+
 
 class FactorialEmissions(Emissions):
 
@@ -23,9 +25,6 @@ class FactorialEmissions(Emissions):
 
 @register_pytree_node_class
 class NormalFactorialEmissions(FactorialEmissions):
-    """
-    
-    """
     def __init__(self, num_states: tuple,
                  means: (tuple or list)=None,
                  log_scale: float=0.0,
@@ -63,6 +62,23 @@ class NormalFactorialEmissions(FactorialEmissions):
         self._distribution = emissions_distribution
         self._prior = emissions_distribution_prior
 
+    @property
+    def _parameters(self):
+        return freeze(get_unconstrained_parameters(self._distribution))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
+                                                           params)
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(prior=self._prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._prior = hyperparams["prior"]
+
     def tree_flatten(self):
         # children = (self._distribution, self._prior)
         # aux_data = self.num_states
@@ -80,22 +96,6 @@ class NormalFactorialEmissions(FactorialEmissions):
     @property
     def emissions_shape(self):
         return self._distribution.event_shape
-    
-    @property
-    def _parameters(self):
-        return freeze(dict(distribution=self._distribution))
-        
-    @_parameters.setter
-    def _parameters(self, params):
-        self._distribution = params["distribution"]
-        
-    @property
-    def _hyperparameters(self):
-        return freeze(dict(prior=self._prior))
-    
-    @_hyperparameters.setter
-    def _hyperparameters(self, hyperparams):
-        self._prior = hyperparams["prior"]
 
     def distribution(self, state, covariates=None, metadata=None):
         """

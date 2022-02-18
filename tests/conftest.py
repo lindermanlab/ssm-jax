@@ -1,7 +1,7 @@
 import pytest
 from jax.interpreters import xla
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=False)
 def cleanup():
     """Clears XLA cache after every test."""
     yield  # run the test

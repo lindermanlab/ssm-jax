@@ -8,6 +8,7 @@ tfd = tfp.distributions
 
 from ssm.hmm.initial import InitialCondition, StandardInitialCondition
 
+from ssm.utils import get_unconstrained_parameters, from_unconstrained_parameters
 
 @register_pytree_node_class
 class FactorialInitialCondition(InitialCondition):
@@ -30,15 +31,6 @@ class FactorialInitialCondition(InitialCondition):
         num_states = tuple(ic.num_states for ic in initial_condition_objects)
         super(FactorialInitialCondition, self).__init__(num_states)
 
-    def tree_flatten(self):
-        aux_data = None
-        children = self._initial_conditions
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        return cls(initial_condition_objects=children)
-    
     @property
     def _parameters(self):
         return freeze({idx: ic._parameters for idx, ic in enumerate(self._initial_conditions)})
@@ -56,6 +48,15 @@ class FactorialInitialCondition(InitialCondition):
     def _hyperparameters(self, hyperparams):
         for idx in range(self.num_groups):
             self._initial_conditions[idx]._hyperparameters = hyperparams[idx]
+
+    def tree_flatten(self):
+        aux_data = None
+        children = self._initial_conditions
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(initial_condition_objects=children)
 
     def log_initial_probs(self, data, covariates=None, metadata=None):
         return tuple(ic.log_initial_probs(data, covariates=covariates, metadata=metadata)
