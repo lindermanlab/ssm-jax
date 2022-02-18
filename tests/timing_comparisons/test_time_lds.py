@@ -65,15 +65,6 @@ def lds_fit_laplace_em(lds, data, num_iters, params, rng=jr.PRNGKey(0)):
     return lp, params
 
 
-@pytest.fixture(autouse=True)
-def cleanup():
-    """Clears XLA cache after every test."""
-    yield  # run the test
-    # clear XLA cache to prevent OOM
-    print("\nclearing XLA cache")
-    xla._xla_callable.cache_clear()
-
-
 def run_time_test(benchmark, time_fn, setup_fn):
     lp, params = benchmark.pedantic(
         time_fn, setup=setup_fn, rounds=config.NUM_ROUNDS
