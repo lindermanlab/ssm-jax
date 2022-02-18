@@ -40,21 +40,21 @@ class GaussianLDS(LDS):
         Args:
             num_latent_dims (int): number of latent dims.
             num_emission_dims (int): number of emission dims.
-            initial_state_mean (np.ndarray, optional): initial state mean. 
+            initial_state_mean (np.ndarray, optional): initial state mean.
                 Defaults to zero vector.
-            initial_state_scale_tril (np.ndarray, optional): 
+            initial_state_scale_tril (np.ndarray, optional):
                 initial state lower-triangular factor of covariance.
                 Defaults to identity matrix.
-            dynamics_weights (np.ndarray, optional): weights in dynamics GLM. 
+            dynamics_weights (np.ndarray, optional): weights in dynamics GLM.
                 Defaults to a random rotation.
-            dynamics_bias (np.ndarray, optional): bias in dynamics GLM. 
+            dynamics_bias (np.ndarray, optional): bias in dynamics GLM.
                 Defaults to zero vector.
             dynamics_scale_tril (np.ndarray, optional): dynamics GLM lower triangular
-                initial state lower-triangular factor of covariance. 
+                initial state lower-triangular factor of covariance.
                 Defaults to 0.1**2 * identity matrix.
-            emission_weights (np.ndarray, optional): weights in emissions GLM. 
+            emission_weights (np.ndarray, optional): weights in emissions GLM.
                 Defaults to a random rotation.
-            emission_bias (np.ndarray, optional): bias in emissions GLM. 
+            emission_bias (np.ndarray, optional): bias in emissions GLM.
                 Defaults to zero vector.
             emission_scale_tril (np.ndarray, optional): emissions GLM slower-triangular
                 factor of covariance. Defaults to the identity matrix.
@@ -220,7 +220,7 @@ class GaussianLDS(LDS):
                 Defaults to None.
             metadata (PyTreeDef, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-            method (str, optional): model fit method. Must be one of ["em", "laplace_em"]. 
+            method (str, optional): model fit method. Must be one of ["em", "laplace_em"].
                 Defaults to "em".
             key (jr.PRNGKey, optional): Random seed.
                 Defaults to None.
@@ -281,21 +281,21 @@ class PoissonLDS(LDS):
         Args:
             num_latent_dims (int): number of latent dims.
             num_emission_dims (int): number of emission dims.
-            initial_state_mean (np.ndarray, optional): initial state mean. 
+            initial_state_mean (np.ndarray, optional): initial state mean.
                 Defaults to zero vector.
-            initial_state_scale_tril (np.ndarray, optional): 
+            initial_state_scale_tril (np.ndarray, optional):
                 initial state lower-triangular factor of covariance.
                 Defaults to identity matrix.
-            dynamics_weights (np.ndarray, optional): weights in dynamics GLM. 
+            dynamics_weights (np.ndarray, optional): weights in dynamics GLM.
                 Defaults to a random rotation.
-            dynamics_bias (np.ndarray, optional): bias in dynamics GLM. 
+            dynamics_bias (np.ndarray, optional): bias in dynamics GLM.
                 Defaults to zero vector.
             dynamics_scale_tril (np.ndarray, optional): dynamics GLM lower triangular
-                initial state lower-triangular factor of covariance. 
+                initial state lower-triangular factor of covariance.
                 Defaults to 0.1**2 * identity matrix.
-            emission_weights (np.ndarray, optional): weights in emissions GLM. 
-                Defaults to a random rotation.
-            emission_bias (np.ndarray, optional): bias in emissions GLM. 
+            emission_weights (np.ndarray, optional): weights in emissions GLM.
+                Defaults to a random matrix.
+            emission_bias (np.ndarray, optional): bias in emissions GLM.
                 Defaults to zero vector.
             seed (jr.PRNGKey, optional): random seed. Defaults to None.
         """
