@@ -2,11 +2,11 @@
 Laplace EM (for non-conjugate LDS models such as GLM-LDS)
 """
 
+from jax import jit, value_and_grad, hessian, vmap, jacfwd, jacrev, lax
 import jax.numpy as np
 import jax.random as jr
-import jax.experimental.optimizers as optimizers
 import jax.scipy.optimize
-from jax import jit, value_and_grad, hessian, vmap, jacfwd, jacrev, lax
+import optax
 
 from ssm.distributions.mvn_block_tridiag import MultivariateNormalBlockTridiag
 from ssm.utils import Verbosity, ssm_pbar
@@ -60,19 +60,21 @@ def _compute_laplace_mean(model, x0, data, method="L-BFGS", num_iters=50, learni
 
     elif method == "Adam":
 
+        params = x0
         _objective = lambda x: -1 * np.sum(model.log_probability(x, data)) / scale
-        opt_init, opt_update, get_params = optimizers.adam(learning_rate)
-        opt_state = opt_init(x0)
+        optimizer = optax.adam(learning_rate)
+        opt_state = optimizer.init(params)
 
         @jit
-        def step(step, opt_state):
-            value, grads = value_and_grad(_objective)(get_params(opt_state))
-            opt_state = opt_update(step, grads, opt_state)
-            return value, opt_state
+        def step(params, opt_state):
+            loss_value, grads = value_and_grad(_objective)()
+            updates, opt_state = optimizer.update(grads, opt_state, params)
+            params = optax.apply_updates(params, updates)
+            return params, opt_state, loss_value
 
         for i in range(num_iters):
-            value, opt_state = step(i, opt_state)
-        x_mode = get_params(opt_state)
+            params, opt_state, loss_value = step(params, opt_state)
+        x_mode = params
 
     else:
         raise ValueError(f"method = {method} is not recognized. Should be one of ['Adam', 'BFGS']")
