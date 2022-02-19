@@ -10,7 +10,7 @@ from flax.core.frozen_dict import freeze, FrozenDict
 import ssm.distributions as ssmd
 tfd = tfp.distributions
 
-from ssm.utils import get_unconstrained_parameters, from_unconstrained_parameters
+from ssm.utils import tfp_dist_to_unconst_params, unconst_params_to_tfp_dist
 
 
 class Emissions:
@@ -54,7 +54,7 @@ class Emissions:
 
         This function assumes that the Emissions subclass is a PyTree and
         that all of its leaf nodes are unconstrained parameters.
-        
+
         Args:
             data (np.ndarray): the observed data
             posterior (HMMPosterior): the HMM posterior
@@ -62,7 +62,7 @@ class Emissions:
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-                
+
         Returns:
             emissions (ExponentialFamilyEmissions): updated emissions object
         """
@@ -111,20 +111,20 @@ class ExponentialFamilyEmissions(Emissions):
         super(ExponentialFamilyEmissions, self).__init__(num_states)
         self._distribution = emissions_distribution
         self._prior = emissions_distribution_prior
-        
+
     @property
     def _parameters(self):
-        return freeze(get_unconstrained_parameters(self._distribution))
-        
+        return freeze(tfp_dist_to_unconst_params(self._distribution))
+
     @_parameters.setter
     def _parameters(self, params):
-        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
-                                                           params)
-        
+        self._distribution = unconst_params_to_tfp_dist(
+            self._distribution.__class__, params)
+
     @property
     def _hyperparameters(self):
         return freeze(dict(prior=self._prior))
-    
+
     @_hyperparameters.setter
     def _hyperparameters(self, hyperparams):
         self._prior = hyperparams["prior"]
@@ -173,7 +173,7 @@ class ExponentialFamilyEmissions(Emissions):
                 Defaults to None.
             metadata (PyTree, optional): optional metadata with leaf shape (B, ...).
                 Defaults to None.
-                
+
         Returns:
             emissions (ExponentialFamilyEmissions): updated emissions object
         """
