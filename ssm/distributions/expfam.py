@@ -61,6 +61,14 @@ class ExponentialFamilyDistribution:
         """
         raise NotImplementedError
 
+    @classmethod
+    def from_sufficient_statistics(cls, statistics, **kwargs):
+        """Create an instance of the distribution with given statistics.
+        This function might have to do some conversion, e.g. from second moment
+        to covariances.
+        """
+        raise NotImplementedError
+
     @staticmethod
     def sufficient_statistics(data, **kwargs):
         """
@@ -96,3 +104,23 @@ class ExponentialFamilyDistribution:
 
         # Compute the conditional distribution given the stats
         return cls.compute_conditional_from_stats(stats)
+
+    @classmethod
+    def compute_maximum_likelihood(cls, data, weights=None):
+        # Flatten the data and weights so we can vmap over them
+        flatten = lambda x: x.reshape(-1, x.shape[-1])
+        flat_data = flatten(data)
+
+        # Collect sufficient statistics for each data point
+        stats = vmap(cls.sufficient_statistics)(flat_data)
+
+        # Sum the (weighted) sufficient statistics
+        if weights is not None:
+            flat_weights = flatten(weights)
+            fxn = lambda x: np.einsum('nk,n...->k...', flat_weights, x) / flat_weights.sum(axis=0)
+            stats = tree_map(fxn, stats)
+        else:
+            stats = tree_map(partial(np.mean, axis=0), stats)
+
+        # TODO compute standard parameters for sufficient statistics
+        return cls.from_sufficient_statistics(stats)
