@@ -40,6 +40,39 @@ class NormalInverseWishart(ConjugatePrior, tfd.JointDistributionNamed):
                 loc, Sigma / mean_precision)
         ))
 
+        # Replace the default JointDistributionNamed parameters with the NIW ones
+        # because the JointDistributionNamed parameters contain lambda functions,
+        # which are not jittable.
+        self._parameters = dict(
+            loc=loc,
+            mean_precision=mean_precision,
+            df=df,
+            scale=scale)
+
+    @classmethod
+    def _parameter_properties(cls, dtype, num_classes=None):
+        # pylint: disable=g-long-lambda
+        return dict(
+            loc=tfp.internal.parameter_properties.ParameterProperties(
+                event_ndims=1),
+            mean_precision=tfp.internal.parameter_properties.ParameterProperties(
+                event_ndims=0,
+                default_constraining_bijector_fn=lambda: tfb.Chain([
+                    tfb.Softplus(), tfb.Shift(tfp.internal.dtype_util.eps(dtype))
+                    ])),
+            df=tfp.internal.parameter_properties.ParameterProperties(
+                event_ndims=0),
+            scale=tfp.internal.parameter_properties.ParameterProperties(
+                event_ndims=2,
+                shape_fn=lambda sample_shape: \
+                    tfp.internal.prefer_static.concat([sample_shape, sample_shape[-1:]], axis=0),
+                default_constraining_bijector_fn=lambda: tfb.Chain([
+                    tfb.CholeskyOuterProduct(),
+                    tfb.FillScaleTriL(
+                        diag_shift=tfp.internal.dtype_util.eps(dtype))
+                    ]))
+            )
+
     # These functions compute the pseudo-observations implied by the NIW prior
     # and convert sufficient statistics to a NIW posterior. We'll describe them
     # in more detail below.

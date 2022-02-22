@@ -198,11 +198,11 @@ def random_rotation(seed, n, theta=None):
 def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metadata"),
                          model_arg="self"):
     """Decorator to automatically add a batch dim to args defined by batched_args.
-    
+
     Note: this decorator makes some strong assumptions about what is passed into the function.
     Please see details below.
-    
-    Checks the shape of the PyTree leaves inside the data argument and compares them to the 
+
+    Checks the shape of the PyTree leaves inside the data argument and compares them to the
     shape of emissions as defined by the model. A batch dimension is added if the shape
     only has 1 additional dimension (num_timesteps).
 
@@ -260,18 +260,18 @@ def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metad
 def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "states"),
                model_arg="self", map_function=vmap):
     r"""Decorator to automatically "map" the wrapped function along a a batch if a
-    batch dim is detected in the data. By default, "map" means vmap. 
-    
+    batch dim is detected in the data. By default, "map" means vmap.
+
     Note: this decorator makes some strong assumptions about what is passed into the function.
     Please see details below.
-    
-    Checks the shape of the PyTree leaves inside the data argument and compares them to the 
-    shape of emissions as defined by the model. The data is considered batched if it has 
+
+    Checks the shape of the PyTree leaves inside the data argument and compares them to the
+    shape of emissions as defined by the model. The data is considered batched if it has
     two additional dimensions compared to the emissions (batch_dim and num_timesteps).
-    
+
     Batch dimensions should always be the leading dimension. E.g. data should have shape
     ``(<batch>), <time>, <emissions_shape>`` where the batch dim is optional.
-    
+
     Naively assumes that if data has a batch dim, then so do the rest of the batched_args.
 
     Args:
@@ -488,7 +488,7 @@ def check_pytree_match(
 
 def debug_rejit(func):
     """Decorator to debug re-jitting errors.
-    
+
     You can also set the JAX flag: ``jax.config.update("jax_log_compiles", True)``.
 
     Checks if input and output pytrees are consistent across multiple
@@ -535,27 +535,31 @@ def debug_rejit(func):
     wrapper.prev_out = None
     return wrapper
 
-def get_unconstrained_parameters(dist, dtype=np.float32):
-    
+def tfp_dist_to_unconst_params(dist, dtype=np.float32):
+    """Convert a TensorFlow Probability distribution object
+    to a dictionary of unconstrained parameters.
+    """
     out = {}
     parameter_properties = dist.parameter_properties(dtype)
-    
+
     for parameter_key in dist.parameters:
         param = dist.parameters[parameter_key]
         if param is not None and parameter_key in parameter_properties:
             prop = parameter_properties[parameter_key]
             out[parameter_key] = prop.default_constraining_bijector_fn().inverse(param)
-        
+
     return out
 
-def from_unconstrained_parameters(dist_cls, unconstrained_parameters, dtype=np.float32):
-    
+def unconst_params_to_tfp_dist(dist_cls, unconstrained_parameters, dtype=np.float32):
+    """Convert a a dictionary of unconstrained parameters
+    to a TensorFlow Probability distribution object.
+    """
     out = {}
     parameter_properties = dist_cls.parameter_properties(dtype)
-    
+
     for parameter_key in unconstrained_parameters:
         param = unconstrained_parameters[parameter_key]
         prop = parameter_properties[parameter_key]
         out[parameter_key] = prop.default_constraining_bijector_fn().forward(param)
-        
+
     return dist_cls(**out)
