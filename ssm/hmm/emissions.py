@@ -1,9 +1,13 @@
 from __future__ import annotations
+from re import S
 import jax.numpy as np
 from jax import vmap
 from jax.tree_util import register_pytree_node_class, tree_flatten, tree_unflatten
 from jax.flatten_util import ravel_pytree
+from contextlib import contextmanager
 import jax.scipy.optimize
+import copy
+import ssm
 
 from tensorflow_probability.substrates import jax as tfp
 from flax.core.frozen_dict import freeze, FrozenDict
@@ -46,9 +50,16 @@ class Emissions:
         """
         inds = np.arange(self.num_states)
         return vmap(lambda k: self.distribution(k, covariates=covariates, metadata=metadata).log_prob(data))(inds).T
+    
+    @contextmanager
+    def inject(self, new_parameters):
+        old_parameters = copy.deepcopy(self._parameters)
+        self._parameters = new_parameters
+        yield self
+        self._parameters = old_parameters
 
     # TODO: ensure_has_batched_dim?
-    def m_step(self, data, posterior, covariates=None, metadata=None) -> Emissions:
+    def generic_m_step(self, data, posterior, covariates=None, metadata=None) -> Emissions:
         """By default, try to optimize the emission distribution via generic
         gradient-based optimization of the expected log likelihood.
 
@@ -66,24 +77,28 @@ class Emissions:
         Returns:
             emissions (ExponentialFamilyEmissions): updated emissions object
         """
-        # Use tree flatten and unflatten to convert params x0 from PyTrees to flat arrays
-        flat_self, unravel = ravel_pytree(self)
+        
+        parameters = self._parameters
+        flat_parameters, unravel = ravel_pytree(parameters)
+        
+        def _objective(flat_parameters):
 
-        def _objective(flat_emissions):
-            emissions = unravel(flat_emissions)
-            f = lambda data, expected_states: \
-                np.sum(emissions.log_likelihoods(data, covariates=covariates, metadata=metadata) * expected_states)
-            lp = vmap(f)(data, posterior.expected_states).sum()
+            parameters = unravel(flat_parameters)
+
+            with self.inject(parameters):
+                f = lambda data, expected_states: \
+                    np.sum(self.log_likelihoods(data, covariates=covariates, metadata=metadata) * expected_states)
+                lp = vmap(f)(data, posterior.expected_states).sum()
+                
             return -lp / data.size
 
         results = jax.scipy.optimize.minimize(
             _objective,
-            flat_self,
+            flat_parameters,
             method="bfgs",
             options=dict(maxiter=100))
-
-        # Update class parameters
-        return unravel(results.x)
+        
+        self._parameters = unravel(results.x)
 
 
 class ExponentialFamilyEmissions(Emissions):
@@ -102,9 +117,9 @@ class ExponentialFamilyEmissions(Emissions):
             num_states (int): number of discrete states
             means (np.ndarray, optional): state-dependent emission means. Defaults to None.
             covariances (np.ndarray, optional): state-dependent emission covariances. Defaults to None.
-            emissions_distribution (ssmd.MultivariateNormalTriL, optional): initialized emissions distribution.
+            emissions_distribution (ssmd.ExponentialFamilyDistribution, optional): initialized emissions distribution.
                 Defaults to None.
-            emissions_distribution_prior (ssmd.NormalInverseWishart, optional): initialized emissions distribution prior.
+            emissions_distribution_prior (ssmd.ConjugatePrior, optional): initialized emissions distribution prior.
                 Defaults to None.
         """
 
@@ -223,39 +238,92 @@ class BernoulliEmissions(ExponentialFamilyEmissions):
 
 @register_pytree_node_class
 class GaussianEmissions(ExponentialFamilyEmissions):
-    _emissions_distribution_class = ssmd.MultivariateNormalTriL
+    _emissions_distribution_class = ssmd.MultivariateNormalFullCovariance
 
     def __init__(self,
                  num_states: int,
                  means: np.ndarray=None,
                  covariances: np.ndarray=None,
-                 emissions_distribution: ssmd.MultivariateNormalTriL=None,
-                 emissions_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
+                 prior_loc=None,
+                 prior_mean_precision=None,
+                 prior_df=None,
+                 prior_scale=None) -> None:
         """Gaussian Emissions for HMM.
 
         Can be initialized by specifying parameters or by passing in a pre-initialized
         ``emissions_distribution`` object.
 
         Args:
-            num_states (int): number of discrete states
             means (np.ndarray, optional): state-dependent emission means. Defaults to None.
             covariances (np.ndarray, optional): state-dependent emission covariances. Defaults to None.
-            emissions_distribution (ssmd.MultivariateNormalTriL, optional): initialized emissions distribution.
-                Defaults to None.
-            emissions_distribution_prior (ssmd.NormalInverseWishart, optional): initialized emissions distribution prior.
-                Defaults to None.
         """
 
-        assert (means is not None and covariances is not None) \
-            or emissions_distribution is not None
+        assert (means is not None and covariances is not None)
+        emissions_distribution = ssmd.MultivariateNormalFullCovariance(means, covariances)
 
-        if means is not None and covariances is not None:
-            emissions_distribution = ssmd.MultivariateNormalTriL(means, covariances)
-
+        # by default, construct a uninformative prior
+        if (None in [prior_loc, prior_mean_precision, prior_df, prior_scale]):
+            
+            emissions_dim = means.shape[-1]
+            
+            prior_loc = np.zeros((emissions_dim,))
+            prior_mean_precision = 0.
+            prior_df = -emissions_dim - 2
+            prior_scale = np.zeros((emissions_dim,emissions_dim))
+            
+        emissions_distribution_prior = ssmd.NormalInverseWishart(loc=prior_loc,
+                                                mean_precision=prior_mean_precision,
+                                                df=prior_df,
+                                                scale=prior_scale,
+                                            )
+        
         super(GaussianEmissions, self).__init__(num_states,
-                                                emissions_distribution,
-                                                emissions_distribution_prior)
+                                                 emissions_distribution,
+                                                 emissions_distribution_prior)
+        
+    # @property
+    # def _parameters(self):
+    #     return freeze(dict(
+    #         loc=self._distribution.loc,
+    #         covariance=ssm.utils.psd_to_unconstrained(self._distribution.covariance())  # dict(softplus diag, lower tri)
+    #     ))
 
+    # @_parameters.setter
+    # def _parameters(self, params):
+    #     self._distribution = ssmd.MultivariateNormalFullCovariance(
+    #         params["loc"],
+    #         ssm.utils.unconstrained_to_psd(params["covariance"])  # dict(softplus diag, lower tri) --> cov_matrix
+    #     )
+        
+    # @property
+    # def _hyperparameters(self):
+    #     return freeze(dict(
+    #         loc=self._prior.loc,
+    #         mean_precision=self._prior.mean_precision,
+    #         df=self._prior.df,
+    #         scale=self._prior.scale,
+    #     ))
+    
+    # @_hyperparameters.setter
+    # def _hyperparameters(self, hyperparams):
+    #     self._prior = ssmd.NormalInverseWishart(**hyperparams)
+    
+    @property
+    def _parameters(self):
+        return freeze(get_unconstrained_parameters(self._distribution))
+        
+    @_parameters.setter
+    def _parameters(self, params):
+        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
+                                                           params)
+        
+    @property
+    def _hyperparameters(self):
+        return freeze(dict(prior=self._prior))
+    
+    @_hyperparameters.setter
+    def _hyperparameters(self, hyperparams):
+        self._prior = hyperparams["prior"]
 
 @register_pytree_node_class
 class PoissonEmissions(ExponentialFamilyEmissions):

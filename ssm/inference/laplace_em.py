@@ -72,7 +72,7 @@ def _compute_laplace_mean(model, x0, data, method="L-BFGS", num_iters=50, learni
             params = optax.apply_updates(params, updates)
             return params, opt_state, loss_value
 
-        for i in range(1):
+        for i in range(num_iters):
             params, opt_state, loss_value = step(params, opt_state)
         x_mode = params
 

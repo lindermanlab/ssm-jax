@@ -108,8 +108,9 @@ class LDS(SSM):
                               data,
                               covariates=None,
                               metadata=None,
-                              initial_states=None):
-        return laplace_approximation(self, data, initial_states)
+                              initial_states=None, # TODO (@schlagercollin) handle None case
+                              laplace_mode_fit_method="L-BFGS"):  
+        return laplace_approximation(self, data, initial_states, laplace_mode_fit_method=laplace_mode_fit_method)
 
     @ensure_has_batch_dim()
     def m_step(self,

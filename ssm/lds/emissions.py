@@ -251,11 +251,12 @@ class PoissonEmissions(Emissions):
         
     @property
     def _parameters(self):
-        return freeze(dict(distribution=self._distribution))
+        return freeze(get_unconstrained_parameters(self._distribution))
         
     @_parameters.setter
     def _parameters(self, params):
-        self._distribution = params["distribution"]
+        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
+                                                           params)
         
     @property
     def _hyperparameters(self):
