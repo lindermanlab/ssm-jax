@@ -15,7 +15,7 @@ from ssm.lds.dynamics import StationaryDynamics
 from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, random_rotation
 
 from ssm.inference.deep_vi import deep_variational_inference
-from ssm.deep_lds.posterior import LDSSVAEPosterior, DKFPosterior
+from ssm.deep_lds.posterior import LDSSVAEPosterior, DKFPosterior, ConditionalDKFPosterior
 from ssm.nn_util import GaussianNetwork, Bidirectional_RNN
 
 # To keep it really really simple, we don't even to write ANYTHING
@@ -136,6 +136,9 @@ class DeepLDS(LDS):
             default_recognition_model_class = GaussianNetwork
         elif method == "dkf":
             posterior_class = DKFPosterior
+            default_recognition_model_class = Bidirectional_RNN
+        elif method == "cdkf":
+            posterior_class = ConditionalDKFPosterior
             default_recognition_model_class = Bidirectional_RNN
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
