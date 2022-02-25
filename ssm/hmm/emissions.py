@@ -9,6 +9,8 @@ import jax.scipy.optimize
 import copy
 import ssm
 
+from ssm.module import Module
+
 from tensorflow_probability.substrates import jax as tfp
 from flax.core.frozen_dict import freeze, FrozenDict
 import ssm.distributions as ssmd
@@ -17,7 +19,7 @@ tfd = tfp.distributions
 from ssm.utils import tfp_dist_to_unconst_params, unconst_params_to_tfp_dist
 
 
-class Emissions:
+class Emissions(Module):
     """
     Base class of emission distribution of an HMM
 
@@ -27,11 +29,7 @@ class Emissions:
     where u_t are optional covariates.
     """
     def __init__(self, num_states: int) -> None:
-        self._num_states = num_states
-
-    @property
-    def num_states(self):
-        return self._num_states
+        self.num_states = num_states
 
     @property
     def emissions_shape(self):
@@ -50,16 +48,9 @@ class Emissions:
         """
         inds = np.arange(self.num_states)
         return vmap(lambda k: self.distribution(k, covariates=covariates, metadata=metadata).log_prob(data))(inds).T
-    
-    @contextmanager
-    def inject(self, new_parameters):
-        old_parameters = copy.deepcopy(self._parameters)
-        self._parameters = new_parameters
-        yield self
-        self._parameters = old_parameters
 
     # TODO: ensure_has_batched_dim?
-    def generic_m_step(self, data, posterior, covariates=None, metadata=None) -> Emissions:
+    def m_step(self, data, posterior, covariates=None, metadata=None) -> Emissions:
         """By default, try to optimize the emission distribution via generic
         gradient-based optimization of the expected log likelihood.
 
@@ -130,20 +121,22 @@ class ExponentialFamilyEmissions(Emissions):
     @property
     def _parameters(self):
         return freeze(tfp_dist_to_unconst_params(self._distribution))
-
+        
     @_parameters.setter
     def _parameters(self, params):
-        self._distribution = unconst_params_to_tfp_dist(
-            self._distribution.__class__, params)
-
+        self._distribution = unconst_params_to_tfp_dist(self._emissions_distribution_class,
+                                                        params)
+        
     @property
     def _hyperparameters(self):
-        return freeze(dict(prior=self._prior))
-
+        return freeze(dict(prior=self._prior,
+                           num_states=self.num_states))
+    
     @_hyperparameters.setter
     def _hyperparameters(self, hyperparams):
         self._prior = hyperparams["prior"]
-
+        self.num_states = hyperparams["num_states"]
+        
     def tree_flatten(self):
         children = (self._distribution, self._prior)
         aux_data = self.num_states
@@ -196,7 +189,6 @@ class ExponentialFamilyEmissions(Emissions):
             dataset, weights=posteriors.expected_states, prior=self._prior)
         self._distribution = self._emissions_distribution_class.from_params(
             conditional.mode())
-        return self
 
 
 @register_pytree_node_class
@@ -247,7 +239,9 @@ class GaussianEmissions(ExponentialFamilyEmissions):
                  prior_loc=None,
                  prior_mean_precision=None,
                  prior_df=None,
-                 prior_scale=None) -> None:
+                 prior_scale=None,
+                 emissions_distribution: ssmd.MultivariateNormalFullCovariance=None,
+                 emissions_distribution_prior: ssmd.NormalInverseWishart=None) -> None:
         """Gaussian Emissions for HMM.
 
         Can be initialized by specifying parameters or by passing in a pre-initialized
@@ -257,73 +251,36 @@ class GaussianEmissions(ExponentialFamilyEmissions):
             means (np.ndarray, optional): state-dependent emission means. Defaults to None.
             covariances (np.ndarray, optional): state-dependent emission covariances. Defaults to None.
         """
-
-        assert (means is not None and covariances is not None)
-        emissions_distribution = ssmd.MultivariateNormalFullCovariance(means, covariances)
-
-        # by default, construct a uninformative prior
-        if (None in [prior_loc, prior_mean_precision, prior_df, prior_scale]):
+        
+        if emissions_distribution is not None:
+            emissions_distribution = emissions_distribution
+        else:
+            assert (means is not None and covariances is not None)
+            emissions_distribution = ssmd.MultivariateNormalFullCovariance(means, covariances)
             
-            emissions_dim = means.shape[-1]
+        if emissions_distribution_prior is not None:
+            emissions_distribution_prior = emissions_distribution_prior
             
-            prior_loc = np.zeros((emissions_dim,))
-            prior_mean_precision = 0.
-            prior_df = -emissions_dim - 2
-            prior_scale = np.zeros((emissions_dim,emissions_dim))
+        else:
             
-        emissions_distribution_prior = ssmd.NormalInverseWishart(loc=prior_loc,
-                                                mean_precision=prior_mean_precision,
-                                                df=prior_df,
-                                                scale=prior_scale,
-                                            )
+            # by default, construct a uninformative prior
+            if (None in [prior_loc, prior_mean_precision, prior_df, prior_scale]):
+                
+                emissions_dim = means.shape[-1]
+                
+                prior_loc = np.zeros((emissions_dim,))
+                prior_mean_precision = 0.
+                prior_df = -emissions_dim - 2
+                prior_scale = np.zeros((emissions_dim,emissions_dim))
+                
+            emissions_distribution_prior = ssmd.NormalInverseWishart(loc=prior_loc,
+                                                    mean_precision=prior_mean_precision,
+                                                    df=prior_df,
+                                                    scale=prior_scale)
         
         super(GaussianEmissions, self).__init__(num_states,
                                                  emissions_distribution,
                                                  emissions_distribution_prior)
-        
-    # @property
-    # def _parameters(self):
-    #     return freeze(dict(
-    #         loc=self._distribution.loc,
-    #         covariance=ssm.utils.psd_to_unconstrained(self._distribution.covariance())  # dict(softplus diag, lower tri)
-    #     ))
-
-    # @_parameters.setter
-    # def _parameters(self, params):
-    #     self._distribution = ssmd.MultivariateNormalFullCovariance(
-    #         params["loc"],
-    #         ssm.utils.unconstrained_to_psd(params["covariance"])  # dict(softplus diag, lower tri) --> cov_matrix
-    #     )
-        
-    # @property
-    # def _hyperparameters(self):
-    #     return freeze(dict(
-    #         loc=self._prior.loc,
-    #         mean_precision=self._prior.mean_precision,
-    #         df=self._prior.df,
-    #         scale=self._prior.scale,
-    #     ))
-    
-    # @_hyperparameters.setter
-    # def _hyperparameters(self, hyperparams):
-    #     self._prior = ssmd.NormalInverseWishart(**hyperparams)
-    
-    @property
-    def _parameters(self):
-        return freeze(get_unconstrained_parameters(self._distribution))
-        
-    @_parameters.setter
-    def _parameters(self, params):
-        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
-                                                           params)
-        
-    @property
-    def _hyperparameters(self):
-        return freeze(dict(prior=self._prior))
-    
-    @_hyperparameters.setter
-    def _hyperparameters(self, hyperparams):
-        self._prior = hyperparams["prior"]
 
 @register_pytree_node_class
 class PoissonEmissions(ExponentialFamilyEmissions):

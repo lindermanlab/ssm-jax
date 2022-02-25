@@ -47,12 +47,12 @@ def em(model,
             posterior = model.e_step(data, covariates=covariates, metadata=metadata)
             lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
             
-            # should this return parameters?
-            new_model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
+            # update in-place
+            model.m_step(data, posterior, covariates=covariates, metadata=metadata)
             
-            # either way, we can extract updated parameters here and rely on context manager
+            # we extract updated parameters here and rely on context manager
             # to reset any side effects
-            parameters = new_model._parameters
+            parameters = model._parameters
             
         return parameters, posterior, lp
 

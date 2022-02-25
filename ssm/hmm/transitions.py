@@ -9,12 +9,13 @@ from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
 
 import ssm.distributions as ssmd
+from ssm.module import Module
 
-from ssm.utils import get_unconstrained_parameters, from_unconstrained_parameters
+from ssm.utils import tfp_dist_to_unconst_params, unconst_params_to_tfp_dist
 
 
 
-class Transitions:
+class Transitions(Module):
     """
     Base class for HMM transitions models,
 
@@ -94,6 +95,9 @@ class StationaryTransitions(Transitions):
     """
     Basic transition model with a fixed transition matrix.
     """
+    
+    _transitions_distribution_class = ssmd.Categorical
+    
     def __init__(self,
                  num_states: int,
                  transition_matrix=None,
@@ -116,12 +120,12 @@ class StationaryTransitions(Transitions):
         
     @property
     def _parameters(self):
-        return freeze(get_unconstrained_parameters(self._distribution))
+        return freeze(tfp_dist_to_unconst_params(self._distribution))
         
     @_parameters.setter
     def _parameters(self, params):
-        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
-                                                           params)
+        self._distribution = unconst_params_to_tfp_dist(self._transitions_distribution_class,
+                                                        params)
         
     @property
     def _hyperparameters(self):
@@ -130,7 +134,7 @@ class StationaryTransitions(Transitions):
     @_hyperparameters.setter
     def _hyperparameters(self, hyperparams):
         self._prior = hyperparams["prior"]
-
+        
     def tree_flatten(self):
         children = (self._distribution, self._prior)
         aux_data = self.num_states
@@ -160,7 +164,6 @@ class StationaryTransitions(Transitions):
         stats += self._prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
         self._distribution = ssmd.Categorical.from_params(conditional.mode())
-        return self
 
 
 @register_pytree_node_class
@@ -172,6 +175,8 @@ class SimpleStickyTransitions(Transitions):
     of the transition matrix are `stay_probability`, and the off-diagonal
     entries are `(1 - stay_probability) / (n - 1)`.
     """
+    _transitions_distribution_class = ssmd.Categorical
+    
     def __init__(self,
                  num_states: int,
                  stay_probability: float=None,
@@ -202,21 +207,23 @@ class SimpleStickyTransitions(Transitions):
         
     @property
     def _parameters(self):
-        return freeze(get_unconstrained_parameters(self._distribution))
+        return freeze(tfp_dist_to_unconst_params(self._distribution))
         
     @_parameters.setter
     def _parameters(self, params):
-        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
-                                                           params)
+        self._distribution = unconst_params_to_tfp_dist(self._transitions_distribution_class,
+                                                        params)
         
     @property
     def _hyperparameters(self):
-        return freeze(dict(prior=self._prior))
+        return freeze(dict(stay_probability=self.stay_probability,
+                           prior=self._prior))
     
     @_hyperparameters.setter
     def _hyperparameters(self, hyperparams):
+        self.stay_probability = hyperparams["stay_probability"]
         self._prior = hyperparams["prior"]
-
+        
     def tree_flatten(self):
         children = (self.stay_probability, self._distribution, self._prior)
         aux_data = self.num_states
@@ -277,5 +284,3 @@ class SimpleStickyTransitions(Transitions):
         self._distribution = ssmd.Categorical(
             logits=self._recompute_log_transition_matrix()
         )
-
-        return self

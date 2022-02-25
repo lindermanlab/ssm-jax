@@ -8,7 +8,7 @@ tfd = tfp.distributions
 
 from ssm.hmm.initial import InitialCondition, StandardInitialCondition
 
-from ssm.utils import get_unconstrained_parameters, from_unconstrained_parameters
+from ssm.utils import tfp_dist_to_unconst_params, unconst_params_to_tfp_dist
 
 @register_pytree_node_class
 class FactorialInitialCondition(InitialCondition):
@@ -78,5 +78,3 @@ class FactorialInitialCondition(InitialCondition):
         for ic, expected_initial_states in \
             zip(self._initial_conditions, posterior.expected_initial_states):
             ic.m_step(data, DummyPosterior(expected_initial_states))
-
-        return self

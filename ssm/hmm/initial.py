@@ -5,11 +5,12 @@ from jax.tree_util import register_pytree_node_class
 from flax.core.frozen_dict import freeze, FrozenDict
 
 import ssm.distributions as ssmd
+from ssm.module import Module
 
-from ssm.utils import get_unconstrained_parameters, from_unconstrained_parameters
+from ssm.utils import tfp_dist_to_unconst_params, unconst_params_to_tfp_dist
 
 
-class InitialCondition:
+class InitialCondition(Module):
     """
     Base class for initial state distributions of an HMM.
 
@@ -69,6 +70,9 @@ class StandardInitialCondition(InitialCondition):
     """
     The standard model is a categorical distribution.
     """
+    
+    _initial_distribution_class = ssmd.Categorical
+    
     def __init__(self,
                  num_states: int,
                  initial_probs=None,
@@ -90,12 +94,12 @@ class StandardInitialCondition(InitialCondition):
         
     @property
     def _parameters(self):
-        return freeze(get_unconstrained_parameters(self._distribution))
+        return freeze(tfp_dist_to_unconst_params(self._distribution))
         
     @_parameters.setter
     def _parameters(self, params):
-        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
-                                                           params)
+        self._distribution = unconst_params_to_tfp_dist(self._initial_distribution_class,
+                                                        params)
         
     @property
     def _hyperparameters(self):
@@ -116,7 +120,6 @@ class StandardInitialCondition(InitialCondition):
         return cls(aux_data,
                    initial_distribution=distribution,
                    initial_distribution_prior=prior)
-
     def distribution(self, covariates=None, metadata=None):
        return self._distribution
 
@@ -147,4 +150,3 @@ class StandardInitialCondition(InitialCondition):
         stats += self._distribution_prior.concentration
         conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
         self._distribution = ssmd.Categorical.from_params(conditional.mode())
-        return self

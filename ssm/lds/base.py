@@ -134,9 +134,8 @@ class LDS(SSM):
             lds (LDS): updated lds object
         """
         # self._initial_condition.m_step(dataset, posteriors)  # TODO initial dist needs prior
-        self._dynamics = self._dynamics.m_step(data, posterior)
-        self._emissions = self._emissions.m_step(data, posterior, key=key)
-        return self
+        self._dynamics.m_step(data, posterior)
+        self._emissions.m_step(data, posterior, key=key)
 
     @ensure_has_batch_dim()
     def fit(self,

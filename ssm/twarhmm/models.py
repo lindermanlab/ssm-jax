@@ -204,7 +204,7 @@ class GaussianTWARHMM(FactorialHMM, AutoregressiveHMM):
         dummy_posteriors = DummyPosterior(expected_states)
 
         # Do one m-step with the dummy posteriors
-        self._emissions = self._emissions.m_step(data, dummy_posteriors)
+        self._emissions.m_step(data, dummy_posteriors)
 
     def tree_flatten(self):
         children = (self._initial_condition,

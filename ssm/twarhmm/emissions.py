@@ -211,7 +211,6 @@ class TimeWarpedAutoregressiveEmissions(FactorialEmissions):
         self._biases = linreg.bias
         self._scale_trils = linreg.scale_tril
         self._make_distribution()
-        return self
 
     def tree_flatten(self):
         aux_data = self.num_discrete_states

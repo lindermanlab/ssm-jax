@@ -11,7 +11,7 @@ from ssm.hmm.posterior import StationaryHMMPosterior
 import ssm.distributions as ssmd
 tfd = tfp.distributions
 
-from ssm.utils import get_unconstrained_parameters, from_unconstrained_parameters
+from ssm.utils import tfp_dist_to_unconst_params, unconst_params_to_tfp_dist
 
 
 @register_pytree_node_class
@@ -76,11 +76,11 @@ class AutoregressiveEmissions(Emissions):
     
     @property
     def _parameters(self):
-        return freeze(get_unconstrained_parameters(self._distribution))
+        return freeze(tfp_dist_to_unconst_params(self._distribution))
         
     @_parameters.setter
     def _parameters(self, params):
-        self._distribution = from_unconstrained_parameters(self._distribution.__class__,
+        self._distribution = unconst_params_to_tfp_dist(self._distribution.__class__,
                                                            params)
         
     @property
@@ -211,7 +211,6 @@ class AutoregressiveEmissions(Emissions):
         # Compute the conditional distribution over parameters and take the mode
         conditional = ssmd.GaussianLinearRegression.compute_conditional_from_stats(stats)
         self._distribution = ssmd.GaussianLinearRegression.from_params(conditional.mode())
-        return self
 
     def tree_flatten(self):
         children = (self._distribution, self._prior)

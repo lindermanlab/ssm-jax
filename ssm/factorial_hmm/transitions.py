@@ -76,5 +76,3 @@ class FactorialTransitions(Transitions):
         for transitions_object, expected_transitions in \
             zip(self._transitions, posterior.expected_transitions):
             transitions_object.m_step(data, DummyPosterior(expected_transitions))
-
-        return self

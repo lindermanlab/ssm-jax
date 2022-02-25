@@ -19,9 +19,10 @@ from flax.core.frozen_dict import freeze, FrozenDict
 import tensorflow_probability.substrates.jax as tfp
 
 from ssm.utils import tree_get, auto_batch, tree_concatenate
+from ssm.module import Module
 
 
-class SSM(object):
+class SSM(Module):
     """
     A generic state-space model base class.
     """
@@ -94,14 +95,6 @@ class SSM(object):
         """
         raise NotImplementedError
     
-    @contextmanager
-    def inject(self, new_parameters):
-        old_parameters = copy.deepcopy(self._parameters)
-        self._parameters = new_parameters
-        yield self
-        self._parameters = old_parameters
-        
-    
     @property
     def _parameters(self) -> FrozenDict:
         return freeze(dict(initial_condition=self._initial_condition._parameters,
@@ -152,7 +145,6 @@ class SSM(object):
             lp: log joint probability :math:`\log p(x, y)`
                 of shape :math:`(\text{batch]},)`
         """
-
 
         lp = 0
 
