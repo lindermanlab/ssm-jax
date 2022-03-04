@@ -43,7 +43,7 @@ def deep_variational_inference(key,
                 model.emissions_network.update_params(dec_params)
 
             elbo_key = jr.split(key, data.shape[0])
-            bound = model.elbo(elbo_key, data, posterior, covariates=covariates, metadata=metadata)
+            bound = model.elbo(elbo_key, data, posterior, covariates=covariates, metadata=metadata, num_samples=10)
             return -np.sum(bound, axis=0), (model, posterior)
         
         results = \
