@@ -62,7 +62,7 @@ class LDSSVAEPosterior(MVNBlockTridiagPosterior):
         # diagonal blocks of precision matrix
         J_diag = J_obs  # from observations
         # Expand the diagonals into full covariance matrices
-        J_diag = J_obs[..., None] * np.eye(latent_dim)[None, ...]
+        # J_diag = J_obs[..., None] * np.eye(latent_dim)[None, ...]
         J_diag = J_diag.at[0].add(np.linalg.inv(Q1))
         J_diag = J_diag.at[:-1].add(np.dot(A.T, np.linalg.solve(Q, A)))
         J_diag = J_diag.at[1:].add(np.linalg.inv(Q))
