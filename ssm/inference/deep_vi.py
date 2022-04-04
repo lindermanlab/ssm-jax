@@ -6,6 +6,9 @@ from ssm.utils import Verbosity, debug_rejit, ensure_has_batch_dim, ssm_pbar
 
 import flax.optim as opt
 
+import ssm.debug as debug
+from ssm.debug import scan
+
 @ensure_has_batch_dim(model_arg="model")
 def deep_variational_inference(key,
              model,
@@ -29,8 +32,7 @@ def deep_variational_inference(key,
 
     rng1, rng2 = jr.split(key)
 
-    @jit
-    def update(key, rec_opt, dec_opt, model, posterior):
+    def _update(key, rec_opt, dec_opt, model, posterior):
         def loss(network_params, posterior):
             rec_params, dec_params = network_params
             # We need the recognition networks to take care of vmapping
@@ -58,6 +60,9 @@ def deep_variational_inference(key,
         
         return new_rec_opt, new_dec_opt, model, posterior, -neg_bound
 
+    DEBUG = debug.DEBUG
+    AUTO_DEBUG = debug.AUTO_DEBUG
+
     x_single = np.ones((seq_len, data_dim))
     z_single = np.ones((latent_dim,))
 
@@ -75,16 +80,41 @@ def deep_variational_inference(key,
     bounds = []
     pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
 
-    if verbosity > Verbosity.OFF:
-        pbar.set_description("[jit compiling...]")
+    if not DEBUG:
+        if AUTO_DEBUG:
+            print("Auto-debug mode on, when the model crashes the last iteration will be re-run in debug mode.")
+        if verbosity > Verbosity.OFF:
+            pbar.set_description("[jit compiling...]")
+        update = jit(_update)
+    else:
+        print("Debug mode on, all jit-compiled functions will be decomplied.")
+        update = _update
 
     for itr in pbar:
         this_key, key = jr.split(key, 2)
-        rec_opt, dec_opt, model, posterior, bound = update(this_key, 
+        if (not DEBUG) and AUTO_DEBUG:
+            try:
+                rec_opt, dec_opt, model, posterior, bound = update(this_key, 
                                                            rec_opt, 
                                                            dec_opt, 
                                                            model, 
                                                            posterior)
+            except:
+                print(
+"Some jit-compiled code crashed. Running the last iteration in debug mode.")
+                with debug.Debug():
+                    rec_opt, dec_opt, model, posterior, bound = _update(this_key, 
+                                                           rec_opt, 
+                                                           dec_opt, 
+                                                           model, 
+                                                           posterior)
+        else:
+            rec_opt, dec_opt, model, posterior, bound = update(this_key, 
+                                                           rec_opt, 
+                                                           dec_opt, 
+                                                           model, 
+                                                           posterior)
+        
         assert np.isfinite(bound), "NaNs in log probability bound"
 
         bounds.append(bound)

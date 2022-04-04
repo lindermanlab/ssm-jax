@@ -73,8 +73,8 @@ class NeuralNetworkEmissions(Emissions):
             emissions distribution (tfd.MultivariateNormalLinearOperator):
                 emissions distribution at given state
         """
-        scale_diag, loc = self._emissions_network.apply(self._params, state)
-        return tfd.MultivariateNormalDiag(loc=loc, scale_diag=scale_diag)
+        cov, loc = self._emissions_network.apply(self._params, state)
+        return tfd.MultivariateNormalFullCovariance(loc=loc, covariance_matrix=cov)
 
 
     def m_step(self,

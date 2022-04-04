@@ -14,6 +14,8 @@ Shape = Iterable[int]
 Dtype = Any  # this could be a real type?
 Array = Any
 
+def softplus(x):
+    return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0)
 
 def vectorize_pytree(*args):
     """
@@ -182,7 +184,10 @@ def build_gaussian_network(input_dim, output_dim,
 
             # Get the variance output and reshape it.
             var_output_flat = self.head_log_var_fn(trunk_output)
-            J_diag = np.exp(var_output_flat)
+            # For the stability of training
+            eps = 1e-4
+            J_diag = eps + softplus(var_output_flat)
+            J_diag = np.diag(J_diag)
 
             return (J_diag, h)
 
@@ -266,7 +271,9 @@ class GaussianNetwork(nn.Module):
         h = h_flat
         # Get the variance output and reshape it.
         var_output_flat = self.head_log_var_fn(trunk_output)
-        J_diag = np.exp(var_output_flat)
+        eps = 1e-4
+        J_diag = eps + softplus(var_output_flat)
+        J_diag = np.diag(J_diag)
         return (J_diag, h)
 
 class Bidirectional_RNN(nn.Module):
