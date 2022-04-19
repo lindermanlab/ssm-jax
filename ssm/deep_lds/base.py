@@ -1,5 +1,6 @@
 import jax
 from jax import grad, lax, vmap, random, jit
+from jax.interpreters.masking import parse_spec
 from jax.scipy.linalg import solve_triangular
 from jax.tree_util import register_pytree_node_class
 import jax.numpy as np
@@ -109,9 +110,25 @@ class DeepLDS(LDS):
         self._emissions.m_step(data, posterior, key=key)
         return self
 
-    # TODO: write this
+    # TODO: finish writing this
     def _posterior_cross_entropy_to_dynamics(self, posterior):
-        return 0
+        J, L = None, None # TODO: compute J and L
+        LT = np.swapaxes(L, -1, -2)
+
+        Ex = posterior.expected_states
+        ExxT = posterior.expected_states_squared
+        ExnxT = posterior.expected_states_next_states
+        Sigmatt = ExxT - np.einsum("ti,tj->tij", Ex, Ex)
+        Sigmatnt = ExnxT - np.einsum("ti,tj->tij", Ex[:-1], Ex[1:])
+
+        def _step():
+            parse_spec
+
+        # TODO: Compute the expected log likelihood
+        cross_entropy = 0 # - dynamics_log_prob(Ex)
+        cross_entropy += 0.5 * np.einsum("tij,tij->", J, Sigmatt) 
+        cross_entropy += np.einsum("tij,tij->", LT, Sigmatnt)
+        return cross_entropy
 
     @auto_batch(batched_args=("key", "data", "posterior", "covariates", "metadata"))
     def elbo(self,
