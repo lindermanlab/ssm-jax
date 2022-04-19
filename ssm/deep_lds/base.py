@@ -11,7 +11,8 @@ from ssm.base import SSM
 from ssm.lds.base import LDS
 from ssm.lds.initial import StandardInitialCondition
 from ssm.lds.dynamics import StationaryDynamics
-from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, random_rotation
+from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, \
+    random_rotation, tree_get, tree_concatenate
 
 from ssm.inference.deep_vi import deep_variational_inference
 from ssm.deep_lds.posterior import LDSSVAEPosterior, DKFPosterior, ConditionalDKFPosterior
@@ -107,6 +108,42 @@ class DeepLDS(LDS):
         self._dynamics.m_step(data, posterior)
         self._emissions.m_step(data, posterior, key=key)
         return self
+
+    # TODO: write this
+    def _posterior_cross_entropy_to_dynamics(self, posterior):
+        return 0
+
+    @auto_batch(batched_args=("key", "data", "posterior", "covariates", "metadata"))
+    def elbo(self,
+             key,
+             data,
+             posterior,
+             covariates=None,
+             metadata=None,
+             num_samples=1):
+        # Assumeing that both the dynamics and the posterior are MVN block tridiags
+        # We can split the ELBO differently and obtain a lower variance estimate
+        # for the elbo
+
+        def _emissions_ll_single(state, emission, covariates):
+            return self.emissions_distribution(
+                state, covariates=covariates, metadata=metadata).log_prob(emission)      
+
+        def _emissions_ll_single_seq(_key):
+            states = posterior.sample(seed=_key)
+            return vmap(_emissions_ll_single)(states, data, covariates).sum()
+
+        ell = vmap(_emissions_ll_single_seq)(jr.split(key, num_samples))
+        cross_entropy = self._posterior_cross_entropy_to_dynamics(posterior)
+        elbo = ell - cross_entropy + posterior.entropy()
+
+        def _elbo_single(_key):
+            sample = posterior.sample(seed=_key)
+            return self.log_probability(sample, data, covariates, metadata) - posterior.log_prob(sample)
+
+        elbos = vmap(_elbo_single)(jr.split(key, num_samples))
+        return np.mean(elbos)
+
 
     @ensure_has_batch_dim()
     def fit(self,
