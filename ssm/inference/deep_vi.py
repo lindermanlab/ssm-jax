@@ -24,6 +24,7 @@ def deep_variational_inference(key,
              # Only learn the recognition network
              recognition_only=False,
              init_emissions_params=None,
+             **kwargs
     ):
 
     assert(len(data.shape) == 3)

@@ -202,7 +202,8 @@ class GaussianNetwork(nn.Module):
 
     @classmethod
     def from_params(cls, latent_dim, input_dim = None,
-                    trunk_fn=None, head_mean_fn=None, head_log_var_fn=None): 
+                    trunk_fn=None, head_mean_fn=None, head_log_var_fn=None,
+                    **kwargs): 
 
         trunk_fn = trunk_fn or Identity(input_dim)
         head_mean_fn = head_mean_fn or nn.Dense(latent_dim)
@@ -288,7 +289,8 @@ class Bidirectional_RNN(nn.Module):
     def from_params(cls, latent_dim, input_dim = None,
                     cell_type=nn.GRUCell,
                     forward_RNN=None, backward_RNN=None, 
-                    head_mean_fn=None, head_log_var_fn=None): 
+                    head_mean_fn=None, head_log_var_fn=None,
+                    **kwargs): 
 
         forward_RNN = forward_RNN or nn.scan(cell_type, variable_broadcast="params", 
                                              split_rngs={"params": False})()

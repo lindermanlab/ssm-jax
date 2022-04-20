@@ -329,7 +329,7 @@ class MultivariateNormalBlockTridiag(tfd.Distribution):
 
         entropy = 0.5 * np.sum(J_diag * ExxT)
         entropy += np.sum(J_lower_diag * ExnxT)
-        entropy -= np.sum(h, Ex)
+        entropy -= np.sum(h * Ex)
         entropy += self.log_normalizer
         return entropy
 

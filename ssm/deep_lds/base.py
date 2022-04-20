@@ -110,24 +110,53 @@ class DeepLDS(LDS):
         self._emissions.m_step(data, posterior, key=key)
         return self
 
-    # TODO: finish writing this
+    # Ignore the covariates for now for simplicity
+    def _dynamics_log_likelihood(self, states):
+        lp = 0
+        # Get the first timestep probability
+        initial_state = tree_get(states, 0)
+        lp += self.initial_distribution().log_prob(initial_state)
+
+        def _step(carry, state):
+            prev_state, lp = carry
+            lp += self.dynamics_distribution(prev_state).log_prob(state)
+            return (state, lp), None
+
+        (_, lp), _ = lax.scan(_step, (initial_state, lp),
+                                tree_get(states, slice(1, None)))
+        return lp
+
+    # Assume here that the posterior is for a single data 
+    # because of auto-batching
+    # We'll ignore the covariates for now for simplicity
     def _posterior_cross_entropy_to_dynamics(self, posterior):
-        J, L = None, None # TODO: compute J and L
-        LT = np.swapaxes(L, -1, -2)
+
+        m1 = self.initial_mean
+        Q1 = self.initial_covariance
+        A = self.dynamics_matrix
+        b = self.dynamics_bias
+        Q = self.dynamics_noise_covariance
+        T, D, _ = posterior.precision_diag_blocks.shape
+
+        # diagonal blocks of precision matrix
+        J = np.zeros((T, D, D))
+        J = J.at[0].add(np.linalg.inv(Q1))
+        J = J.at[:-1].add(np.dot(A.T, np.linalg.solve(Q, A)))
+        J = J.at[1:].add(np.linalg.inv(Q))
+
+        # lower diagonal blocks of precision matrix
+        L = -np.linalg.solve(Q, A)
+        L = np.tile(L[None, :, :], (T-1, 1, 1))
 
         Ex = posterior.expected_states
         ExxT = posterior.expected_states_squared
         ExnxT = posterior.expected_states_next_states
         Sigmatt = ExxT - np.einsum("ti,tj->tij", Ex, Ex)
-        Sigmatnt = ExnxT - np.einsum("ti,tj->tij", Ex[:-1], Ex[1:])
+        Sigmantt = ExnxT - np.einsum("ti,tj->tji", Ex[:-1], Ex[1:])
 
-        def _step():
-            parse_spec
-
-        # TODO: Compute the expected log likelihood
-        cross_entropy = 0 # - dynamics_log_prob(Ex)
+        cross_entropy = -self._dynamics_log_likelihood(Ex)
         cross_entropy += 0.5 * np.einsum("tij,tij->", J, Sigmatt) 
-        cross_entropy += np.einsum("tij,tij->", LT, Sigmatnt)
+        cross_entropy += np.einsum("tij,tij->", L, Sigmantt)
         return cross_entropy
 
     @auto_batch(batched_args=("key", "data", "posterior", "covariates", "metadata"))
@@ -150,16 +179,12 @@ class DeepLDS(LDS):
             states = posterior.sample(seed=_key)
             return vmap(_emissions_ll_single)(states, data, covariates).sum()
 
-        ell = vmap(_emissions_ll_single_seq)(jr.split(key, num_samples))
+        ell = vmap(_emissions_ll_single_seq)(jr.split(key, num_samples)).mean(axis=0)
         cross_entropy = self._posterior_cross_entropy_to_dynamics(posterior)
-        elbo = ell - cross_entropy + posterior.entropy()
+        q_entropy = posterior.entropy()
+        elbo = ell - cross_entropy + q_entropy
 
-        def _elbo_single(_key):
-            sample = posterior.sample(seed=_key)
-            return self.log_probability(sample, data, covariates, metadata) - posterior.log_prob(sample)
-
-        elbos = vmap(_elbo_single)(jr.split(key, num_samples))
-        return np.mean(elbos)
+        return elbo
 
 
     @ensure_has_batch_dim()
@@ -176,6 +201,7 @@ class DeepLDS(LDS):
             learning_rate=1e-3,
             recognition_only=False,
             init_emissions_params=None,
+            **kwargs
             ):
         """
         Notably, returns the rec net as well as the model
@@ -199,7 +225,7 @@ class DeepLDS(LDS):
         posterior = posterior_class.initialize(
                 self, data, covariates=covariates, metadata=metadata)
         rec_net = (recognition_model_class or default_recognition_model_class)\
-            .from_params(self.latent_dim, input_dim=D)
+            .from_params(self.latent_dim, input_dim=D, **kwargs)
 
         bounds, model, posterior = deep_variational_inference(
                 key, self, data, rec_net, posterior, 
@@ -207,6 +233,6 @@ class DeepLDS(LDS):
                 num_iters=num_iters, learning_rate=learning_rate,
                 tol=tol, verbosity=verbosity, 
                 recognition_only=recognition_only,
-                init_emissions_params=init_emissions_params)
+                init_emissions_params=init_emissions_params, **kwargs)
 
         return bounds, model, posterior
