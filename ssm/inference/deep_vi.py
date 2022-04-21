@@ -24,6 +24,7 @@ def deep_variational_inference(key,
              # Only learn the recognition network
              recognition_only=False,
              init_emissions_params=None,
+             num_samples=10,
              **kwargs
     ):
 
@@ -32,6 +33,9 @@ def deep_variational_inference(key,
     latent_dim = model.latent_dim
 
     rng1, rng2 = jr.split(key)
+
+    num_samples = kwargs.get("num_samples") or num_samples
+    print("Number of samples used for ELBO evaluation: {}".format(num_samples))
 
     def _update(key, rec_opt, dec_opt, model, posterior):
         def loss(network_params, posterior):
@@ -46,7 +50,8 @@ def deep_variational_inference(key,
                 model.emissions_network.update_params(dec_params)
 
             elbo_key = jr.split(key, data.shape[0])
-            bound = model.elbo(elbo_key, data, posterior, covariates=covariates, metadata=metadata, num_samples=10)
+            bound = model.elbo(elbo_key, data, posterior, covariates=covariates, 
+                metadata=metadata, num_samples=num_samples)
             return -np.sum(bound, axis=0), (model, posterior)
         
         results = \

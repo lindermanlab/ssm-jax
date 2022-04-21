@@ -201,7 +201,7 @@ class DeepLDS(LDS):
             learning_rate=1e-3,
             recognition_only=False,
             init_emissions_params=None,
-            **kwargs
+            params=None
             ):
         """
         Notably, returns the rec net as well as the model
@@ -225,7 +225,7 @@ class DeepLDS(LDS):
         posterior = posterior_class.initialize(
                 self, data, covariates=covariates, metadata=metadata)
         rec_net = (recognition_model_class or default_recognition_model_class)\
-            .from_params(self.latent_dim, input_dim=D, **kwargs)
+            .from_params(self.latent_dim, input_dim=D, **params)
 
         bounds, model, posterior = deep_variational_inference(
                 key, self, data, rec_net, posterior, 
@@ -233,6 +233,6 @@ class DeepLDS(LDS):
                 num_iters=num_iters, learning_rate=learning_rate,
                 tol=tol, verbosity=verbosity, 
                 recognition_only=recognition_only,
-                init_emissions_params=init_emissions_params, **kwargs)
+                init_emissions_params=init_emissions_params, **params)
 
         return bounds, model, posterior

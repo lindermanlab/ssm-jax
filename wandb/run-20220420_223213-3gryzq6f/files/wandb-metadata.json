@@ -1,0 +1,25 @@
+{
+    "os": "Linux-5.4.144+-x86_64-with-Ubuntu-18.04-bionic",
+    "python": "3.7.13",
+    "heartbeatAt": "2022-04-20T22:32:17.525555",
+    "startedAt": "2022-04-20T22:32:13.536671",
+    "docker": null,
+    "cpu_count": 2,
+    "cuda": null,
+    "args": [
+        "-f",
+        "/root/.local/share/jupyter/runtime/kernel-ee3a9e2a-7cdd-4385-9638-b132aa8ab4d9.json"
+    ],
+    "state": "running",
+    "program": "DKF vs. SVAE notebook v1.ipynb",
+    "colab": "https://colab.research.google.com/notebook#fileId=18hYSgUiqVaO9HODf_-oUPl2nPmHyNVXa",
+    "git": {
+        "remote": "https://matthew9671:@github.com/lindermanlab/ssm-jax-refactor.git",
+        "commit": "386c1c1be2b9285e6c0a09366c9493856018cfe4"
+    },
+    "email": "yixiuz@stanford.edu",
+    "root": "/content/ssm-jax-refactor",
+    "host": "d6d0215f6ba8",
+    "username": "root",
+    "executable": "/usr/bin/python3"
+}
