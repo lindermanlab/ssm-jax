@@ -82,7 +82,10 @@ class StandardInitialCondition(InitialCondition):
         num_states = self._distribution.probs_parameter().shape[-1]
 
         if initial_distribution_prior is None:
-            initial_distribution_prior = ssmd.Dirichlet(1.1 * np.ones(num_states))
+            if num_states > 1:
+                initial_distribution_prior = ssmd.Dirichlet(1.1 * np.ones(num_states))
+            else:
+                initial_distribution_prior = None
         self._distribution_prior = initial_distribution_prior
 
     def tree_flatten(self):
@@ -123,8 +126,11 @@ class StandardInitialCondition(InitialCondition):
         Returns:
             initial_condition (StandardInitialCondition): updated initial condition object
         """
-        stats = np.sum(posteriors.expected_initial_states, axis=0)
-        stats += self._distribution_prior.concentration
-        conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
-        self._distribution = ssmd.Categorical.from_params(conditional.mode())
+        num_states = self._distribution.probs_parameter().shape[-1]
+        if num_states > 1:
+            stats = np.sum(posteriors.expected_initial_states, axis=0)
+            #stats = np.sum(posteriors.expected_states[:, 0, :], axis=0)
+            stats += self._distribution_prior.concentration
+            conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
+            self._distribution = ssmd.Categorical.from_params(conditional.mode())
         return self

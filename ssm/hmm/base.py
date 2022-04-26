@@ -16,7 +16,7 @@ import ssm.hmm.transitions as transitions
 import ssm.hmm.emissions as emissions
 from ssm.hmm.posterior import StationaryHMMPosterior
 
-
+from copy import deepcopy
 
 @register_pytree_node_class
 class HMM(SSM):
@@ -163,7 +163,11 @@ class HMM(SSM):
             tol: float=1e-4,
             initialization_method: str="kmeans",
             key: jr.PRNGKey=None,
-            verbosity: Verbosity=Verbosity.DEBUG):
+            verbosity: Verbosity=Verbosity.DEBUG,
+            test_data: np.ndarray=None,
+            callback=None,
+            num_restarts=1,
+            num_iters_per_restart=30):
         r"""Fit the HMM to a dataset using the specified method and initialization.
 
         Args:
@@ -196,21 +200,47 @@ class HMM(SSM):
         """
         model = self
 
-        if initialization_method is not None:
-            if verbosity >= Verbosity.LOUD : print("Initializing...")
-            self.initialize(key, data, method=initialization_method)
-            if verbosity >= Verbosity.LOUD: print("Done.", flush=True)
+        best_ll = -np.inf
+        for restart in range(num_restarts):
+            this_key, key = jr.split(key, 2)
+            if initialization_method is not None:
+                if verbosity >= Verbosity.LOUD : print("Initializing...")
+                self.initialize(this_key, data, method=initialization_method)
+                if verbosity >= Verbosity.LOUD: print("Done.", flush=True)
 
+            if method == "em":
+                log_probs, model, posteriors, test_log_probs, callback_outputs = em(
+                    model, data, num_iters=num_iters_per_restart, tol=tol, verbosity=verbosity,
+                    covariates=covariates, metadata=metadata, test_data=test_data, callback=callback,
+                )
+            else:
+                raise ValueError(f"Method {method} is not recognized/supported.")
+                
+            if log_probs[-1] > best_ll:
+                best_ll = log_probs[-1]
+                best_log_probs = log_probs
+                best_test_log_probs = test_log_probs
+                best_callback_outputs = callback_outputs
+                
+                best_model = deepcopy(model)
+                
+            if restart < num_restarts-1:
+                this_key, key = jr.split(key, 2)
+                model.reinitialize(seed=this_key)
+        
         if method == "em":
-            log_probs, model, posteriors = em(
-                model, data, num_iters=num_iters, tol=tol, verbosity=verbosity,
-                covariates=covariates, metadata=metadata
+            log_probs, model, posteriors, test_log_probs, callback_outputs = em(
+                best_model, data, num_iters=num_iters, tol=tol, verbosity=verbosity,
+                covariates=covariates, metadata=metadata, test_data=test_data, callback=callback,
             )
-
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
+            
+        log_probs = np.concatenate([best_log_probs, log_probs])
+        test_log_probs = np.concatenate([best_test_log_probs, test_log_probs])
+        callback_outputs = best_callback_outputs.extend(callback_outputs)
 
-        return log_probs, model, posteriors
+        return log_probs, model, posteriors, test_log_probs, callback_outputs
 
     def __repr__(self):
         return f"<ssm.hmm.{type(self).__name__} num_states={self.num_states} " \

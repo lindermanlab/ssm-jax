@@ -107,8 +107,11 @@ class StationaryTransitions(Transitions):
 
         if transition_distribution_prior is None:
             num_states = self._distribution.probs_parameter().shape[-1]
-            transition_distribution_prior = \
-                ssmd.Dirichlet(1.1 * np.ones((num_states, num_states)))
+            if num_states > 1:
+                transition_distribution_prior = \
+                    ssmd.Dirichlet(1.1 * np.ones((num_states, num_states)))
+            else:
+                transition_distribution_prior = None
         self._prior = transition_distribution_prior
 
     def tree_flatten(self):
@@ -136,10 +139,12 @@ class StationaryTransitions(Transitions):
         return log_P
 
     def m_step(self, dataset, posteriors, covariates=None, metadata=None) -> StationaryTransitions:
-        stats = np.sum(posteriors.expected_transitions, axis=0)
-        stats += self._prior.concentration
-        conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
-        self._distribution = ssmd.Categorical.from_params(conditional.mode())
+        num_states = self._distribution.probs_parameter().shape[-1]
+        if num_states > 1:
+            stats = np.sum(posteriors.expected_transitions, axis=0)
+            stats += self._prior.concentration
+            conditional = ssmd.Categorical.compute_conditional_from_stats(stats)
+            self._distribution = ssmd.Categorical.from_params(conditional.mode())
         return self
 
 

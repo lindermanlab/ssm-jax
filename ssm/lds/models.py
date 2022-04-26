@@ -243,7 +243,7 @@ class GaussianLDS(LDS):
         kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
 
         if method == "em":
-            elbos, lds, posteriors = em(model, data, **kwargs)
+            elbos, lds, posteriors, test_elbos = em(model, data, **kwargs)
         elif method == "laplace_em":
             if key is None:
                 raise ValueError("Laplace EM requires a PRNGKey. Please provide an rng to fit.")
@@ -251,7 +251,7 @@ class GaussianLDS(LDS):
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
-        return elbos, lds, posteriors
+        return elbos, lds, posteriors, test_elbos
 
 
 
