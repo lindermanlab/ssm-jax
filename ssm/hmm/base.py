@@ -238,9 +238,9 @@ class HMM(SSM):
             
         log_probs = np.concatenate([best_log_probs, log_probs])
         test_log_probs = np.concatenate([best_test_log_probs, test_log_probs])
-        callback_outputs = best_callback_outputs.extend(callback_outputs)
+        best_callback_outputs.extend(callback_outputs)
 
-        return log_probs, model, posteriors, test_log_probs, callback_outputs
+        return log_probs, model, posteriors, test_log_probs, best_callback_outputs
 
     def __repr__(self):
         return f"<ssm.hmm.{type(self).__name__} num_states={self.num_states} " \
