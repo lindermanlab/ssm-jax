@@ -1,5 +1,5 @@
 import jax
-from jax import lax
+from jax import lax, jit
 
 DEBUG = False
 AUTO_DEBUG = False
@@ -29,6 +29,30 @@ def scan(f, init, xs):
         return _debug_scan(f, init, xs)
     else:
         return lax.scan(f, init, xs)
+
+def debug_jit(f):
+    def wrapper(*args, **kwargs):
+        if not DEBUG:
+            if AUTO_DEBUG:
+                print(
+"Auto-debug mode on, when the model crashes the last iteration will be re-run in debug mode.")
+            func = jit(f)
+        else:
+            print("Debug mode on, all jit-compiled functions will be decomplied.")
+            func = f
+
+        if (not DEBUG) and AUTO_DEBUG:
+            try:
+                return func(*args, **kwargs)
+            except:
+                print(
+"Some jit-compiled code crashed. Running the last iteration in debug mode.")
+                with Debug():
+                    # Use the unjitted version
+                    return f(*args, **kwargs)
+        else:
+            return func(*args, **kwargs)
+    return wrapper
 
 class Debug(object):
     def __enter__(self):

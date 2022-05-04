@@ -242,9 +242,10 @@ class DeepLDS(LDS):
             default_recognition_model_class = Bidirectional_RNN
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
-            
+
         # Whether or not to use the sampling approximation for the KL divergence
         if sample_kl:
+            print("Using sampling approximation for KL!")
             self.elbo = self._elbo_sample
         else:
             self.elbo = self._elbo_cf
