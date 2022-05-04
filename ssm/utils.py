@@ -250,8 +250,7 @@ def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metad
                     if key in bound_args.arguments and bound_args.arguments[key] is not None:
                         bound_args.arguments[key] = \
                             tree_map(lambda x: x[None, ...], bound_args.arguments[key])
-
-            return f(**bound_args.arguments)
+            return f(*bound_args.args, **bound_args.kwargs)
 
         return wrapper
     return ensure_has_batch_dim_decorator

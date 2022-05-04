@@ -160,7 +160,7 @@ class DeepLDS(LDS):
         return cross_entropy
 
     @auto_batch(batched_args=("key", "data", "posterior", "covariates", "metadata"))
-    def elbo(self,
+    def _elbo_cf(self,
              key,
              data,
              posterior,
@@ -183,9 +183,25 @@ class DeepLDS(LDS):
         cross_entropy = self._posterior_cross_entropy_to_dynamics(posterior)
         q_entropy = posterior.entropy()
         elbo = ell - cross_entropy + q_entropy
-
         return elbo
 
+    @auto_batch(batched_args=("key", "data", "posterior", "covariates", "metadata"))
+    def _elbo_sample(self,
+             key,
+             data,
+             posterior,
+             covariates=None,
+             metadata=None,
+             num_samples=1):
+        """
+        Same as the default elbo for ssm's
+        """
+        def _elbo_single(_key):
+            sample = posterior.sample(seed=_key)
+            return self.log_probability(sample, data, covariates, metadata) - posterior.log_prob(sample)
+
+        elbos = vmap(_elbo_single)(jr.split(key, num_samples))
+        return np.mean(elbos)
 
     @ensure_has_batch_dim()
     def fit(self,
@@ -201,7 +217,10 @@ class DeepLDS(LDS):
             learning_rate=1e-3,
             recognition_only=False,
             init_emissions_params=None,
-            params=None
+            sample_kl=False,
+            # Addition parameters can include information about the
+            # recognition network architecture and the specifics of training
+            **params
             ):
         """
         Notably, returns the rec net as well as the model
@@ -209,6 +228,8 @@ class DeepLDS(LDS):
         # Just initialize the posterior since the model will be
         # updated on the first m-step.
         N, T, D = data.shape
+
+        print(params)
 
         if method == "svae":
             posterior_class = LDSSVAEPosterior
@@ -221,6 +242,12 @@ class DeepLDS(LDS):
             default_recognition_model_class = Bidirectional_RNN
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
+            
+        # Whether or not to use the sampling approximation for the KL divergence
+        if sample_kl:
+            self.elbo = self._elbo_sample
+        else:
+            self.elbo = self._elbo_cf
 
         posterior = posterior_class.initialize(
                 self, data, covariates=covariates, metadata=metadata)

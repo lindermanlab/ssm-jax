@@ -24,7 +24,7 @@ def deep_variational_inference(key,
              # Only learn the recognition network
              recognition_only=False,
              init_emissions_params=None,
-             num_samples=10,
+             elbo_samples=10,
              **kwargs
     ):
 
@@ -34,9 +34,9 @@ def deep_variational_inference(key,
 
     rng1, rng2 = jr.split(key)
 
-    num_samples = kwargs.get("num_samples") or num_samples
+    num_samples = elbo_samples
     print("Number of samples used for ELBO evaluation: {}".format(num_samples))
-
+    
     def _update(key, rec_opt, dec_opt, model, posterior):
         def loss(network_params, posterior):
             rec_params, dec_params = network_params
