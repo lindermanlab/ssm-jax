@@ -8,6 +8,7 @@ import jax.random as jr
 
 from functools import partial
 
+import ssm
 from ssm.base import SSM
 from ssm.lds.base import LDS
 from ssm.lds.initial import StandardInitialCondition
@@ -18,6 +19,10 @@ from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, \
 from ssm.inference.deep_vi import deep_variational_inference
 from ssm.deep_lds.posterior import LDSSVAEPosterior, DKFPosterior, ConditionalDKFPosterior
 from ssm.nn_util import GaussianNetwork, Bidirectional_RNN
+
+# For convenience
+import importlib
+importlib.reload(ssm.inference.deep_vi)
 
 # To keep it really really simple, we don't even to write ANYTHING
 # Except for the fit function
@@ -228,8 +233,6 @@ class DeepLDS(LDS):
         # Just initialize the posterior since the model will be
         # updated on the first m-step.
         N, T, D = data.shape
-
-        print(params)
 
         if method == "svae":
             posterior_class = LDSSVAEPosterior

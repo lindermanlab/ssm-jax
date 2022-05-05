@@ -25,6 +25,8 @@ def deep_variational_inference(key,
              recognition_only=False,
              init_emissions_params=None,
              elbo_samples=10,
+             record_parameters=False,
+             record_interval=10,
              **kwargs
     ):
 
@@ -33,7 +35,7 @@ def deep_variational_inference(key,
     latent_dim = model.latent_dim
 
     rng1, rng2 = jr.split(key)
-
+    print("Updated!")
     num_samples = elbo_samples
     print("Number of samples used for ELBO evaluation: {}".format(num_samples))
 
@@ -77,12 +79,12 @@ def deep_variational_inference(key,
 
     # Initialize the parameters and optimizers
     rec_params = rec_net.init(rng1, x_single)
-    rec_optim = opt.Adam(learning_rate=learning_rate)
+    rec_optim = opt.adam(learning_rate=learning_rate)
     rec_opt_state = rec_optim.init(rec_params)
 
     dec_net = model.emissions_network
     dec_params = init_emissions_params or dec_net.init(rng2, z_single)
-    dec_optim = opt.Adam(learning_rate=learning_rate).create(dec_params)
+    dec_optim = opt.adam(learning_rate=learning_rate)
     dec_opt_state = dec_optim.init(dec_params)
 
     dec_net.update_params(dec_params)
@@ -96,19 +98,30 @@ def deep_variational_inference(key,
     # New feature: the debug_jit wrapper!
     update = debug_jit(_update)
 
+    past_rec_params = []
+
+    rec_opt = (rec_params, rec_opt_state)
+    dec_opt = (dec_params, dec_opt_state)
     for itr in pbar:
         this_key, key = jr.split(key, 2)
         rec_opt, dec_opt, model, posterior, bound = update(this_key, 
-                                            (rec_params, rec_opt_state), 
-                                            (dec_params, dec_opt_state), 
-                                                       model, 
-                                                       posterior)
+                                            rec_opt, dec_opt, model, posterior)
         
         assert np.isfinite(bound), "NaNs in log probability bound"
 
         bounds.append(bound)
+        if record_parameters and itr % record_interval == 0:
+            past_rec_params.append(rec_opt[0])
+        
         if verbosity > Verbosity.OFF:
             pbar.set_description("LP: {:.3f}".format(bound))
 
-    model.emissions_network.update_params(dec_opt.target)
-    return np.array(bounds), (model, (rec_net, rec_opt.target)), posterior
+    model.emissions_network.update_params(dec_opt[0])
+
+    if record_parameters:
+        past_rec_params.append(rec_opt[0])
+        model_data = (model, (rec_net, past_rec_params))
+    else:
+        model_data = (model, (rec_net, rec_opt[0]))
+
+    return np.array(bounds), model_data, posterior
