@@ -5,6 +5,7 @@ from jax import jit, vmap
 from ssm.utils import Verbosity, debug_rejit, ensure_has_batch_dim, ssm_pbar
 
 import optax as opt
+from flax.core import frozen_dict as fd
 
 import ssm.debug as debug
 from ssm.debug import scan, debug_jit
@@ -35,7 +36,6 @@ def deep_variational_inference(key,
     latent_dim = model.latent_dim
 
     rng1, rng2 = jr.split(key)
-    print("Updated!")
     num_samples = elbo_samples
     print("Number of samples used for ELBO evaluation: {}".format(num_samples))
 
@@ -65,6 +65,13 @@ def deep_variational_inference(key,
             model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
 
         updates, rec_opt_state = rec_optim.update(rec_grad, rec_opt[1])
+        # Separate the gradients of the mean and the covariance and scale them separately
+        # u = fd.unfreeze(updates)
+        # cov = u["params"]["head_log_var_fn"]
+        # mean = u["params"]["head_mean_fn"]
+        # u["params"]["head_log_var_fn"] = jax.tree_map(lambda v: v * (1-grad_tradeoff), cov)
+        # u["params"]["head_mean_fn"] = jax.tree_map(lambda v: v * grad_tradeoff, mean)
+        # updates = fd.freeze(u)
         rec_params = opt.apply_updates(rec_opt[0], updates)
         updates, dec_opt_state = dec_optim.update(dec_grad, dec_opt[1])
         dec_params = opt.apply_updates(dec_opt[0], updates)
@@ -102,8 +109,14 @@ def deep_variational_inference(key,
 
     rec_opt = (rec_params, rec_opt_state)
     dec_opt = (dec_params, dec_opt_state)
+
+    grad_schedule = kwargs.get("grad_schedule") or (lambda _: 0.5)
+
     for itr in pbar:
         this_key, key = jr.split(key, 2)
+
+        # r = grad_schedule(itr)
+
         rec_opt, dec_opt, model, posterior, bound = update(this_key, 
                                             rec_opt, dec_opt, model, posterior)
         
