@@ -11,6 +11,9 @@ from ssm.lds.dynamics import StationaryDynamics
 from ssm.lds.emissions import GaussianEmissions, PoissonEmissions
 from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, random_rotation
 
+from jax.config import config
+config.update("jax_enable_x64", True)
+
 LDSPosterior = MultivariateNormalBlockTridiag
 
 
@@ -27,7 +30,8 @@ class GaussianLDS(LDS):
                  emission_weights: np.ndarray=None,
                  emission_bias: np.ndarray=None,
                  emission_scale_tril: np.ndarray=None,
-                 seed: jr.PRNGKey=None):
+                 seed: jr.PRNGKey=None,
+                 dtype=np.float64):
         """LDS with Gaussian emissions.
 
         .. math::
@@ -62,30 +66,30 @@ class GaussianLDS(LDS):
         """
 
         if initial_state_mean is None:
-            initial_state_mean = np.zeros(num_latent_dims)
+            initial_state_mean = np.zeros(num_latent_dims).astype(dtype)
 
         if initial_state_scale_tril is None:
-            initial_state_scale_tril = np.eye(num_latent_dims)
+            initial_state_scale_tril = np.eye(num_latent_dims).astype(dtype)
 
         if dynamics_weights is None:
             seed, rng = jr.split(seed, 2)
-            dynamics_weights = random_rotation(rng, num_latent_dims, theta=np.pi/20)
+            dynamics_weights = random_rotation(rng, num_latent_dims, theta=np.pi/20).astype(dtype)
 
         if dynamics_bias is None:
-            dynamics_bias = np.zeros(num_latent_dims)
+            dynamics_bias = np.zeros(num_latent_dims).astype(dtype)
 
         if dynamics_scale_tril is None:
-            dynamics_scale_tril = 0.1**2 * np.eye(num_latent_dims)
+            dynamics_scale_tril = 0.1**2 * np.eye(num_latent_dims).astype(dtype)
 
         if emission_weights is None:
             seed, rng = jr.split(seed, 2)
-            emission_weights = jr.normal(rng, shape=(num_emission_dims, num_latent_dims))
+            emission_weights = jr.normal(rng, shape=(num_emission_dims, num_latent_dims)).astype(dtype)
 
         if emission_bias is None:
-            emission_bias = np.zeros(num_emission_dims)
+            emission_bias = np.zeros(num_emission_dims).astype(dtype)
 
         if emission_scale_tril is None:
-            emission_scale_tril = 1.0**2 * np.eye(num_emission_dims)  # TODO: do we want 0.1**2 here?
+            emission_scale_tril = 1.0**2 * np.eye(num_emission_dims).astype(dtype)  # TODO: do we want 0.1**2 here?
 
         initial_condition = StandardInitialCondition(initial_mean=initial_state_mean,
                                                      initial_scale_tril=initial_state_scale_tril)
@@ -243,7 +247,7 @@ class GaussianLDS(LDS):
         kwargs = dict(num_iters=num_iters, tol=tol, verbosity=verbosity)
 
         if method == "em":
-            elbos, lds, posteriors, test_elbos = em(model, data, **kwargs)
+            elbos, lds, posteriors, test_elbos, _ = em(model, data, **kwargs)
         elif method == "laplace_em":
             if key is None:
                 raise ValueError("Laplace EM requires a PRNGKey. Please provide an rng to fit.")
