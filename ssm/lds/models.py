@@ -73,7 +73,9 @@ class GaussianLDS(LDS):
 
         if dynamics_weights is None:
             seed, rng = jr.split(seed, 2)
-            dynamics_weights = random_rotation(rng, num_latent_dims, theta=np.pi/20).astype(dtype)
+            dynamics_weights = jr.normal(rng, shape=(num_latent_dims, num_latent_dims)).astype(dtype)#random_rotation(rng, num_latent_dims, theta=np.pi/4).astype(dtype)
+            eigs = np.linalg.eigvals(dynamics_weights)
+            dynamics_weights /= (np.abs(eigs).max() * 1.1)
 
         if dynamics_bias is None:
             dynamics_bias = np.zeros(num_latent_dims).astype(dtype)
