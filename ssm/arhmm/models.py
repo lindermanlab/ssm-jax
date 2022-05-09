@@ -11,7 +11,7 @@ from jax.tree_util import register_pytree_node_class
 
 from ssm.arhmm.base import AutoregressiveHMM
 from ssm.hmm.initial import StandardInitialCondition
-from ssm.hmm.transitions import StationaryTransitions
+from ssm.hmm.transitions import StationaryTransitions, StickyTransitions
 from ssm.arhmm.emissions import AutoregressiveEmissions
 
 from jax.config import config
@@ -29,6 +29,7 @@ class GaussianARHMM(AutoregressiveHMM):
                  emission_biases: np.ndarray=None,
                  emission_covariances: np.ndarray=None,
                  seed: jr.PRNGKey=None,
+                 sticky_params: tuple=None,
                  dtype=np.float64):
         r"""Gaussian autoregressive hidden markov Model (ARHMM).
         
@@ -67,8 +68,13 @@ class GaussianARHMM(AutoregressiveHMM):
             initial_state_probs = np.ones(num_states).astype(dtype) / num_states
 
         if transition_matrix is None:
-            transition_matrix = np.ones((num_states, num_states)).astype(dtype) / num_states
-
+            if sticky_params is None:
+                transition_matrix = np.ones((num_states, num_states)).astype(dtype) / num_states
+            else:
+                alpha, kappa = sticky_params
+                transition_matrix = kappa * np.eye(num_states) + alpha * np.ones((num_states, num_states))
+                transition_matrix /= (kappa + alpha * num_states)
+                
         if emission_weights is None:
             assert seed is not None and num_emission_dims is not None and num_lags is not None, \
                 "You must either specify the emission_weights or give a dimension, "\
@@ -94,7 +100,10 @@ class GaussianARHMM(AutoregressiveHMM):
             emission_covariances = np.tile(np.eye(num_emission_dims), (num_states, 1, 1)).astype(dtype)
 
         initial_condition = StandardInitialCondition(num_states, initial_probs=initial_state_probs)
-        transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
+        if sticky_params is None:
+            transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
+        else:
+            transitions = StickyTransitions(num_states, alpha=alpha, kappa=kappa, transition_matrix=transition_matrix)
         emissions = AutoregressiveEmissions(num_states,
                                             weights=emission_weights,
                                             biases=emission_biases,
