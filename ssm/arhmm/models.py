@@ -72,7 +72,7 @@ class GaussianARHMM(AutoregressiveHMM):
                 transition_matrix = np.ones((num_states, num_states)).astype(dtype) / num_states
             else:
                 alpha, kappa = sticky_params
-                transition_matrix = kappa * np.eye(num_states) + alpha * np.ones((num_states, num_states))
+                transition_matrix = kappa * np.eye(num_states).astype(dtype) + alpha * np.ones((num_states, num_states)).astype(dtype)
                 transition_matrix /= (kappa + alpha * num_states)
                 
         if emission_weights is None:
