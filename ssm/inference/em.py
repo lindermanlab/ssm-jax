@@ -6,6 +6,19 @@ import jax.numpy as np
 from jax import jit, vmap
 from ssm.utils import Verbosity, ensure_has_batch_dim, ssm_pbar
 
+@jit
+def update(model, data, covariates, metadata, test_data):
+    posterior = model.e_step(data, covariates=covariates, metadata=metadata)
+    lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
+    if test_data is not None:
+        test_posterior = model.e_step(test_data, covariates=covariates, metadata=metadata)
+        test_lp = model.marginal_likelihood(test_data, test_posterior, 
+                covariates=covariates, metadata=metadata).sum()
+    else:
+        test_lp = 0
+    model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
+    return model, posterior, lp, test_lp
+
 @ensure_has_batch_dim(model_arg="model")
 def em(model,
        data,
@@ -41,29 +54,26 @@ def em(model,
         model: the fitted model
         posterior: the posterior over the inferred latent states
     """
-    
-    @jit
-    def update(model):
-        posterior = model.e_step(data, covariates=covariates, metadata=metadata)
-        lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
-        model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
-        return model, posterior, lp
 
     # Run the EM algorithm to convergence
     log_probs = []
-    pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}", 0, np.nan)
+    test_log_probs = []
+    callback_outputs = []
+    pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}, test LP: {:.3f}", 0, np.nan, np.nan)
 
     if verbosity > Verbosity.OFF:
         pbar.set_description("[jit compiling...]")
 
     for itr in pbar:
-        model, posterior, lp = update(model)
+        model, posterior, lp, test_lp = update(model, data, covariates, metadata, test_data) #update(model)
         callback_output = callback(model, posterior) if callback else None
         assert np.isfinite(lp), "NaNs in marginal log probability"
 
         log_probs.append(lp)
+        test_log_probs.append(test_lp)
+        callback_outputs.append(callback_output)
         if verbosity > Verbosity.OFF:
-            pbar.set_description("LP: {:.3f}".format(lp))
+            pbar.set_description("LP: {:.3f}, test LP: {:.3f}".format(lp, test_lp))
 
         # Check for convergence
         if itr > 1:
@@ -71,8 +81,8 @@ def em(model,
                 pass # warnings.warn(UserWarning("LP is decreasing in EM fit!"))
 
             if abs(log_probs[-1] - log_probs[-2]) < tol and verbosity > Verbosity.OFF:
-                pbar.set_description("[converged] LP: {:.3f}".format(lp))
+                pbar.set_description("[converged] LP: {:.3f}, test LP: {:.3f}".format(lp, test_lp))
                 pbar.refresh()
                 break
 
-    return np.array(log_probs), model, posterior, None, None #np.array(test_log_probs), callback_outputs
+    return np.array(log_probs), model, posterior, np.array(test_log_probs), callback_outputs
