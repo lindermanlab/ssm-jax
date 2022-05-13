@@ -84,6 +84,11 @@ def deep_variational_inference(key,
     x_single = np.ones((seq_len, data_dim))
     z_single = np.ones((latent_dim,))
 
+    if (kwargs.get("learning_rate_decay")):
+        print("Using learning rate decay!")
+        # Hard coded values, no tuning allowed >:(
+        learning_rate = opt.exponential_decay(learning_rate, 100, 0.95)
+
     # Initialize the parameters and optimizers
     rec_params = rec_net.init(rng1, x_single)
     rec_optim = opt.adam(learning_rate=learning_rate)

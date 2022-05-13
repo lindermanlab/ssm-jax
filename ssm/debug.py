@@ -33,9 +33,6 @@ def scan(f, init, xs):
 def debug_jit(f):
     def wrapper(*args, **kwargs):
         if not DEBUG:
-            if AUTO_DEBUG:
-                print(
-"Auto-debug mode on, when the model crashes the last iteration will be re-run in debug mode.")
             func = jit(f)
         else:
             print("Debug mode on, all jit-compiled functions will be decomplied.")
@@ -52,6 +49,9 @@ def debug_jit(f):
                     return f(*args, **kwargs)
         else:
             return func(*args, **kwargs)
+    if AUTO_DEBUG:
+        print(
+"Auto-debug mode on, when the model crashes the last iteration will be re-run in debug mode.")
     return wrapper
 
 class Debug(object):

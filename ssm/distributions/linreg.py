@@ -182,5 +182,7 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
         V = np.linalg.inv(Vi + 1e-4 * np.eye(in_dim))
         # M = MVi @ V
         M = T(np.linalg.solve(Vi + 1e-4 * np.eye(in_dim), T(MVi)))
-        Psi = s7 - M @ Vi @ T(M) + 1e-4 * np.eye(out_dim)
+        # TODO: this is Cheating!
+        Psi = s7 - M @ Vi @ T(M) + 1e-1 * np.eye(out_dim)
+        # Psi = s7 - M @ Vi @ T(M) + 1e-4 * np.eye(out_dim)
         return cls(M, V, df, Psi)
