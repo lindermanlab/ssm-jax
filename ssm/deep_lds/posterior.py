@@ -80,27 +80,8 @@ class LDSSVAEPosterior(MVNBlockTridiagPosterior):
         return LDSSVAEPosterior.infer(J_diag, J_lower_diag, h)
 
 class DKFPosterior(MVNBlockTridiagPosterior):
-
-    @auto_batch(batched_args=("data", "potential", "covariates", "metadata", "key"))
-    def update(self, lds, data, potential, covariates=None, metadata=None, key=None):
-        # From data
-        J_obs, h_obs = potential
-        seq_len = data.shape[0]
-        latent_dim = J_obs.shape[-1]
-        # diagonal blocks of precision matrix
-        # Expand the diagonals into full covariance matrices
-        J_diag = J_obs[..., None] * np.eye(latent_dim)[None, ...]
-        # lower diagonal blocks of precision matrix
-        J_lower_diag = np.zeros((seq_len-1, latent_dim, latent_dim))
-        # linear potential
-        h = h_obs  # from observations
-        return DKFPosterior.infer(J_diag, J_lower_diag, h)
-
-# Has diagonal terms
-class ConditionalDKFPosterior(MVNBlockTridiagPosterior):
-
     @auto_batch(batched_args=("data", "potential", "covariates", "metadata", "key"))
     def update(self, lds, data, potential, covariates=None, metadata=None, key=None):
         # From data
         J_obs, L_obs, h_obs = potential
-        return ConditionalDKFPosterior.infer(J_obs, L_obs, h_obs)
+        return DKFPosterior.infer(J_obs, L_obs, h_obs)
