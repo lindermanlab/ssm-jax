@@ -27,7 +27,6 @@ def vectorize_pytree(*args):
     flat_vs = [x.flatten() for x in flat_tree]
     return np.concatenate(flat_vs, axis=0)
 
-
 class MLP(nn.Module):
     """
     Define a simple fully connected MLP with ReLU activations.
@@ -40,9 +39,10 @@ class MLP(nn.Module):
     def __call__(self, x):
         for feat in self.features[:-1]:
             x = nn.relu(nn.Dense(feat, kernel_init=self.kernel_init, bias_init=self.bias_init, )(x))
-        x = nn.Dense(self.features[-1])(x)
+        x = nn.Dense(self.features[-1], 
+            kernel_init=self.kernel_init, 
+            bias_init=self.bias_init)(x)
         return x
-
 
 class Identity(nn.Module):
     """
@@ -52,7 +52,6 @@ class Identity(nn.Module):
 
     def __call__(self, inputs):
         return inputs
-
 
 class Static(nn.Module):
     """
