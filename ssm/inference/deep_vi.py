@@ -60,6 +60,11 @@ def deep_variational_inference(key,
             jax.value_and_grad(lambda params: loss(params, posterior), has_aux=True)((rec_opt[0], dec_opt[0]))
         (neg_bound, (model, posterior)), (rec_grad, dec_grad) = results
 
+        # New feature: gradient clipping!
+        if (kwargs.get("gradient_clipping")):
+            rec_grad = opt.clip_by_global_norm(1)(rec_grad)
+            dec_grad = opt.clip_by_global_norm(1)(dec_grad)
+
         if not recognition_only:
             # Update the model!
             model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
