@@ -18,7 +18,7 @@ from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, \
 
 from ssm.inference.deep_vi import deep_variational_inference
 from ssm.deep_lds.posterior import LDSSVAEPosterior, DKFPosterior
-from ssm.nn_util import GaussianNetwork, Bidirectional_RNN
+from ssm.nn_util import GaussianNetworkFullMeanParams, BiRNNMeanParams
 
 # For convenience
 import importlib
@@ -236,10 +236,10 @@ class DeepLDS(LDS):
 
         if method == "svae":
             posterior_class = LDSSVAEPosterior
-            default_recognition_model_class = GaussianNetwork
+            default_recognition_model_class = GaussianNetworkFullMeanParams
         elif method in ["dkf", "cdkf"]:
             posterior_class = DKFPosterior
-            default_recognition_model_class = Bidirectional_RNN
+            default_recognition_model_class = BiRNNMeanParams
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
