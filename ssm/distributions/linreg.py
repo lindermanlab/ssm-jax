@@ -123,6 +123,9 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
     Wishart distribution, M is the mean of the weights, and V is the
     covariance of the columns of W.
     """
+
+    alpha = 1e-1
+
     def __repr__(self) -> str:
         return "<GaussianLinearRegressionPrior batch_shape={} event_shape={}>".\
             format(self.loc.shape[:-2], self.loc.shape[-2:])
@@ -182,7 +185,5 @@ class GaussianLinearRegressionPrior(MatrixNormalInverseWishart):
         V = np.linalg.inv(Vi + 1e-4 * np.eye(in_dim))
         # M = MVi @ V
         M = T(np.linalg.solve(Vi + 1e-4 * np.eye(in_dim), T(MVi)))
-        # TODO: this is Cheating!
-        Psi = s7 - M @ Vi @ T(M) + 1e-1 * np.eye(out_dim)
-        # Psi = s7 - M @ Vi @ T(M) + 1e-4 * np.eye(out_dim)
+        Psi = s7 - M @ Vi @ T(M) + GaussianLinearRegressionPrior.alpha * np.eye(out_dim)
         return cls(M, V, df, Psi)

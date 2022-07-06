@@ -54,7 +54,7 @@ class MLP(nn.Module):
     Define a simple fully connected MLP with ReLU activations.
     """
     features: Sequence[int]
-    kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.glorot_normal()
+    kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.he_normal()
     bias_init: Callable[[PRNGKey, Shape, Dtype], Array] = nn.initializers.zeros
 
     @nn.compact
