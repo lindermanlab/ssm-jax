@@ -24,7 +24,7 @@ from ssm.nn_util import GaussianNetworkFullMeanParams, BiRNNMeanParams
 import importlib
 importlib.reload(ssm.inference.deep_vi)
 
-# To keep it really really simple, we don't even to write ANYTHING
+# To keep it really really simple, we don't even have to write ANYTHING
 # Except for the fit function
 @register_pytree_node_class
 class DeepLDS(LDS):
