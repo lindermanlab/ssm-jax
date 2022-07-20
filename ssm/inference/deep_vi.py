@@ -116,6 +116,7 @@ def deep_variational_inference(key,
     update = debug_jit(_update)
 
     past_rec_params = []
+    past_model_params = []
 
     rec_opt = (rec_params, rec_opt_state)
     dec_opt = (dec_params, dec_opt_state)
@@ -135,6 +136,7 @@ def deep_variational_inference(key,
         bounds.append(bound)
         if record_parameters and itr % record_interval == 0:
             past_rec_params.append(rec_opt[0])
+            past_model_params.append(model.get_parameters())
         
         if verbosity > Verbosity.OFF:
             pbar.set_description("LP: {:.3f}".format(bound))
@@ -143,7 +145,8 @@ def deep_variational_inference(key,
 
     if record_parameters:
         past_rec_params.append(rec_opt[0])
-        model_data = (model, (rec_net, past_rec_params))
+        past_model_params.append(model.get_parameters())
+        model_data = ((model, past_model_params), (rec_net, past_rec_params))
     else:
         model_data = (model, (rec_net, rec_opt[0]))
 

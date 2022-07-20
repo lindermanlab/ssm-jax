@@ -76,6 +76,7 @@ class DeepLDS(LDS):
     def emissions_shape(self):
         return self._emissions.emissions_shape
 
+    # TODO: problem is, this is not functional...!
     def tree_flatten(self):
         children = (self._initial_condition,
                     self._dynamics,
@@ -88,6 +89,17 @@ class DeepLDS(LDS):
         obj = object.__new__(cls)
         super(cls, obj).__init__(*children)
         return obj
+
+    # A temporary method
+    def get_parameters(self):
+        return (
+            self.initial_mean,
+            self.initial_covariance,
+            self.dynamics_matrix,
+            self.dynamics_bias,
+            self.dynamics_noise_covariance,
+            self.emissions_network.params
+        )
 
     # This is identical to Collin's original code for LDS
     # Except that it returns  
