@@ -21,6 +21,7 @@ def deep_variational_inference(key,
              covariates=None,
              metadata=None,
              num_iters=100,
+             batch_size=10,
              tol=1e-4,
              verbosity=Verbosity.DEBUG,
              # Only learn the recognition network
@@ -34,14 +35,14 @@ def deep_variational_inference(key,
     ):
 
     assert(len(data.shape) == 3)
-    batch_size, seq_len, data_dim = data.shape
+    data_size, seq_len, data_dim = data.shape
     latent_dim = model.latent_dim
 
     rng1, rng2 = jr.split(key)
     num_samples = elbo_samples
     print("Number of samples used for ELBO evaluation: {}".format(num_samples))
 
-    def _update(key, rec_opt, dec_opt, model, posterior):
+    def _update(key, data, rec_opt, dec_opt, model, posterior):
         def loss(network_params, posterior):
             if not autoregressive_posterior:
                 rec_params, dec_params = network_params
@@ -138,12 +139,15 @@ def deep_variational_inference(key,
     grad_schedule = kwargs.get("grad_schedule") or (lambda _: 0.5)
 
     for itr in pbar:
-        this_key, key = jr.split(key, 2)
+        this_key, data_key, key = jr.split(key, 2)
 
-        # r = grad_schedule(itr)
-
-        rec_opt, dec_opt, model, posterior, bound = update(this_key, 
-                                            rec_opt, dec_opt, model, posterior)
+        data_indices = jr.permutation(data_key, data_size)
+        for batch_id in range(data_size // batch_size):
+            batch_start = batch_id * batch_size
+            batch_indices = data_indices[batch_start:batch_start+batch_size]
+            rec_opt, dec_opt, model, posterior, bound = update(
+                this_key, data[batch_indices],
+                rec_opt, dec_opt, model, posterior)
         
         assert np.isfinite(bound), "NaNs in log probability bound"
 
