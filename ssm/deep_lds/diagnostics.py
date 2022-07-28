@@ -68,17 +68,26 @@ def plot_gaussian_2D(mu, Sigma, proj_seed=None, ax=None, **kwargs):
 
 # TODO: We should put this in the deep_lds class somehow?
 def deep_lds_e_step(data, rec_params, model, rec_net,
-                    posterior_class):
-    posterior = posterior_class.initialize(model, data)
-    potentials = rec_net.apply(rec_params, data)
-    # These two methods have auto-batching
-    posterior = posterior.update(model, data, potentials)
+                    posterior_class, **params):
+    posterior = posterior_class.initialize(model, data, **params)
+    if params["inference_method"] == "planet":
+        rec_params, post_params = rec_params
+        potentials = rec_net.apply(rec_params, data)
+        posterior = posterior.update(model, data, potentials)
+        # Temporarily boost the number of samples for the deep autoreg posterior
+        num_samples = posterior_class.NUM_SAMPLES
+        posterior_class.NUM_SAMPLES = 100
+        posterior = posterior_class.update_params(posterior, post_params)
+        posterior_class.NUM_SAMPLES = num_samples
+    else:
+        potentials = rec_net.apply(rec_params, data)
+        posterior = posterior.update(model, data, potentials)
     return posterior
 
 def get_marginals_and_targets(data, indices, lds, model, rec_net,
                           rec_params_history, model_params_history=None,
                           posterior_class=DKFPosterior,
-                          **kwargs):
+                          **params):
     trials, times = indices
     num_pts = trials.shape[0]
     # Get the targets
@@ -97,7 +106,8 @@ def get_marginals_and_targets(data, indices, lds, model, rec_net,
     mus = []
     Sigmas = []
     for p in rec_params_history:
-        posterior = deep_lds_e_step(data, p, model, rec_net, posterior_class)
+        posterior = deep_lds_e_step(data, p, model, rec_net, 
+            posterior_class, **params)
         mus.append(posterior.mean()[trials, times])
         Sigmas.append(posterior.covariance()[trials, times])
     return mus, Sigmas, tgt_mus, tgt_Sigmas

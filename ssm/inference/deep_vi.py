@@ -139,7 +139,7 @@ def deep_variational_inference(key,
     grad_schedule = kwargs.get("grad_schedule") or (lambda _: 0.5)
 
     for itr in pbar:
-        this_key, data_key, key = jr.split(key, 2)
+        this_key, data_key, key = jr.split(key, 3)
 
         data_indices = jr.permutation(data_key, data_size)
         for batch_id in range(data_size // batch_size):

@@ -13,7 +13,7 @@ from tensorflow_probability.substrates import jax as tfp
 from dataclasses import dataclass
 
 from typing import (NamedTuple, Any, Callable, Sequence, Iterable, List, Optional, Tuple,
-                    Set, Type, Union, TypeVar, Generic, Dict)
+                    Set, Type, Union, TypeVar, Generic, Dict, ClassVar)
 import flax.linen as nn
 
 PRNGKey = Any
@@ -104,6 +104,8 @@ class DKFPosterior(MVNBlockTridiagPosterior):
 @register_pytree_node_class
 @dataclass
 class DeepAutoregressivePosterior:
+
+    NUM_SAMPLES : ClassVar[int] = 100
 
     dynamics : nn.Module = None
     inputs : Array = None
@@ -199,8 +201,7 @@ class DeepAutoregressivePosterior:
             p._params = params
             # Make some samples to help estimate the moments
             seed = jr.PRNGKey(0)
-            num_samples = 100
-            samples = vmap(p.sample)(jr.split(seed, num_samples))
+            samples = vmap(p.sample)(jr.split(seed, cls.NUM_SAMPLES))
             # Save the moments
             p._expected_states = np.mean(samples, axis=0)
             p._expected_states_squared = np.mean(
@@ -224,6 +225,17 @@ class DeepAutoregressivePosterior:
     @property
     def expected_states_next_states(self):
         return self._expected_states_next_states
+
+    def mean(self):
+        return self.expected_states
+
+    def covariance(self):
+        """
+        NOTE: This computes the _marginal_ covariance Cov[x_t] for each t
+        """
+        Ex = self._expected_states
+        ExxT = self._expected_states_squared
+        return ExxT - np.einsum("...i,...j->...ij", Ex, Ex)
 
     @auto_batch(batched_args=("data", "potential", "covariates", "metadata", "key"))
     def update(self, lds, data, potential, 
