@@ -17,8 +17,8 @@ from ssm.utils import Verbosity, ensure_has_batch_dim, auto_batch, \
     random_rotation, tree_get, tree_concatenate
 
 from ssm.inference.deep_vi import deep_variational_inference
-from ssm.deep_lds.posterior import LDSSVAEPosterior, DKFPosterior
-from ssm.nn_util import GaussianNetworkFullMeanParams, BiRNNMeanParams
+from ssm.deep_lds.posterior import LDSSVAEPosterior, DKFPosterior, DeepAutoregressivePosterior
+from ssm.nn_util import GaussianNetworkFullMeanParams, BiRNNMeanParams, GaussianNetworkDiag
 
 # For convenience
 import importlib
@@ -246,12 +246,19 @@ class DeepLDS(LDS):
         # updated on the first m-step.
         N, T, D = data.shape
 
+        autoregressive_posterior = False
+
         if method == "svae":
             posterior_class = LDSSVAEPosterior
             default_recognition_model_class = GaussianNetworkFullMeanParams
         elif method in ["dkf", "cdkf"]:
             posterior_class = DKFPosterior
             default_recognition_model_class = BiRNNMeanParams
+        elif method in ["planet"]:
+            posterior_class = DeepAutoregressivePosterior
+            default_recognition_model_class = GaussianNetworkDiag
+            sample_kl = True
+            autoregressive_posterior = True
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
@@ -263,7 +270,7 @@ class DeepLDS(LDS):
             self.elbo = self._elbo_cf
 
         posterior = posterior_class.initialize(
-                self, data, covariates=covariates, metadata=metadata)
+                self, data, covariates=covariates, metadata=metadata, **params)
         rec_net = (recognition_model_class or default_recognition_model_class)\
             .from_params(self.latent_dim, input_dim=D, **params)
 
@@ -273,6 +280,7 @@ class DeepLDS(LDS):
                 num_iters=num_iters, learning_rate=learning_rate,
                 tol=tol, verbosity=verbosity, 
                 recognition_only=recognition_only,
+                autoregressive_posterior=autoregressive_posterior,
                 init_emissions_params=init_emissions_params, **params)
 
         return bounds, model, posterior

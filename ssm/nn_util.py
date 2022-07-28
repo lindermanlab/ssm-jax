@@ -145,6 +145,8 @@ class GaussianNetworkDiag(PotentialNetwork):
                     eps = 1e-4,
                     **kwargs): 
         network_params = kwargs["recnet_architecture"]
+        output_dim = network_params.get("latent_dim") or output_dim
+        
         out_trunk_features = network_params.get("out_trunk_features")
         if out_trunk_features == [] or out_trunk_features is None:
             trunk_fn = trunk_fn or Identity(input_dim)

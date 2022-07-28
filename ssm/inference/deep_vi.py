@@ -3,6 +3,7 @@ import jax.numpy as np
 import jax.random as jr
 from jax import jit, vmap
 from ssm.utils import Verbosity, debug_rejit, ensure_has_batch_dim, ssm_pbar
+from ssm.deep_lds.posterior import DeepAutoregressivePosterior
 
 import optax as opt
 from flax.core import frozen_dict as fd
@@ -28,6 +29,7 @@ def deep_variational_inference(key,
              elbo_samples=10,
              record_parameters=False,
              record_interval=10,
+             autoregressive_posterior=False,
              **kwargs
     ):
 
@@ -41,12 +43,19 @@ def deep_variational_inference(key,
 
     def _update(key, rec_opt, dec_opt, model, posterior):
         def loss(network_params, posterior):
-            rec_params, dec_params = network_params
+            if not autoregressive_posterior:
+                rec_params, dec_params = network_params
+            else:
+                (rec_params, post_params), dec_params = network_params
+                
             # We need the recognition networks to take care of vmapping
             potentials = rec_net.apply(rec_params, data)
             # These two methods have auto-batching
             posterior = posterior.update(model, data, potentials, covariates=covariates, metadata=metadata)
             
+            if autoregressive_posterior:
+                posterior = DeepAutoregressivePosterior.update_params(posterior, post_params)
+
             if not recognition_only:
                 # We have to pass in the params like this
                 model.emissions_network.update_params(dec_params)
@@ -54,6 +63,8 @@ def deep_variational_inference(key,
             elbo_key = jr.split(key, data.shape[0])
             bound = model.elbo(elbo_key, data, posterior, covariates=covariates, 
                 metadata=metadata, num_samples=num_samples)
+            
+
             return -np.sum(bound, axis=0), (model, posterior)
         
         results = \
@@ -70,13 +81,7 @@ def deep_variational_inference(key,
             model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
 
         updates, rec_opt_state = rec_optim.update(rec_grad, rec_opt[1])
-        # Separate the gradients of the mean and the covariance and scale them separately
-        # u = fd.unfreeze(updates)
-        # cov = u["params"]["head_log_var_fn"]
-        # mean = u["params"]["head_mean_fn"]
-        # u["params"]["head_log_var_fn"] = jax.tree_map(lambda v: v * (1-grad_tradeoff), cov)
-        # u["params"]["head_mean_fn"] = jax.tree_map(lambda v: v * grad_tradeoff, mean)
-        # updates = fd.freeze(u)
+
         rec_params = opt.apply_updates(rec_opt[0], updates)
         updates, dec_opt_state = dec_optim.update(dec_grad, dec_opt[1])
         dec_params = opt.apply_updates(dec_opt[0], updates)
@@ -95,7 +100,16 @@ def deep_variational_inference(key,
         learning_rate = opt.exponential_decay(learning_rate, 100, 0.95)
 
     # Initialize the parameters and optimizers
-    rec_params = rec_net.init(rng1, x_single)
+    if autoregressive_posterior:
+        rng1, rng3 = jr.split(rng1)
+        post_params = posterior.init(rng3)
+        # Pre-update the posterior so that we don't re-jit later
+        posterior = DeepAutoregressivePosterior.update_params(
+            posterior, post_params)
+        rec_params = rec_net.init(rng1, x_single)
+        rec_params = (rec_params, post_params)
+    else:
+        rec_params = rec_net.init(rng1, x_single)
     rec_optim = opt.adam(learning_rate=learning_rate)
     rec_opt_state = rec_optim.init(rec_params)
 
