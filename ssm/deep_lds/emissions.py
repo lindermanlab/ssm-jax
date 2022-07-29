@@ -58,10 +58,11 @@ class NeuralNetworkEmissions(Emissions):
     def init(self, key, data):
         return self._emissions_network.init(key, data)        
 
-    def update_params(self, params):
-        self._params = params
+    # This causes memory leak!
+    # def update_params(self, params):
+    #     self._params = params
 
-    def distribution(self, state, covariates=None, metadata=None):
+    def distribution(self, state, covariates=None, metadata=None, params=None):
         """
         Return the conditional distribution of emission y_t
         given state x_t and (optionally) covariates u_t.
@@ -75,7 +76,7 @@ class NeuralNetworkEmissions(Emissions):
             emissions distribution (tfd.MultivariateNormalLinearOperator):
                 emissions distribution at given state
         """
-        cov, loc = self._emissions_network.apply(self._params, state)
+        cov, loc = self._emissions_network.apply(params, state)
         return tfd.MultivariateNormalFullCovariance(loc=loc, covariance_matrix=cov)
 
 

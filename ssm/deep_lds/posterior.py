@@ -57,6 +57,11 @@ class MVNBlockTridiagPosterior(MultivariateNormalBlockTridiag):
     def emissions_shape(self):
         return (self.precision_diag_blocks.shape[-1],)
 
+    # def log_prob(self, xs, params=None):
+    #     return super().log_prob(xs)
+
+    # def sample(self, key)
+
 # No need to register because we are not adding additional data, just methods
 class LDSSVAEPosterior(MVNBlockTridiagPosterior):
         
@@ -110,7 +115,6 @@ class DeepAutoregressivePosterior:
     dynamics : nn.Module = None
     inputs : Array = None
     output_single_dummy : Array = None
-    _params : Any = None
     _expected_states: Array = None
     _expected_states_squared: Array = None
     _expected_states_next_states: Array = None
@@ -123,13 +127,12 @@ class DeepAutoregressivePosterior:
         dynamics = build_deep_autoregressive_dynamics(output_dim, **kwargs)
         inputs = np.zeros((N, T, input_dim))
         return cls(dynamics, inputs, np.zeros((N, output_dim)), 
-                   None, None, None, None)
+                   None, None, None)
 
     def tree_flatten(self):
         children = (self.dynamics,
                     self.inputs, 
-                    self.output_single_dummy, 
-                    self._params,
+                    self.output_single_dummy,
                     self._expected_states,
                     self._expected_states_squared,
                     self._expected_states_next_states)
@@ -149,59 +152,62 @@ class DeepAutoregressivePosterior:
 
     # Note: we have to assume that the this function doesn't know anything
     # about batch dimensions
-    def log_prob(self, xs):
-        return self._log_prob_single(xs, self.inputs)
+    def log_prob(self, xs, params=None):
 
-    # Compute the log probability of a single sequence
-    def _log_prob_single(self, xs, us):
-        def _log_prob_step(carry, i):
-            h = carry
-            x, u = xs[i], us[i]
-            (cov, mean) = self.dynamics.apply(self._params, h, u)
-            pred_dist = tfd.MultivariateNormalFullCovariance(loc=mean, 
-                                                          covariance_matrix=cov)
-            log_prob = pred_dist.log_prob(x)
-            carry = x
-            return carry, log_prob
+        def _log_prob_single(xs, us):
+            def _log_prob_step(carry, i):
+                h = carry
+                x, u = xs[i], us[i]
+                (cov, mean) = self.dynamics.apply(params, h, u)
+                pred_dist = tfd.MultivariateNormalFullCovariance(loc=mean, 
+                                                            covariance_matrix=cov)
+                log_prob = pred_dist.log_prob(x)
+                carry = x
+                return carry, log_prob
 
-        init = np.zeros_like(self.output_single_dummy)
-        _, log_probs = scan(_log_prob_step, init, np.arange(xs.shape[0]))
-        return np.sum(log_probs, axis=0)
+            init = np.zeros_like(self.output_single_dummy)
+            _, log_probs = scan(_log_prob_step, init, np.arange(xs.shape[0]))
+            return np.sum(log_probs, axis=0)
+            
+        return _log_prob_single(xs, self.inputs)
 
     # This function should take care of all the potential batching
-    def sample(self, seed):
+    def sample(self, seed, params=None):
+
+        # Sample a single sequence
+        def _sample_single(seed, inputs, output_dummy):
+            def _sample_step(carry, input):
+                key, h = carry
+                key, new_key = jr.split(key)
+                u = input
+                (cov, mean) = self.dynamics.apply(params, h, u)
+                sample = jr.multivariate_normal(key, mean, cov)
+                carry = new_key, sample
+                output = sample
+                return carry, output
+
+            init = np.zeros_like(output_dummy)
+            _, sample = scan(_sample_step, (seed, init), inputs)
+            return sample
+
         if len(self.inputs.shape) == 2:
-            return self._sample_single(seed, self.inputs, self.output_single_dummy)
+            return _sample_single(seed, self.inputs, 
+                self.output_single_dummy)
         else:
             # batch mode
-            return vmap(self._sample_single)(seed, self.inputs, 
-                                             self.output_single_dummy)
+            return vmap(_sample_single)(seed, self.inputs, 
+                self.output_single_dummy)
 
-    # Sample a single sequence
-    def _sample_single(self, seed, inputs, output_dummy):
-        
-        def _sample_step(carry, input):
-            key, h = carry
-            key, new_key = jr.split(key)
-            u = input
-            (cov, mean) = self.dynamics.apply(self._params, h, u)
-            sample = jr.multivariate_normal(key, mean, cov)
-            carry = new_key, sample
-            output = sample
-            return carry, output
-
-        init = np.zeros_like(output_dummy)
-        _, sample = scan(_sample_step, (seed, init), inputs)
-        return sample
+    
 
     # Pass in the parameters for optimization
     @classmethod
-    def update_params(cls, posterior, params):
+    def compute_moments(cls, posterior, params):
         def _update_single(p):
-            p._params = params
             # Make some samples to help estimate the moments
             seed = jr.PRNGKey(0)
-            samples = vmap(p.sample)(jr.split(seed, cls.NUM_SAMPLES))
+            samples = vmap(p.sample, in_axes=(0, None))\
+                (jr.split(seed, cls.NUM_SAMPLES), params)
             # Save the moments
             p._expected_states = np.mean(samples, axis=0)
             p._expected_states_squared = np.mean(
@@ -244,7 +250,7 @@ class DeepAutoregressivePosterior:
         return DeepAutoregressivePosterior(self.dynamics, inputs, 
                                            # This is such a big hack
                                            np.zeros((self.output_single_dummy.shape[-1],)),
-                                           None, None, None, None)
+                                           None, None, None)
 
     # Because auto_batch assumes emissions shape...
     @property

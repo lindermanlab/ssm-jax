@@ -46,30 +46,28 @@ def deep_variational_inference(key,
         def loss(network_params, posterior):
             if not autoregressive_posterior:
                 rec_params, dec_params = network_params
+                post_params = None
             else:
                 (rec_params, post_params), dec_params = network_params
                 
             # We need the recognition networks to take care of vmapping
             potentials = rec_net.apply(rec_params, data)
             # These two methods have auto-batching
-            posterior = posterior.update(model, data, potentials, covariates=covariates, metadata=metadata)
-            
-            if autoregressive_posterior:
-                posterior = DeepAutoregressivePosterior.update_params(posterior, post_params)
+            posterior = posterior.update(model, data, potentials, 
+                covariates=covariates, metadata=metadata)
 
-            if not recognition_only:
-                # We have to pass in the params like this
-                model.emissions_network.update_params(dec_params)
+            if autoregressive_posterior:
+                posterior = DeepAutoregressivePosterior.compute_moments(posterior, post_params)
 
             elbo_key = jr.split(key, data.shape[0])
             bound = model.elbo(elbo_key, data, posterior, covariates=covariates, 
-                metadata=metadata, num_samples=num_samples)
+                metadata=metadata, num_samples=num_samples,
+                params=(post_params, dec_params))
             
-
             return -np.sum(bound, axis=0), (model, posterior)
         
-        results = \
-            jax.value_and_grad(lambda params: loss(params, posterior), has_aux=True)((rec_opt[0], dec_opt[0]))
+        results = jax.value_and_grad(lambda params: loss(params, posterior), 
+            has_aux=True)((rec_opt[0], dec_opt[0]))
         (neg_bound, (model, posterior)), (rec_grad, dec_grad) = results
 
         # New feature: gradient clipping!
@@ -105,7 +103,7 @@ def deep_variational_inference(key,
         rng1, rng3 = jr.split(rng1)
         post_params = posterior.init(rng3)
         # Pre-update the posterior so that we don't re-jit later
-        posterior = DeepAutoregressivePosterior.update_params(
+        posterior = DeepAutoregressivePosterior.compute_moments(
             posterior, post_params)
         rec_params = rec_net.init(rng1, x_single)
         rec_params = (rec_params, post_params)
@@ -119,7 +117,7 @@ def deep_variational_inference(key,
     dec_optim = opt.adam(learning_rate=learning_rate)
     dec_opt_state = dec_optim.init(dec_params)
 
-    dec_net.update_params(dec_params)
+    # dec_net.update_params(dec_params)
 
     # Run the EM algorithm to convergence
     bounds = []

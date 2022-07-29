@@ -153,7 +153,8 @@ class SSM(object):
              posterior,
              covariates=None,
              metadata=None,
-             num_samples=1):
+             num_samples=1,
+             **kwargs):
         """
         Compute an evidence lower bound (ELBO) using the joint probability and an
         approximate posterior :math:`q(x) \\approx p(x | y)`:

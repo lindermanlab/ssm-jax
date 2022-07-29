@@ -76,7 +76,11 @@ class DeepLDS(LDS):
     def emissions_shape(self):
         return self._emissions.emissions_shape
 
-    # TODO: problem is, this is not functional...!
+    def emissions_distribution(self, state, 
+                               covariates=None, metadata=None, params=None):
+        return self._emissions.distribution(state, params=params,
+            covariates=covariates, metadata=metadata)
+
     def tree_flatten(self):
         children = (self._initial_condition,
                     self._dynamics,
@@ -143,6 +147,25 @@ class DeepLDS(LDS):
                                 tree_get(states, slice(1, None)))
         return lp
 
+    def _emissions_log_likelihood(self, states, data, 
+                                  covariates=None, metadata=None, params=None):
+        def _emissions_ll_single(state, emission, covariates):
+            return self.emissions_distribution(state, 
+            covariates=covariates, metadata=metadata, params=params).log_prob(emission)      
+
+        return vmap(_emissions_ll_single)(states, data, covariates).sum()
+
+    @auto_batch(batched_args=("states", "data", "covariates", "metadata"))
+    def log_probability(self,
+                        states,
+                        data, 
+                        covariates=None,
+                        metadata=None,
+                        params=None):
+        return self._dynamics_log_likelihood(states) \
+             + self._emissions_log_likelihood(states, data, params=params,
+                    covariates=covariates, metadata=metadata)
+
     # Assume here that the posterior is for a single data 
     # because of auto-batching
     # We'll ignore the covariates for now for simplicity
@@ -183,20 +206,20 @@ class DeepLDS(LDS):
              posterior,
              covariates=None,
              metadata=None,
-             num_samples=1):
+             num_samples=1,
+             params=None):
         # Assumeing that both the dynamics and the posterior are MVN block tridiags
         # We can split the ELBO differently and obtain a lower variance estimate
         # for the elbo
 
-        def _emissions_ll_single(state, emission, covariates):
-            return self.emissions_distribution(
-                state, covariates=covariates, metadata=metadata).log_prob(emission)      
+        post_params, dec_params = params
 
-        def _emissions_ll_single_seq(_key):
-            states = posterior.sample(seed=_key)
-            return vmap(_emissions_ll_single)(states, data, covariates).sum()
+        def _sample_emissions_log_likelihood(key):
+            state = posterior.sample(seed=key, params=post_params)
+            return self._emissions_log_likelihood(state, data, 
+                covariates=covariates, metadata=metadata, params=dec_params)
 
-        ell = vmap(_emissions_ll_single_seq)(jr.split(key, num_samples)).mean(axis=0)
+        ell = vmap(_sample_emissions_log_likelihood)(jr.split(key, num_samples)).mean(axis=0)
         cross_entropy = self._posterior_cross_entropy_to_dynamics(posterior)
         q_entropy = posterior.entropy()
         elbo = ell - cross_entropy + q_entropy
@@ -209,13 +232,18 @@ class DeepLDS(LDS):
              posterior,
              covariates=None,
              metadata=None,
-             num_samples=1):
+             num_samples=1,
+             params=None):
         """
         Same as the default elbo for ssm's
         """
+
+        post_params, dec_params = params
+
         def _elbo_single(_key):
-            sample = posterior.sample(seed=_key)
-            return self.log_probability(sample, data, covariates, metadata) - posterior.log_prob(sample)
+            sample = posterior.sample(seed=_key, params=post_params)
+            return self.log_probability(sample, data, covariates, metadata, params=dec_params) \
+                   -posterior.log_prob(sample, params=post_params)
 
         elbos = vmap(_elbo_single)(jr.split(key, num_samples))
         return np.mean(elbos)
@@ -265,9 +293,9 @@ class DeepLDS(LDS):
         # Whether or not to use the sampling approximation for the KL divergence
         if sample_kl:
             print("Using sampling approximation for KL!")
-            self.elbo = self._elbo_sample
+            DeepLDS.elbo = self._elbo_sample
         else:
-            self.elbo = self._elbo_cf
+            DeepLDS.elbo = self._elbo_cf
 
         posterior = posterior_class.initialize(
                 self, data, covariates=covariates, metadata=metadata, **params)
