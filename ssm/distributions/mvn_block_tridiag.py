@@ -257,7 +257,7 @@ class MultivariateNormalBlockTridiag(tfd.Distribution):
         ExxT = self._expected_states_squared
         return ExxT - np.einsum("...i,...j->...ij", Ex, Ex)
 
-    def _sample_n(self, n, seed=None):
+    def _sample_n(self, n, seed=None, **kwargs):
         filtered_Js = self._filtered_precisions
         filtered_hs = self._filtered_linear_potentials
         J_lower_diag = self._precision_lower_diag_blocks
