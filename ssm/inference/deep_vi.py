@@ -140,13 +140,17 @@ def deep_variational_inference(key,
         this_key, data_key, key = jr.split(key, 3)
 
         data_indices = jr.permutation(data_key, data_size)
+
+        itr_bounds = []
         for batch_id in range(data_size // batch_size):
             batch_start = batch_id * batch_size
             batch_indices = data_indices[batch_start:batch_start+batch_size]
             rec_opt, dec_opt, model, posterior, bound = update(
                 this_key, data[batch_indices],
                 rec_opt, dec_opt, model, posterior)
+            itr_bounds.append(bound)
         
+        bound = np.mean(np.array(itr_bounds))
         assert np.isfinite(bound), "NaNs in log probability bound"
 
         bounds.append(bound)
@@ -157,13 +161,11 @@ def deep_variational_inference(key,
         if verbosity > Verbosity.OFF:
             pbar.set_description("LP: {:.3f}".format(bound))
 
-    model.emissions_network.update_params(dec_opt[0])
-
     if record_parameters:
         past_rec_params.append(rec_opt[0])
         past_model_params.append(model.get_parameters())
         model_data = ((model, past_model_params), (rec_net, past_rec_params))
     else:
-        model_data = (model, (rec_net, rec_opt[0]))
+        model_data = ((model, dec_opt[0]), (rec_net, rec_opt[0]))
 
     return np.array(bounds), model_data, posterior

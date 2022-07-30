@@ -101,8 +101,7 @@ class DeepLDS(LDS):
             self.initial_covariance,
             self.dynamics_matrix,
             self.dynamics_bias,
-            self.dynamics_noise_covariance,
-            self.emissions_network.params
+            self.dynamics_noise_covariance
         )
 
     # This is identical to Collin's original code for LDS
