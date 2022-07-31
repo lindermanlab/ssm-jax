@@ -286,6 +286,8 @@ class DeepLDS(LDS):
             default_recognition_model_class = GaussianNetworkDiag
             sample_kl = True
             autoregressive_posterior = True
+            print("Number of samples for moment estimation: {}".format(
+                DeepAutoregressivePosterior.NUM_SAMPLES))
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 

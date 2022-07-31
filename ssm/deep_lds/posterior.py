@@ -110,11 +110,11 @@ class DKFPosterior(MVNBlockTridiagPosterior):
 @dataclass
 class DeepAutoregressivePosterior:
 
-    NUM_SAMPLES : ClassVar[int] = 100
+    NUM_SAMPLES : ClassVar[int] = 3
 
     dynamics : nn.Module = None
     inputs : Array = None
-    output_single_dummy : Array = None
+    latent_single_dummy : Array = None
     _expected_states: Array = None
     _expected_states_squared: Array = None
     _expected_states_next_states: Array = None
@@ -123,16 +123,16 @@ class DeepAutoregressivePosterior:
     def initialize(cls, model, data, **kwargs):
         N, T, D = data.shape
         output_dim = kwargs["dataset_params"]["num_latent_dims"]
-        input_dim = kwargs["autoreg_posterior_architecture"]["latent_dim"]
+        latent_dim = kwargs["autoreg_posterior_architecture"]["latent_dim"]
         dynamics = build_deep_autoregressive_dynamics(output_dim, **kwargs)
-        inputs = np.zeros((N, T, input_dim))
-        return cls(dynamics, inputs, np.zeros((N, output_dim)), 
+        inputs = np.zeros((N, T, latent_dim))
+        return cls(dynamics, inputs, np.zeros((N, latent_dim)), 
                    None, None, None)
 
     def tree_flatten(self):
         children = (self.dynamics,
                     self.inputs, 
-                    self.output_single_dummy,
+                    self.latent_single_dummy,
                     self._expected_states,
                     self._expected_states_squared,
                     self._expected_states_next_states)
@@ -146,7 +146,7 @@ class DeepAutoregressivePosterior:
     def init(self, key):
         # Return the parameters of the GRU cell
         latent_dim = self.inputs.shape[-1]
-        dummy_h = np.zeros((self.output_single_dummy.shape[-1],))
+        dummy_h = np.zeros((self.latent_single_dummy.shape[-1],))
         dummy_u = np.zeros((latent_dim,))
         return self.dynamics.init(key, dummy_h, dummy_u)
 
@@ -158,14 +158,14 @@ class DeepAutoregressivePosterior:
             def _log_prob_step(carry, i):
                 h = carry
                 x, u = xs[i], us[i]
-                (cov, mean) = self.dynamics.apply(params, h, u)
+                h, (cov, mean) = self.dynamics.apply(params, h, u)
                 pred_dist = tfd.MultivariateNormalFullCovariance(loc=mean, 
                                                             covariance_matrix=cov)
                 log_prob = pred_dist.log_prob(x)
-                carry = x
+                carry = h
                 return carry, log_prob
 
-            init = np.zeros_like(self.output_single_dummy)
+            init = np.zeros_like(self.latent_single_dummy)
             _, log_probs = scan(_log_prob_step, init, np.arange(xs.shape[0]))
             return np.sum(log_probs, axis=0)
             
@@ -180,9 +180,9 @@ class DeepAutoregressivePosterior:
                 key, h = carry
                 key, new_key = jr.split(key)
                 u = input
-                (cov, mean) = self.dynamics.apply(params, h, u)
+                h, (cov, mean) = self.dynamics.apply(params, h, u)
                 sample = jr.multivariate_normal(key, mean, cov)
-                carry = new_key, sample
+                carry = new_key, h
                 output = sample
                 return carry, output
 
@@ -192,13 +192,11 @@ class DeepAutoregressivePosterior:
 
         if len(self.inputs.shape) == 2:
             return _sample_single(seed, self.inputs, 
-                self.output_single_dummy)
+                self.latent_single_dummy)
         else:
             # batch mode
             return vmap(_sample_single)(seed, self.inputs, 
-                self.output_single_dummy)
-
-    
+                self.latent_single_dummy)
 
     # Pass in the parameters for optimization
     @classmethod
@@ -249,13 +247,13 @@ class DeepAutoregressivePosterior:
         _, inputs = potential
         return DeepAutoregressivePosterior(self.dynamics, inputs, 
                                            # This is such a big hack
-                                           np.zeros((self.output_single_dummy.shape[-1],)),
+                                           np.zeros((self.latent_single_dummy.shape[-1],)),
                                            None, None, None)
 
     # Because auto_batch assumes emissions shape...
     @property
     def emissions_shape(self):
-        return (self.output_single_dummy.shape[-1],)
+        return (self.latent_single_dummy.shape[-1],)
 
 # This is a hack for making our custom nn.Module a pytree...!
 def build_deep_autoregressive_dynamics(output_dim, **kwargs):
@@ -298,10 +296,10 @@ def build_deep_autoregressive_dynamics(output_dim, **kwargs):
             return self._call_single(h, u)
 
         def _call_single(self, h, u):
-            # TODO: figure out the specifics of the architecture...!
-            _h = self.trunk_fn(self.rnn_cell(h, u)[0])
-            mean, cov_flat = self.head_mean_fn(_h), self.head_cov_fn(_h)
+            h, out = self.rnn_cell(h, u)
+            out = self.trunk_fn(out)
+            mean, cov_flat = self.head_mean_fn(out), self.head_cov_fn(out)
             cov = lie_params_to_constrained(cov_flat, self.output_dim, self.eps)
-            return (cov, mean)
+            return h, (cov, mean)
 
     return StochasticRNNCell()
