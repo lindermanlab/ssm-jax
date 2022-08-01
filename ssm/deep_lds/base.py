@@ -290,6 +290,10 @@ class DeepLDS(LDS):
             autoregressive_posterior = True
             print("Number of samples for moment estimation: {}".format(
                 DeepAutoregressivePosterior.NUM_SAMPLES))
+        elif method in ["static"]:
+            # Static recognition model doesn't know about dynamics
+            posterior_class = DKFPosterior
+            default_recognition_model_class = GaussianNetworkFullMeanParams
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 

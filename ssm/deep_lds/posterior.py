@@ -74,7 +74,7 @@ class LDSSVAEPosterior(MVNBlockTridiagPosterior):
         b = lds.dynamics_bias
         Q = lds.dynamics_noise_covariance
         # From data
-        J_obs, h_obs = potential
+        J_obs, _ , h_obs = potential
         seq_len = data.shape[0]
         latent_dim = J_obs.shape[-1]
 
@@ -244,7 +244,7 @@ class DeepAutoregressivePosterior:
     @auto_batch(batched_args=("data", "potential", "covariates", "metadata", "key"))
     def update(self, lds, data, potential, 
                covariates=None, metadata=None, key=None):
-        _, inputs = potential
+        _, _, inputs = potential
         return DeepAutoregressivePosterior(self.dynamics, inputs, 
                                            # This is such a big hack
                                            np.zeros((self.latent_single_dummy.shape[-1],)),

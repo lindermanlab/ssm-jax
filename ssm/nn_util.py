@@ -98,8 +98,11 @@ class PotentialNetwork(nn.Module):
             inputs:
         Returns:
         """
-        J_diag, h = self._generate_distribution_parameters(inputs)
-        return (J_diag, h)
+        J, h = self._generate_distribution_parameters(inputs)
+        seq_len, latent_dim, _ = J.shape
+        # lower diagonal blocks of precision matrix
+        L = np.zeros((seq_len-1, latent_dim, latent_dim))
+        return (J, L, h)
 
     def _generate_distribution_parameters(self, inputs):
         """
@@ -263,7 +266,7 @@ class GaussianNetworkFullMeanParams(GaussianNetworkFull):
         Sigma = lie_params_to_constrained(var_output_flat, self.latent_dim, self.eps)
         h = np.linalg.solve(Sigma, mu)
         J = np.linalg.inv(Sigma)
-        # pdb.set_trace()
+        # lower diagonal blocks of precision matrix
         return (J, h)
 
 # Outputs Gaussian distributions for the entire sequence at once
