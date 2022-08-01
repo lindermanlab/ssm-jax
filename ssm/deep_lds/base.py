@@ -127,7 +127,7 @@ class DeepLDS(LDS):
                 Defaults to None.
             key (jr.PRNGKey, optional): random seed. Defaults to None.
         """
-        # self._initial_condition.m_step(dataset, posteriors)  # TODO initial dist needs prior
+        self._initial_condition.m_step(data, posterior)
         self._dynamics.m_step(data, posterior)
         self._emissions.m_step(data, posterior, key=key)
         return self
