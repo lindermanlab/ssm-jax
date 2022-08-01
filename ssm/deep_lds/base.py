@@ -29,6 +29,8 @@ importlib.reload(ssm.inference.deep_vi)
 @register_pytree_node_class
 class DeepLDS(LDS):
 
+    BETA = 1.0
+
     def __init__(self, num_latent_dims,
                  num_emission_dims,
                  emissions,
@@ -161,7 +163,7 @@ class DeepLDS(LDS):
                         covariates=None,
                         metadata=None,
                         params=None):
-        return self._dynamics_log_likelihood(states) \
+        return DeepLDS.BETA * self._dynamics_log_likelihood(states) \
              + self._emissions_log_likelihood(states, data, params=params,
                     covariates=covariates, metadata=metadata)
 
@@ -221,7 +223,7 @@ class DeepLDS(LDS):
         ell = vmap(_sample_emissions_log_likelihood)(jr.split(key, num_samples)).mean(axis=0)
         cross_entropy = self._posterior_cross_entropy_to_dynamics(posterior)
         q_entropy = posterior.entropy()
-        elbo = ell - cross_entropy + q_entropy
+        elbo = ell + DeepLDS.BETA * (-cross_entropy + q_entropy)
         return elbo
 
     @auto_batch(batched_args=("key", "data", "posterior", "covariates", "metadata"))
@@ -242,7 +244,7 @@ class DeepLDS(LDS):
         def _elbo_single(_key):
             sample = posterior.sample(seed=_key, params=post_params)
             return self.log_probability(sample, data, covariates, metadata, params=dec_params) \
-                   -posterior.log_prob(sample, params=post_params)
+                   - DeepLDS.BETA * posterior.log_prob(sample, params=post_params)
 
         elbos = vmap(_elbo_single)(jr.split(key, num_samples))
         return np.mean(elbos)
