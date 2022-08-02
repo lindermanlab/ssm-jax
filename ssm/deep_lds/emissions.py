@@ -174,8 +174,18 @@ def build_gaussian_emissions(input_dim, output_dim,
                 inputs:
             Returns:
             """
-            cov, loc = self._generate_distribution_parameters(inputs)
-            return (cov, loc)
+            J, h = self._generate_distribution_parameters(inputs)
+            if (len(J.shape) == 3):
+                seq_len, latent_dim, _ = J.shape
+                # lower diagonal blocks of precision matrix
+                L = np.zeros((seq_len-1, latent_dim, latent_dim))
+            elif (len(J.shape) == 4):
+                batch_size, seq_len, latent_dim, _ = J.shape
+                # lower diagonal blocks of precision matrix
+                L = np.zeros((batch_size, seq_len-1, latent_dim, latent_dim))
+            else:
+                L = np.zeros(tuple())
+            return (J, L, h)
 
         def _generate_distribution_parameters(self, inputs):
             """

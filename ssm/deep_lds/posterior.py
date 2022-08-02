@@ -115,6 +115,7 @@ class DeepAutoregressivePosterior:
     dynamics : nn.Module = None
     inputs : Array = None
     latent_single_dummy : Array = None
+    output_single_dummy : Array = None
     _expected_states: Array = None
     _expected_states_squared: Array = None
     _expected_states_next_states: Array = None
@@ -124,15 +125,16 @@ class DeepAutoregressivePosterior:
         N, T, D = data.shape
         output_dim = kwargs["dataset_params"]["num_latent_dims"]
         latent_dim = kwargs["autoreg_posterior_architecture"]["latent_dim"]
-        dynamics = build_deep_autoregressive_dynamics(output_dim, **kwargs)
+        dynamics = build_deep_autoregressive_dynamics(output_dim, latent_dim, **kwargs)
         inputs = np.zeros((N, T, latent_dim))
-        return cls(dynamics, inputs, np.zeros((N, latent_dim)), 
+        return cls(dynamics, inputs, np.zeros((N, latent_dim)), np.zeros((N, output_dim)), 
                    None, None, None)
 
     def tree_flatten(self):
         children = (self.dynamics,
                     self.inputs, 
                     self.latent_single_dummy,
+                    self.output_single_dummy,
                     self._expected_states,
                     self._expected_states_squared,
                     self._expected_states_next_states)
@@ -147,8 +149,9 @@ class DeepAutoregressivePosterior:
         # Return the parameters of the GRU cell
         latent_dim = self.inputs.shape[-1]
         dummy_h = np.zeros((self.latent_single_dummy.shape[-1],))
+        dummy_x = np.zeros((self.output_single_dummy.shape[-1],))
         dummy_u = np.zeros((latent_dim,))
-        return self.dynamics.init(key, dummy_h, dummy_u)
+        return self.dynamics.init(key, dummy_h, dummy_x, dummy_u)
 
     # Note: we have to assume that the this function doesn't know anything
     # about batch dimensions
@@ -156,16 +159,17 @@ class DeepAutoregressivePosterior:
 
         def _log_prob_single(xs, us):
             def _log_prob_step(carry, i):
-                h = carry
+                h, x_ = carry
                 x, u = xs[i], us[i]
-                h, (cov, mean) = self.dynamics.apply(params, h, u)
+                h, (cov, mean) = self.dynamics.apply(params, h, x_, u)
                 pred_dist = tfd.MultivariateNormalFullCovariance(loc=mean, 
                                                             covariance_matrix=cov)
                 log_prob = pred_dist.log_prob(x)
-                carry = h
+                carry = h, x
                 return carry, log_prob
 
-            init = np.zeros_like(self.latent_single_dummy)
+            init = (np.zeros_like(self.latent_single_dummy), 
+                    np.zeros_like(self.output_single_dummy))
             _, log_probs = scan(_log_prob_step, init, np.arange(xs.shape[0]))
             return np.sum(log_probs, axis=0)
             
@@ -175,28 +179,29 @@ class DeepAutoregressivePosterior:
     def sample(self, seed, params=None):
 
         # Sample a single sequence
-        def _sample_single(seed, inputs, output_dummy):
+        def _sample_single(seed, inputs, latent_dummy, output_dummy):
             def _sample_step(carry, input):
-                key, h = carry
+                key, h, x = carry
                 key, new_key = jr.split(key)
                 u = input
-                h, (cov, mean) = self.dynamics.apply(params, h, u)
+                h, (cov, mean) = self.dynamics.apply(params, h, x, u)
                 sample = jr.multivariate_normal(key, mean, cov)
-                carry = new_key, h
+                carry = new_key, h, sample
                 output = sample
                 return carry, output
 
-            init = np.zeros_like(output_dummy)
-            _, sample = scan(_sample_step, (seed, init), inputs)
+            init = (seed, np.zeros_like(latent_dummy),
+                    np.zeros_like(output_dummy))
+            _, sample = scan(_sample_step, init, inputs)
             return sample
 
         if len(self.inputs.shape) == 2:
             return _sample_single(seed, self.inputs, 
-                self.latent_single_dummy)
+                self.latent_single_dummy, self.output_single_dummy)
         else:
             # batch mode
             return vmap(_sample_single)(seed, self.inputs, 
-                self.latent_single_dummy)
+                self.latent_single_dummy, self.output_single_dummy)
 
     # Pass in the parameters for optimization
     @classmethod
@@ -248,6 +253,7 @@ class DeepAutoregressivePosterior:
         return DeepAutoregressivePosterior(self.dynamics, inputs, 
                                            # This is such a big hack
                                            np.zeros((self.latent_single_dummy.shape[-1],)),
+                                           np.zeros((self.output_single_dummy.shape[-1],)),
                                            None, None, None)
 
     # Because auto_batch assumes emissions shape...
@@ -256,7 +262,7 @@ class DeepAutoregressivePosterior:
         return (self.latent_single_dummy.shape[-1],)
 
 # This is a hack for making our custom nn.Module a pytree...!
-def build_deep_autoregressive_dynamics(output_dim, **kwargs):
+def build_deep_autoregressive_dynamics(output_dim, latent_dim, **kwargs):
 
     params = kwargs["autoreg_posterior_architecture"]
 
@@ -271,6 +277,8 @@ def build_deep_autoregressive_dynamics(output_dim, **kwargs):
         nn.initializers.zeros, 
         nn.initializers.constant(init_cov_bias))
     
+    # combine_fn = MLP([latent_dim])
+
     eps = params.get("eps") or 1e-4
         
     @register_pytree_node_class
@@ -281,6 +289,7 @@ def build_deep_autoregressive_dynamics(output_dim, **kwargs):
             self.trunk_fn = trunk_fn
             self.head_mean_fn = head_mean_fn
             self.head_cov_fn = head_cov_fn
+            # self.combine_fn = combine_fn
             self.eps = eps
         
         def tree_flatten(self):
@@ -292,11 +301,12 @@ def build_deep_autoregressive_dynamics(output_dim, **kwargs):
         def tree_unflatten(cls, aux_data, children):
             return cls(*children)
 
-        def __call__(self, h, u):
-            return self._call_single(h, u)
+        def __call__(self, h, x, u):
+            return self._call_single(h, x, u)
 
-        def _call_single(self, h, u):
-            h, out = self.rnn_cell(h, u)
+        def _call_single(self, h, x, u):
+            # h = self.combine_fn(np.concatenate([h, x]))
+            h, out = self.rnn_cell(h, np.concatenate([x, u]))
             out = self.trunk_fn(out)
             mean, cov_flat = self.head_mean_fn(out), self.head_cov_fn(out)
             cov = lie_params_to_constrained(cov_flat, self.output_dim, self.eps)
