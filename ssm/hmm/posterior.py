@@ -8,6 +8,11 @@ from jax import lax, value_and_grad, vmap
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.python.internal import reparameterization
 
+def normalize(u):
+    Z = u.sum()
+    v = u / Z
+    return v, Z
+
 
 ### Core message passing routines
 def hmm_log_normalizer(log_initial_state_probs,
