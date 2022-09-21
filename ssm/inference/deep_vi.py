@@ -60,7 +60,7 @@ def deep_variational_inference(key,
                 posterior = DeepAutoregressivePosterior.compute_moments(posterior, post_params)
 
             elbo_key = jr.split(key, data.shape[0])
-            bound = model.elbo(elbo_key, data, posterior, covariates=covariates, 
+            bound = model._elbo_cf(elbo_key, data, posterior, covariates=covariates, 
                 metadata=metadata, num_samples=num_samples,
                 params=(post_params, dec_params))
             

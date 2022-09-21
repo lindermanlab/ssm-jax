@@ -297,12 +297,13 @@ class DeepLDS(LDS):
         else:
             raise ValueError(f"Method {method} is not recognized/supported.")
 
-        # Whether or not to use the sampling approximation for the KL divergence
-        if sample_kl:
-            print("Using sampling approximation for KL!")
-            DeepLDS.elbo = self._elbo_sample
-        else:
-            DeepLDS.elbo = self._elbo_cf
+        # NOTE: We are deprecating this and are just using the closed form ELBO
+        # # Whether or not to use the sampling approximation for the KL divergence
+        # if sample_kl:
+        #     print("Using sampling approximation for KL!")
+        #     DeepLDS.elbo = self._elbo_sample
+        # else:
+        #     DeepLDS.elbo = self._elbo_cf
 
         posterior = posterior_class.initialize(
                 self, data, covariates=covariates, metadata=metadata, **params)
