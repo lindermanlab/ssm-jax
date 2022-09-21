@@ -156,16 +156,16 @@ def deep_variational_inference(key,
         bounds.append(bound)
         if record_parameters and itr % record_interval == 0:
             past_rec_params.append(rec_opt[0])
-            past_model_params.append(model.get_parameters())
+            past_model_params.append(model.get_parameters() + (dec_opt[0],))
         
         if verbosity > Verbosity.OFF:
             pbar.set_description("LP: {:.3f}".format(bound))
 
     if record_parameters:
         past_rec_params.append(rec_opt[0])
-        past_model_params.append(model.get_parameters())
+        past_model_params.append(model.get_parameters() + (dec_opt[0],))
         model_data = ((model, past_model_params), (rec_net, past_rec_params))
     else:
-        model_data = ((model, dec_opt[0]), (rec_net, rec_opt[0]))
+        model_data = ((model, model.get_parameters() + (dec_opt[0],)), (rec_net, rec_opt[0]))
 
     return np.array(bounds), model_data, posterior
