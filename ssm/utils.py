@@ -5,8 +5,8 @@ Useful utility functions.
 import jax.numpy as np
 import jax.random as jr
 import jax.scipy.special as spsp
-from jax import vmap, lax, tree_multimap
-from jax.tree_util import tree_map, tree_structure, tree_leaves, tree_reduce, tree_multimap
+from jax import vmap, lax
+from jax.tree_util import tree_map, tree_structure, tree_leaves, tree_reduce
 
 import inspect
 from enum import IntEnum
@@ -73,7 +73,7 @@ def tree_all_equal(tree1, tree2):
     """
     return tree_reduce(
         lambda x, y: np.all(x) == np.all(y) == True,
-        tree_multimap(lambda x, y: np.all(x == y), tree1, tree2),
+        tree_map(lambda x, y: np.all(x == y), tree1, tree2),
         True
     )
 
@@ -198,11 +198,11 @@ def random_rotation(seed, n, theta=None):
 def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metadata"),
                          model_arg="self"):
     """Decorator to automatically add a batch dim to args defined by batched_args.
-    
+
     Note: this decorator makes some strong assumptions about what is passed into the function.
     Please see details below.
-    
-    Checks the shape of the PyTree leaves inside the data argument and compares them to the 
+
+    Checks the shape of the PyTree leaves inside the data argument and compares them to the
     shape of emissions as defined by the model. A batch dimension is added if the shape
     only has 1 additional dimension (num_timesteps).
 
@@ -260,18 +260,18 @@ def ensure_has_batch_dim(batched_args=("data", "posterior", "covariates", "metad
 def auto_batch(batched_args=("data", "posterior", "covariates", "metadata", "states"),
                model_arg="self", map_function=vmap):
     r"""Decorator to automatically "map" the wrapped function along a a batch if a
-    batch dim is detected in the data. By default, "map" means vmap. 
-    
+    batch dim is detected in the data. By default, "map" means vmap.
+
     Note: this decorator makes some strong assumptions about what is passed into the function.
     Please see details below.
-    
-    Checks the shape of the PyTree leaves inside the data argument and compares them to the 
-    shape of emissions as defined by the model. The data is considered batched if it has 
+
+    Checks the shape of the PyTree leaves inside the data argument and compares them to the
+    shape of emissions as defined by the model. The data is considered batched if it has
     two additional dimensions compared to the emissions (batch_dim and num_timesteps).
-    
+
     Batch dimensions should always be the leading dimension. E.g. data should have shape
     ``(<batch>), <time>, <emissions_shape>`` where the batch dim is optional.
-    
+
     Naively assumes that if data has a batch dim, then so do the rest of the batched_args.
 
     Args:
@@ -488,7 +488,7 @@ def check_pytree_match(
 
 def debug_rejit(func):
     """Decorator to debug re-jitting errors.
-    
+
     You can also set the JAX flag: ``jax.config.update("jax_log_compiles", True)``.
 
     Checks if input and output pytrees are consistent across multiple
