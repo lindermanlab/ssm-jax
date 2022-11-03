@@ -138,7 +138,7 @@ class HMM(SSM):
             if posterior is None:
                 posterior = [self.e_step(data[i], covariates=covariates, metadata=metadata) for i in range(len(data))]
 
-            return np.sum([posterior[i].log_normalizer for i in range(len(data))])
+            return np.asarray([posterior[i].log_normalizer for i in range(len(data))]).sum()
         else:
             if posterior is None:
                 posterior = self.e_step(data, covariates=covariates, metadata=metadata)
