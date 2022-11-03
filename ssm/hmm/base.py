@@ -132,12 +132,18 @@ class HMM(SSM):
         self._emissions.m_step(data, dummy_posteriors)
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
-    @auto_batch(batched_args=("data", "posterior", "covariates", "metadata"))
+    #@auto_batch(batched_args=("data", "posterior", "covariates", "metadata"))
     def marginal_likelihood(self, data, posterior=None, covariates=None, metadata=None):
-        if posterior is None:
-            posterior = self.e_step(data, covariates=covariates, metadata=metadata)
+        if isinstance(data, list):
+            if posterior is None:
+                posterior = [self.e_step(data[i], covariates=covariates, metadata=metadata) for i in range(len(data))]
 
-        return posterior.log_normalizer
+            return [posterior[i].log_normalizer for i in range(len(data))]
+        else:
+            if posterior is None:
+                posterior = self.e_step(data, covariates=covariates, metadata=metadata)
+
+            return posterior.log_normalizer
 
     #@auto_batch(batched_args=("data", "covariates", "metadata"))
     def e_step(self, data, covariates=None, metadata=None):
