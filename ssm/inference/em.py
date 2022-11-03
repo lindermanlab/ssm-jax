@@ -66,7 +66,7 @@ def em(model,
 
     for itr in pbar:
         print(type(data))
-        print(data)
+        print(data.shape)
         model, posterior, lp, test_lp = update(model, data, covariates, metadata, test_data) #update(model)
         callback_output = callback(model, posterior) if callback else None
         assert np.isfinite(lp), "NaNs in marginal log probability"
