@@ -19,7 +19,7 @@ def update(model, data, covariates, metadata, test_data):
     model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
     return model, posterior, lp, test_lp
 
-@ensure_has_batch_dim(model_arg="model")
+#@ensure_has_batch_dim(model_arg="model")
 def em(model,
        data,
        covariates=None,
@@ -65,8 +65,6 @@ def em(model,
         pbar.set_description("[jit compiling...]")
 
     for itr in pbar:
-        print(type(data))
-        print(data.shape)
         model, posterior, lp, test_lp = update(model, data, covariates, metadata, test_data) #update(model)
         callback_output = callback(model, posterior) if callback else None
         assert np.isfinite(lp), "NaNs in marginal log probability"
