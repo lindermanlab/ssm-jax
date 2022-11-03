@@ -166,7 +166,7 @@ class HMM(SSM):
         self._emissions = self._emissions.m_step(data, posterior, covariates=covariates, metadata=metadata)
         return self
 
-    @ensure_has_batch_dim()
+    #@ensure_has_batch_dim()
     def fit(self,
             data: np.ndarray,
             covariates=None,
