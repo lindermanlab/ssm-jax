@@ -16,6 +16,7 @@ def update(model, data, covariates, metadata, test_data):
                 covariates=covariates, metadata=metadata).sum()
     else:
         test_lp = 0
+    print(data)
     model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
     return model, posterior, lp, test_lp
 

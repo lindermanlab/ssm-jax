@@ -159,7 +159,7 @@ class HMM(SSM):
                 self._emissions.log_likelihoods(data, covariates=covariates, metadata=metadata),
                 self._transitions.log_transition_matrices(data, covariates=covariates, metadata=metadata))
 
-    @ensure_has_batch_dim()
+    #@ensure_has_batch_dim()
     def m_step(self, data, posterior, covariates=None, metadata=None) -> HMM:
         self._initial_condition = self._initial_condition.m_step(data, posterior, covariates=covariates, metadata=metadata)
         self._transitions = self._transitions.m_step(data, posterior, covariates=covariates, metadata=metadata)
