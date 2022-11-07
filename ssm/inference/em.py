@@ -8,6 +8,7 @@ from ssm.utils import Verbosity, ensure_has_batch_dim, ssm_pbar
 
 #@jit # comment it out to debug or use id_print/id_tap
 def update(model, data, covariates, metadata, test_data):
+    print('updating!!!!!!!!!!!')
     posterior = model.e_step(data, covariates=covariates, metadata=metadata)
     lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
     if test_data is not None:
