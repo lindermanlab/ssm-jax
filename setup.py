@@ -5,7 +5,7 @@ import os
 
 
 setup(
-    name="ssmv1",
+    name="ssm",
     version="0.1",
     description="Bayesian learning and inference for a variety of state space models",
     author="Scott Linderman",
