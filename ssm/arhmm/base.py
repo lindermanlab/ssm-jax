@@ -147,8 +147,6 @@ class AutoregressiveHMM(HMM):
                                                           metadata=metadata).sample(seed=key1)
             if history is None:
                 history = np.zeros((self.num_lags, *self.emissions_shape))
-
-            print(history.shape)
                 
             key1, key = jr.split(key, 2)
             initial_emission = self.emissions_distribution(initial_state,
