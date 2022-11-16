@@ -123,7 +123,7 @@ class HMM(SSM):
             assignments_list = []
             idx = 0
             for i in range(len(data)):
-                assignments_list.append(assignments[idx:data[i].shape[0]])
+                assignments_list.append(assignments[idx:idx+data[i].shape[0]])
                 idx += data[i].shape[0]
 
         else:
