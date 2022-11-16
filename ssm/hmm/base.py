@@ -81,10 +81,10 @@ class HMM(SSM):
         return self._emissions.distribution(state, covariates=covariates, metadata=metadata)
 
     ### Methods for posterior inference
-    @ensure_has_batch_dim()
+    #@ensure_has_batch_dim()
     def initialize(self,
                    key: jr.PRNGKey,
-                   data: np.ndarray,
+                   data: list,
                    covariates=None,
                    metadata=None,
                    method: str="kmeans") -> None:
@@ -116,8 +116,15 @@ class HMM(SSM):
             from sklearn.cluster import KMeans
             km = KMeans(num_states)
             # TODO: use self.emissions_shape
-            flat_dataset = data.reshape(-1, data.shape[-1])
-            assignments = km.fit_predict(flat_dataset).reshape(data.shape[:-1])
+
+            concatenated_dataset = np.concatenate(data, axis=0)
+            flat_dataset = concatenated_dataset.reshape(-1, concatenated_dataset.shape[-1])
+            assignments = km.fit_predict(flat_dataset)#.reshape(data.shape[:-1])
+            assignments_list = []
+            idx = 0
+            for i in range(len(data)):
+                assignments_list.append(assignments[idx:data[i].shape[0]])
+                idx += data[i].shape[0]
 
         else:
             raise ValueError(f"Invalid initialize method: {method}.")
@@ -126,7 +133,7 @@ class HMM(SSM):
         @dataclass
         class DummyPosterior:
             expected_states: np.ndarray
-        dummy_posteriors = DummyPosterior(one_hot(assignments, self._num_states))
+        dummy_posteriors = [DummyPosterior(one_hot(assignments_list[i], self._num_states)) for i in range(len(data))]
 
         # Do one m-step with the dummy posteriors
         self._emissions.m_step(data, dummy_posteriors)
@@ -168,7 +175,7 @@ class HMM(SSM):
 
     #@ensure_has_batch_dim()
     def fit(self,
-            data: np.ndarray,
+            data: list,
             covariates=None,
             metadata=None,
             method: str="em",
@@ -255,6 +262,12 @@ class HMM(SSM):
             best_callback_outputs.extend(callback_outputs)
                     
         else:
+            if initialization_method is not None:
+                this_key, key = jr.split(key, 2)
+                if verbosity >= Verbosity.LOUD: print("Initializing...")
+                self.initialize(this_key, data, method=initialization_method)
+                if verbosity >= Verbosity.LOUD: print("Done.", flush=True)
+
             if method == "em":
                 log_probs, model, posteriors, test_log_probs, best_callback_outputs = em(
                     model, data, num_iters=num_iters, tol=tol, verbosity=verbosity,
