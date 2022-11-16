@@ -117,8 +117,7 @@ class HMM(SSM):
             km = KMeans(num_states)
             # TODO: use self.emissions_shape
 
-            diff_data = [np.diff(data[i], axis=0, prepend=data[i][:1]) for i in range(len(data))]
-            concatenated_dataset = np.concatenate(diff_data, axis=0)
+            concatenated_dataset = np.concatenate(data, axis=0)
             flat_dataset = concatenated_dataset.reshape(-1, concatenated_dataset.shape[-1])
             assignments = km.fit_predict(flat_dataset)#.reshape(data.shape[:-1])
             assignments_list = []
