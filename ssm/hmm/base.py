@@ -110,7 +110,7 @@ class HMM(SSM):
         if method.lower() == "random":
             # randomly assign datapoints to clusters
             # TODO: use self.emissions_shape
-            assignments = jr.choice(key, self._num_states, data.shape[:-1])
+            assignments_list = [jr.choice(key, self._num_states, data[i].shape[:-1]) for i in range(len(data))]
 
         elif method.lower() == "kmeans":
             from sklearn.cluster import KMeans
