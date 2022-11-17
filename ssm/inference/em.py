@@ -5,7 +5,9 @@ import warnings
 import jax.numpy as np
 from jax import jit, vmap
 from ssm.utils import Verbosity, ensure_has_batch_dim, ssm_pbar, one_hot
+from dataclasses import dataclass
 
+@dataclass
 class DummyPosterior:
     expected_states: np.ndarray
 
