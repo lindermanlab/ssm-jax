@@ -11,7 +11,7 @@ from dataclasses import dataclass
 class DummyPosterior:
     expected_states: np.ndarray
 
-#@jit # comment it out to debug or use id_print/id_tap
+@jit # comment it out to debug or use id_print/id_tap
 def update(model, data, fixed_zs, covariates, metadata, test_data):
     if fixed_zs is not None:
         posterior = [DummyPosterior(one_hot(fixed_zs[i], model.num_states)) for i in range(len(fixed_zs))]
