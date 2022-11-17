@@ -4,14 +4,16 @@ General EM routines
 import warnings
 import jax.numpy as np
 from jax import jit, vmap
-from ssm.utils import Verbosity, ensure_has_batch_dim, ssm_pbar
+from ssm.utils import Verbosity, ensure_has_batch_dim, ssm_pbar, one_hot
+
+class DummyPosterior:
+    expected_states: np.ndarray
 
 @jit # comment it out to debug or use id_print/id_tap
 def update(model, data, fixed_zs, covariates, metadata, test_data):
     posterior = model.e_step(data, covariates=covariates, metadata=metadata)
     if fixed_zs is not None:
-        for i in range(len(fixed_zs)):
-            posterior[i].expected_states = fixed_zs[i]
+        posterior = [DummyPosterior(one_hot(fixed_zs[i], model.num_states)) for i in range(len(fixed_zs))]
 
     lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
     if test_data is not None:
