@@ -7,8 +7,12 @@ from jax import jit, vmap
 from ssm.utils import Verbosity, ensure_has_batch_dim, ssm_pbar
 
 @jit # comment it out to debug or use id_print/id_tap
-def update(model, data, covariates, metadata, test_data):
+def update(model, data, fixed_zs, covariates, metadata, test_data):
     posterior = model.e_step(data, covariates=covariates, metadata=metadata)
+    if fixed_zs is not None:
+        for i in range(len(fixed_zs)):
+            posterior[i].expected_states = fixed_zs[i]
+
     lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
     if test_data is not None:
         test_posterior = model.e_step(test_data, covariates=covariates, metadata=metadata)
@@ -27,6 +31,7 @@ def em(model,
        num_iters=100,
        tol=1e-4,
        verbosity=Verbosity.DEBUG,
+       fixed_zs=None,
        test_data=None,
        callback=None
     ):
@@ -65,7 +70,7 @@ def em(model,
         pbar.set_description("[jit compiling...]")
 
     for itr in pbar:
-        model, posterior, lp, test_lp = update(model, data, covariates, metadata, test_data) #update(model)
+        model, posterior, lp, test_lp = update(model, data, fixed_zs, covariates, metadata, test_data) #update(model)
         callback_output = callback(model, posterior) if callback else None
         assert np.isfinite(lp), "NaNs in marginal log probability"
 
