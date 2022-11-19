@@ -173,6 +173,12 @@ class HMM(SSM):
         self._emissions = self._emissions.m_step(data, posterior, covariates=covariates, metadata=metadata)
         return self
 
+    def generic_m_step(self, data, posterior, covariates=None, metadata=None) -> HMM:
+        self._initial_condition = self._initial_condition.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        self._transitions = self._transitions.m_step(data, posterior, covariates=covariates, metadata=metadata)
+        self._emissions = self._emissions.generic_m_step(data, posterior, covariates=covariates, metadata=metadata)
+        return self
+
     #@ensure_has_batch_dim()
     def fit(self,
             data: list,
