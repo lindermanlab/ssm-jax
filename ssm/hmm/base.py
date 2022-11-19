@@ -187,6 +187,7 @@ class HMM(SSM):
             verbosity: Verbosity=Verbosity.DEBUG,
             test_data: np.ndarray=None,
             callback=None,
+            generic_m_step=False,
             num_restarts=1,
             num_iters_per_restart=30):
         r"""Fit the HMM to a dataset using the specified method and initialization.
@@ -273,6 +274,7 @@ class HMM(SSM):
                 log_probs, model, posteriors, test_log_probs, best_callback_outputs = em(
                     model, data, num_iters=num_iters, tol=tol, verbosity=verbosity, fixed_zs=fixed_zs,
                     covariates=covariates, metadata=metadata, test_data=test_data, callback=callback,
+                    generic_m_step=generic_m_step,
                 )
             else:
                 raise ValueError(f"Method {method} is not recognized/supported.")
