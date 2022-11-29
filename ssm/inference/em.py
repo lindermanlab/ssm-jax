@@ -12,13 +12,9 @@ class DummyPosterior:
     expected_states: np.ndarray
 
 @jit # comment it out to debug or use id_print/id_tap
-def update(model, data, fixed_zs, covariates, metadata, test_data):
-    if fixed_zs is not None:
-        posterior = [DummyPosterior(one_hot(fixed_zs[i], model.num_states)) for i in range(len(fixed_zs))]
-        lp = model.marginal_likelihood(data, None, covariates=covariates, metadata=metadata).sum()
-    else:
-        posterior = model.e_step(data, covariates=covariates, metadata=metadata)
-        lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
+def update(model, data, covariates, metadata, test_data):
+    posterior = model.e_step(data, covariates=covariates, metadata=metadata)
+    lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
     if test_data is not None:
         test_posterior = model.e_step(test_data, covariates=covariates, metadata=metadata)
         test_lp = model.marginal_likelihood(test_data, test_posterior, 
@@ -26,23 +22,6 @@ def update(model, data, fixed_zs, covariates, metadata, test_data):
     else:
         test_lp = 0
     model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
-    return model, posterior, lp, test_lp
-
-@jit # comment it out to debug or use id_print/id_tap
-def generic_update(model, data, fixed_zs, covariates, metadata, test_data):
-    if fixed_zs is not None:
-        posterior = [DummyPosterior(one_hot(fixed_zs[i], model.num_states)) for i in range(len(fixed_zs))]
-        lp = model.marginal_likelihood(data, None, covariates=covariates, metadata=metadata).sum()
-    else:
-        posterior = model.e_step(data, covariates=covariates, metadata=metadata)
-        lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
-    if test_data is not None:
-        test_posterior = model.e_step(test_data, covariates=covariates, metadata=metadata)
-        test_lp = model.marginal_likelihood(test_data, test_posterior,
-                covariates=covariates, metadata=metadata).sum()
-    else:
-        test_lp = 0
-    model = model.generic_m_step(data, posterior, covariates=covariates, metadata=metadata)
     return model, posterior, lp, test_lp
 
 #@ensure_has_batch_dim(model_arg="model")
@@ -53,10 +32,8 @@ def em(model,
        num_iters=100,
        tol=1e-4,
        verbosity=Verbosity.DEBUG,
-       fixed_zs=None,
        test_data=None,
        callback=None,
-       generic_m_step=False
     ):
     """Fit a model using EM.
 
@@ -93,10 +70,7 @@ def em(model,
         pbar.set_description("[jit compiling...]")
 
     for itr in pbar:
-        if not generic_m_step:
-            model, posterior, lp, test_lp = update(model, data, fixed_zs, covariates, metadata, test_data) #update(model)
-        else:
-            model, posterior, lp, test_lp = generic_update(model, data, fixed_zs, covariates, metadata, test_data)
+        model, posterior, lp, test_lp = update(model, data, covariates, metadata, test_data) #update(model)
         callback_output = callback(model, posterior) if callback else None
         assert np.isfinite(lp), "NaNs in marginal log probability"
 

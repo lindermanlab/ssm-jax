@@ -188,12 +188,10 @@ class HMM(SSM):
             num_iters: int=100,
             tol: float=1e-4,
             initialization_method: str="kmeans",
-            fixed_zs: list=None,
             key: jr.PRNGKey=None,
             verbosity: Verbosity=Verbosity.DEBUG,
             test_data: np.ndarray=None,
             callback=None,
-            generic_m_step=False,
             num_restarts=1,
             num_iters_per_restart=30):
         r"""Fit the HMM to a dataset using the specified method and initialization.
@@ -270,7 +268,7 @@ class HMM(SSM):
             best_callback_outputs.extend(callback_outputs)
                     
         else:
-            if fixed_zs is None and initialization_method is not None:
+            if initialization_method is not None:
                 this_key, key = jr.split(key, 2)
                 if verbosity >= Verbosity.LOUD: print("Initializing...")
                 self.initialize(this_key, data, method=initialization_method)
@@ -278,9 +276,8 @@ class HMM(SSM):
 
             if method == "em":
                 log_probs, model, posteriors, test_log_probs, best_callback_outputs = em(
-                    model, data, num_iters=num_iters, tol=tol, verbosity=verbosity, fixed_zs=fixed_zs,
+                    model, data, num_iters=num_iters, tol=tol, verbosity=verbosity,
                     covariates=covariates, metadata=metadata, test_data=test_data, callback=callback,
-                    generic_m_step=generic_m_step,
                 )
             else:
                 raise ValueError(f"Method {method} is not recognized/supported.")
