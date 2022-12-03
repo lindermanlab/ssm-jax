@@ -66,6 +66,8 @@ def em(model,
     callback_outputs = []
     pbar = ssm_pbar(num_iters, verbosity, "Iter {} LP: {:.3f}, test LP: {:.3f}", 0, np.nan, np.nan)
 
+    totalT = jnp.sum(jnp.array([data[i].shape[0] for i in range(len(data))]))
+
     if verbosity > Verbosity.OFF:
         pbar.set_description("[jit compiling...]")
 
@@ -85,7 +87,7 @@ def em(model,
             if log_probs[-1] < log_probs[-2]:
                 pass # warnings.warn(UserWarning("LP is decreasing in EM fit!"))
 
-            if abs(log_probs[-1] - log_probs[-2]) < tol and verbosity > Verbosity.OFF:
+            if (abs(log_probs[-1] - log_probs[-2]) / totalT) < tol and verbosity > Verbosity.OFF:
                 pbar.set_description("[converged] LP: {:.3f}, test LP: {:.3f}".format(lp, test_lp))
                 pbar.refresh()
                 break
