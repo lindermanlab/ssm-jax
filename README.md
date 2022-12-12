@@ -6,6 +6,8 @@
 
 Bayesian learning and inference for state space models (SSMs) using Google Research's JAX as a backend. 
 
+# Update: This project has been superceded by [DYNAMAX](https://github.com/probml/dynamax). Check it out!
+
 # Example
 
 A quick demonstration of some of the most basic elements of SSM. Check out the [example notebooks](https://github.com/lindermanlab/ssm-jax-refactor/tree/main/notebooks) for more!
