@@ -12,7 +12,7 @@ class DummyPosterior:
     expected_states: np.ndarray
 
 @jit # comment it out to debug or use id_print/id_tap
-def e_update(model, data, covariates, metadata, test_data, num_m_step_iters):
+def e_update(model, data, covariates, metadata, test_data):
     posterior = model.e_step(data, covariates=covariates, metadata=metadata)
     lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
     if test_data is not None:
