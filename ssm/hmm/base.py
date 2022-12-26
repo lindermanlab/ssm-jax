@@ -186,6 +186,7 @@ class HMM(SSM):
             metadata=None,
             method: str="em",
             num_iters: int=100,
+            num_m_step_iters: int=1,
             tol: float=1e-4,
             initialization_method: str="kmeans",
             key: jr.PRNGKey=None,
@@ -237,8 +238,9 @@ class HMM(SSM):
 
                 if method == "em":
                     log_probs, model, posteriors, test_log_probs, callback_outputs = em(
-                        model, data, num_iters=num_iters_per_restart, tol=tol, verbosity=verbosity,
-                        covariates=covariates, metadata=metadata, test_data=test_data, callback=callback,
+                        model, data, num_iters=num_iters_per_restart, num_m_step_iters=num_m_step_iters,
+                        tol=tol, verbosity=verbosity, covariates=covariates, metadata=metadata,
+                        test_data=test_data, callback=callback,
                     )
                 else:
                     raise ValueError(f"Method {method} is not recognized/supported.")
@@ -257,8 +259,9 @@ class HMM(SSM):
                     
             if method == "em":
                 log_probs, model, posteriors, test_log_probs, callback_outputs = em(
-                    best_model, data, num_iters=num_iters, tol=tol, verbosity=verbosity,
-                    covariates=covariates, metadata=metadata, test_data=test_data, callback=callback,
+                    best_model, data, num_iters=num_iters, num_m_step_iters=num_m_step_iters,
+                    tol=tol, verbosity=verbosity, covariates=covariates, metadata=metadata,
+                    test_data=test_data, callback=callback,
                 )
             else:
                 raise ValueError(f"Method {method} is not recognized/supported.")
@@ -276,8 +279,9 @@ class HMM(SSM):
 
             if method == "em":
                 log_probs, model, posteriors, test_log_probs, best_callback_outputs = em(
-                    model, data, num_iters=num_iters, tol=tol, verbosity=verbosity,
-                    covariates=covariates, metadata=metadata, test_data=test_data, callback=callback,
+                    model, data, num_iters=num_iters, num_m_step_iters=num_m_step_iters,
+                    tol=tol, verbosity=verbosity, covariates=covariates, metadata=metadata,
+                    test_data=test_data, callback=callback,
                 )
             else:
                 raise ValueError(f"Method {method} is not recognized/supported.")
