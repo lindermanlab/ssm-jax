@@ -12,7 +12,7 @@ class DummyPosterior:
     expected_states: np.ndarray
 
 @jit # comment it out to debug or use id_print/id_tap
-def update(model, data, covariates, metadata, test_data, num_m_step_iters):
+def e_update(model, data, covariates, metadata, test_data, num_m_step_iters):
     posterior = model.e_step(data, covariates=covariates, metadata=metadata)
     lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
     if test_data is not None:
@@ -22,14 +22,12 @@ def update(model, data, covariates, metadata, test_data, num_m_step_iters):
     else:
         test_lp = 0
 
-    def _f(carry, xs):
-        model, data, posterior, covariates, metadata = carry
-        model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
-        return (model, data, posterior, covariates, metadata), None
+    return posterior, lp, test_lp
 
-    (model, _, _, _, _), _ = lax.scan(_f, (model, data, posterior, covariates, metadata), np.arange(num_m_step_iters))
-
-    return model, posterior, lp, test_lp
+@jit # comment it out to debug or use id_print/id_tap
+def m_update(model, data, posterior, covariates, metadata):
+    model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
+    return model
 
 #@ensure_has_batch_dim(model_arg="model")
 def em(model,
@@ -80,7 +78,9 @@ def em(model,
         pbar.set_description("[jit compiling...]")
 
     for itr in pbar:
-        model, posterior, lp, test_lp = update(model, data, covariates, metadata, test_data, num_m_step_iters) #update(model)
+        posterior, lp, test_lp = e_update(model, data, covariates, metadata, test_data) #update(model)
+        for _ in range(num_m_step_iters):
+            model = m_update(model, data, posterior, covariates, metadata)
         callback_output = callback(model, posterior) if callback else None
         assert np.isfinite(lp), "NaNs in marginal log probability"
 
