@@ -22,7 +22,7 @@ setup(
         "jaxlib",
         "jupyter",
         "ipywidgets",
-        "tensorflow-probability",
+        "tensorflow-probability==0.17.0",
 	    "flax==0.6.4",
  	    "optax",
     ],
