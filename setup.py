@@ -23,8 +23,8 @@ setup(
         "jupyter",
         "ipywidgets",
         "tensorflow-probability",
-	"flax",
- 	"optax",
+	    #"flax",
+ 	    "optax",
     ],
     packages=setuptools.find_packages(),
 )
