@@ -16,6 +16,8 @@ import ssm.hmm.transitions as transitions
 import ssm.hmm.emissions as emissions
 from ssm.hmm.posterior import StationaryHMMPosterior
 
+from sklearn.decomposition import PCA
+
 from copy import deepcopy
 
 @register_pytree_node_class
@@ -118,8 +120,10 @@ class HMM(SSM):
             # TODO: use self.emissions_shape
 
             concatenated_dataset = np.concatenate(data, axis=0)
-            flat_dataset = concatenated_dataset.reshape(-1, concatenated_dataset.shape[-1])
-            assignments = km.fit_predict(flat_dataset)#.reshape(data.shape[:-1])
+            #flat_dataset = concatenated_dataset.reshape(-1, concatenated_dataset.shape[-1])
+            pca = PCA(n_components=10)
+            concatenated_dataset = pca.fit_transform(concatenated_dataset)
+            assignments = km.fit_predict(concatenated_dataset)#.reshape(data.shape[:-1])
             assignments_list = []
             idx = 0
             for i in range(len(data)):
