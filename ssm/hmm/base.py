@@ -121,8 +121,8 @@ class HMM(SSM):
 
             concatenated_dataset = np.concatenate(data, axis=0)
             #flat_dataset = concatenated_dataset.reshape(-1, concatenated_dataset.shape[-1])
-            pca = PCA(n_components=10)
-            concatenated_dataset = pca.fit_transform(concatenated_dataset)
+            #pca = PCA(n_components=10)
+            #concatenated_dataset = pca.fit_transform(concatenated_dataset)
             assignments = km.fit_predict(concatenated_dataset)#.reshape(data.shape[:-1])
             assignments_list = []
             idx = 0
