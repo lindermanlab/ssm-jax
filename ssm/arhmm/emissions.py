@@ -181,6 +181,8 @@ class AutoregressiveEmissions(Emissions):
             return stats
 
         # vmap over all time series in dataset
+        print(len(dataset))
+        print(len(posteriors))
         stats = [vmap(scan_one)(dataset[i], posteriors[i].expected_states) for i in range(len(dataset))]
         print(stats[0].shape)
         stats = np.concatenate(stats)
