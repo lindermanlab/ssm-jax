@@ -175,6 +175,8 @@ class AutoregressiveEmissions(Emissions):
 
         # Scan over one time series
         def scan_one(data, weights):
+            print(data.shape)
+            print(weights.shape)
             (_, stats), _ = lax.scan(_collect_stats,
                                      (data[:num_lags], init_stats),
                                      (data[num_lags:], weights[num_lags:]))
