@@ -175,19 +175,20 @@ class AutoregressiveEmissions(Emissions):
 
         # Scan over one time series
         def scan_one(data, weights):
-            print(data.shape)
-            print(weights.shape)
             (_, stats), _ = lax.scan(_collect_stats,
                                      (data[:num_lags], init_stats),
                                      (data[num_lags:], weights[num_lags:]))
             return stats
 
         # vmap over all time series in dataset
-        print(dataset[0].shape)
-        print(posteriors[0].expected_states.shape)
         stats = [vmap(scan_one)(dataset[i][None], posteriors[i].expected_states[None]) for i in range(len(dataset))]
-        print(stats[0].shape)
-        stats = np.concatenate(stats)
+        stats = (np.concatenate([stats[i][0][None] for i in range(len(stats))]),
+                 np.concatenate([stats[i][1][None] for i in range(len(stats))]),
+                 np.concatenate([stats[i][2][None] for i in range(len(stats))]),
+                 np.concatenate([stats[i][3][None] for i in range(len(stats))]),
+                 np.concatenate([stats[i][4][None] for i in range(len(stats))]),
+                 np.concatenate([stats[i][5][None] for i in range(len(stats))]),
+                 np.concatenate([stats[i][6][None] for i in range(len(stats))]))
         stats = tree_map(partial(np.sum, axis=0), stats)
 
         # Add the prior stats and counts
