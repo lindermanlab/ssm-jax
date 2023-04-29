@@ -24,7 +24,7 @@ def e_update(model, data, covariates, metadata, test_data):
 
     return posterior, lp, test_lp
 
-#@jit # comment it out to debug or use id_print/id_tap
+@jit # comment it out to debug or use id_print/id_tap
 def m_update(model, data, posterior, covariates, metadata):
     model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
     return model
