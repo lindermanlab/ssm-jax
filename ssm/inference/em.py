@@ -6,7 +6,7 @@ import jax.numpy as np
 from jax import jit, vmap
 from ssm.utils import Verbosity, ensure_has_batch_dim, ssm_pbar
 
-@jit
+#@jit
 def update(model, data, covariates, metadata, test_data):
     posterior = model.e_step(data, covariates=covariates, metadata=metadata)
     lp = model.marginal_likelihood(data, posterior, covariates=covariates, metadata=metadata).sum()
