@@ -135,9 +135,9 @@ class HMM(SSM):
     #@auto_batch(batched_args=("data", "posterior", "covariates", "metadata"))
     def marginal_likelihood(self, data, posterior=None, covariates=None, metadata=None):
         if posterior is None:
-            posterior = self.e_step(data, covariates=covariates, metadata=metadata)
+            posterior = [self.e_step(data[i], covariates=covariates, metadata=metadata) for i in range(len(data))]
 
-        return posterior.log_normalizer
+        return np.asarray([posterior[i].log_normalizer for i in range(len(data))]).sum()
 
     #@auto_batch(batched_args=("data", "covariates", "metadata"))
     def e_step(self, data, covariates=None, metadata=None):
