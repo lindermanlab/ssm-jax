@@ -19,7 +19,7 @@ def update(model, data, covariates, metadata, test_data):
     model = model.m_step(data, posterior, covariates=covariates, metadata=metadata)
     return model, posterior, lp, test_lp
 
-@ensure_has_batch_dim(model_arg="model")
+#@ensure_has_batch_dim(model_arg="model")
 def em(model,
        data,
        covariates=None,
