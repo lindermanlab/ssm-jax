@@ -133,6 +133,7 @@ class HMM(SSM):
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
     #@auto_batch(batched_args=("data", "posterior", "covariates", "metadata"))
+    @jit
     def marginal_likelihood(self, data, posterior=None, covariates=None, metadata=None):
         if posterior is None:
             posterior = [self.e_step(data[i], covariates=covariates, metadata=metadata) for i in range(len(data))]
@@ -148,6 +149,7 @@ class HMM(SSM):
                 for i in range(len(data))]
 
     #@ensure_has_batch_dim()
+    @jit
     def m_step(self, data, posterior, covariates=None, metadata=None) -> HMM:
         self._initial_condition = self._initial_condition.m_step(data, posterior, covariates=covariates, metadata=metadata)
         self._transitions = self._transitions.m_step(data, posterior, covariates=covariates, metadata=metadata)
