@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import jax.numpy as np
 import jax.random as jr
 from jax.tree_util import register_pytree_node_class
+from jax import jit
 
 from ssm.base import SSM
 from ssm.inference.em import em
