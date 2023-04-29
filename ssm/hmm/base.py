@@ -81,7 +81,7 @@ class HMM(SSM):
         return self._emissions.distribution(state, covariates=covariates, metadata=metadata)
 
     ### Methods for posterior inference
-    @ensure_has_batch_dim()
+    #@ensure_has_batch_dim()
     def initialize(self,
                    key: jr.PRNGKey,
                    data: np.ndarray,
@@ -132,28 +132,28 @@ class HMM(SSM):
         self._emissions.m_step(data, dummy_posteriors)
 
     ### EM: Operates on batches of data (aka datasets) and posteriors
-    @auto_batch(batched_args=("data", "posterior", "covariates", "metadata"))
+    #@auto_batch(batched_args=("data", "posterior", "covariates", "metadata"))
     def marginal_likelihood(self, data, posterior=None, covariates=None, metadata=None):
         if posterior is None:
             posterior = self.e_step(data, covariates=covariates, metadata=metadata)
 
         return posterior.log_normalizer
 
-    @auto_batch(batched_args=("data", "covariates", "metadata"))
+    #@auto_batch(batched_args=("data", "covariates", "metadata"))
     def e_step(self, data, covariates=None, metadata=None):
         return StationaryHMMPosterior.infer(
             self._initial_condition.log_initial_probs(data, covariates=covariates, metadata=metadata),
             self._emissions.log_likelihoods(data, covariates=covariates, metadata=metadata),
             self._transitions.log_transition_matrices(data, covariates=covariates, metadata=metadata))
 
-    @ensure_has_batch_dim()
+    #@ensure_has_batch_dim()
     def m_step(self, data, posterior, covariates=None, metadata=None) -> HMM:
         self._initial_condition = self._initial_condition.m_step(data, posterior, covariates=covariates, metadata=metadata)
         self._transitions = self._transitions.m_step(data, posterior, covariates=covariates, metadata=metadata)
         self._emissions = self._emissions.m_step(data, posterior, covariates=covariates, metadata=metadata)
         return self
 
-    @ensure_has_batch_dim()
+    #@ensure_has_batch_dim()
     def fit(self,
             data: np.ndarray,
             covariates=None,
