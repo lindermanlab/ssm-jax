@@ -141,10 +141,11 @@ class HMM(SSM):
 
     #@auto_batch(batched_args=("data", "covariates", "metadata"))
     def e_step(self, data, covariates=None, metadata=None):
-        return StationaryHMMPosterior.infer(
-            self._initial_condition.log_initial_probs(data, covariates=covariates, metadata=metadata),
-            self._emissions.log_likelihoods(data, covariates=covariates, metadata=metadata),
-            self._transitions.log_transition_matrices(data, covariates=covariates, metadata=metadata))
+        return [StationaryHMMPosterior.infer(
+                self._initial_condition.log_initial_probs(data[i], covariates=covariates, metadata=metadata),
+                self._emissions.log_likelihoods(data[i], covariates=covariates, metadata=metadata),
+                self._transitions.log_transition_matrices(data[i], covariates=covariates, metadata=metadata))
+                for i in range(len(data))]
 
     #@ensure_has_batch_dim()
     def m_step(self, data, posterior, covariates=None, metadata=None) -> HMM:
