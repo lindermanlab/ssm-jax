@@ -18,7 +18,7 @@ setup(
         "scikit-learn",
         "tqdm",
         "seaborn",
-        "jax",
+        "jax==0.4.8",
         "jaxlib",
         "jupyter",
         "ipywidgets",
