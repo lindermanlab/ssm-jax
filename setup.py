@@ -19,7 +19,7 @@ setup(
         "tqdm",
         "seaborn",
         "jax==0.4.8",
-        "jaxlib==0.4.7+cuda11.cudnn86",
+        "jaxlib",
         "jupyter",
         "ipywidgets",
         "tensorflow-probability==0.17.0",
