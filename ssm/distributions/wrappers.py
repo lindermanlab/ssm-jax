@@ -1,8 +1,12 @@
+from typing_extensions import ParamSpec
 import jax.numpy as np
 from tensorflow_probability.substrates import jax as tfp
 tfd = tfp.distributions
 tfb = tfp.bijectors
 
+from functools import partial
+from jax import vmap
+from jax.tree_util import tree_map
 
 from ssm.distributions.expfam import ConjugatePrior, ExponentialFamilyDistribution
 from ssm.utils import one_hot
@@ -124,10 +128,15 @@ class MultivariateNormalFullCovariance(ExponentialFamilyDistribution,
     def from_params(cls, params, **kwargs):
         return cls(*params, **kwargs)
 
+    @classmethod
+    def from_sufficient_statistics(cls, statistics, **kwargs):
+        _, Ex, ExxT, _ = statistics
+        cov = ExxT - np.einsum('...d, ...e -> ...de', Ex, Ex)
+        return cls(Ex, cov, **kwargs)
+
     @staticmethod
     def sufficient_statistics(datapoint):
         return (1.0, datapoint, np.outer(datapoint, datapoint), 1.0)
-
 
 class MultivariateNormalTriL(ExponentialFamilyDistribution,
                              tfd.MultivariateNormalTriL):
