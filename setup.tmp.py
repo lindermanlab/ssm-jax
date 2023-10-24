@@ -18,15 +18,15 @@ setup(
         "scikit-learn",
         "tqdm",
         "seaborn",
-        "jax",
-        "jaxlib",
+        "jax==0.3.20",
+        "jaxlib==0.3.20",
         "jupyter",
         "ipywidgets",
-        "tensorflow-probability",
-	"flax",
+        "tensorflow-probability==0.16.0",
+	"flax==0.5.2",
  	"optax",
-        "orbax",
-        "orbax-checkpoint"
+        "orbax==0.1.0",
+        "orbax-checkpoint==0.1.1"
     ],
     packages=setuptools.find_packages(),
 )
