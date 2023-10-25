@@ -14,6 +14,8 @@ from ssm.hmm.initial import StandardInitialCondition
 from ssm.hmm.transitions import StationaryTransitions
 from ssm.arhmm.emissions import AutoregressiveEmissions
 
+from jax.config import config
+config.update("jax_enable_x64", True)
 
 @register_pytree_node_class
 class GaussianARHMM(AutoregressiveHMM):
@@ -26,7 +28,8 @@ class GaussianARHMM(AutoregressiveHMM):
                  emission_weights: np.ndarray=None,
                  emission_biases: np.ndarray=None,
                  emission_covariances: np.ndarray=None,
-                 seed: jr.PRNGKey=None):
+                 seed: jr.PRNGKey=None,
+                 dtype=np.float64):
         r"""Gaussian autoregressive hidden markov Model (ARHMM).
         
         Let $x_t$ denote the observation at time $t$.  Let $z_t$ denote the corresponding discrete latent state.
@@ -73,7 +76,7 @@ class GaussianARHMM(AutoregressiveHMM):
             this_seed, seed = jr.split(seed, 2)
             emission_weights = tfd.Normal(0, 1).sample(
                 seed=this_seed,
-                sample_shape=(num_states, num_emission_dims, num_emission_dims * num_lags))
+                sample_shape=(num_states, num_emission_dims, num_emission_dims * num_lags)).astype(dtype)
 
         if emission_biases is None:
             assert seed is not None and num_emission_dims is not None, \
@@ -82,13 +85,13 @@ class GaussianARHMM(AutoregressiveHMM):
             this_seed, seed = jr.split(seed, 2)
             emission_biases = tfd.Normal(0, 1).sample(
                 seed=this_seed,
-                sample_shape=(num_states, num_emission_dims))
+                sample_shape=(num_states, num_emission_dims)).astype(dtype)
 
         if emission_covariances is None:
             assert num_emission_dims is not None, \
                 "You must either specify the emission_covariances or give a dimension "\
                 "so that they can be initialized."
-            emission_covariances = np.tile(np.eye(num_emission_dims), (num_states, 1, 1))
+            emission_covariances = np.tile(np.eye(num_emission_dims), (num_states, 1, 1)).astype(dtype)
 
         initial_condition = StandardInitialCondition(num_states, initial_probs=initial_state_probs)
         transitions = StationaryTransitions(num_states, transition_matrix=transition_matrix)
